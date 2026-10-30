@@ -23,6 +23,8 @@ data class LibraryView(
     val line: String,
     val sub: String?,
     val progress: Float?,
+    /** Chats the last scan could not read, once it has ended: something the user has to look at. */
+    val failedChats: Int = 0,
 ) {
     /** The banner is hidden once everything is read and nothing runs. */
     val showBanner: Boolean get() = phase != LibraryPhase.UpToDate && phase != LibraryPhase.WaitingWifi
@@ -46,7 +48,27 @@ data class LibraryView(
  * about to play ([EnrichStatus.background] false) is too small to announce.
  */
 object LibraryStatus {
-    fun view(scan: ScanStatus, tags: EnrichStatus, paused: Boolean, online: Boolean, heldForWifi: Boolean = false): LibraryView {
+    fun view(scan: ScanStatus, tags: EnrichStatus, paused: Boolean, online: Boolean, heldForWifi: Boolean = false): LibraryView =
+        progressView(scan, tags, paused, online, heldForWifi).copy(failedChats = if (scan.running) 0 else scan.failed.size)
+
+    /**
+     * What the banner above the library shows. With the progress banner on ([showProgress]), the
+     * progress while something runs, else the chats that could not be read, else nothing. With it
+     * hidden (Hide on the banner), only what needs the user: chats that could not be read. The mobile
+     * data question is its own dialog and is asked either way. A scan that ends and a new one that
+     * starts keep the choice: hidden stays hidden until the Settings switch brings it back.
+     */
+    fun banner(view: LibraryView?, showProgress: Boolean): Banner = when {
+        view == null -> Banner.None
+        showProgress && view.showBanner -> Banner.Progress
+        view.failedChats > 0 -> Banner.Attention
+        else -> Banner.None
+    }
+
+    /** The banner's three looks. */
+    enum class Banner { None, Progress, Attention }
+
+    private fun progressView(scan: ScanStatus, tags: EnrichStatus, paused: Boolean, online: Boolean, heldForWifi: Boolean): LibraryView {
         val counts = tags.counts
         val reading = tags.running && tags.background
         val busy = scan.running || reading

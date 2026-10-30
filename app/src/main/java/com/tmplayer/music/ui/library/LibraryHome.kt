@@ -47,10 +47,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.data.Library
+import com.tmplayer.music.data.LibraryStatus
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.Album
 import com.tmplayer.music.library.Artist
@@ -453,14 +456,27 @@ private fun sortName(sort: SongSort): String = when (sort) {
  * What the library is doing while the scan or the tag reader runs: what and how far ("N of M"),
  * that listening goes on, and Pause or Resume. The bar is still (determinate), so nothing animates,
  * and the words change at most twice a second. Tap it for the Library section of Settings. Gone
- * when everything is up to date.
+ * when everything is up to date. Hide turns the progress off for good (Settings brings it back);
+ * chats that could not be read still show, as a line in the error colour ([LibraryStatus.banner]).
  */
 @Composable
 private fun ScanBar(onOpen: () -> Unit) {
     val flow = remember { Library.view() }
     val view by flow.collectAsStateWithLifecycle(initialValue = null)
     val paused by Library.isPaused.collectAsStateWithLifecycle()
-    val shown = view?.takeIf { it.showBanner } ?: return
+    val showProgress by Library.choices.showProgress.collectAsStateWithLifecycle()
+    val mode = LibraryStatus.banner(view, showProgress)
+    val shown = view ?: return
+    if (mode == LibraryStatus.Banner.None) return
+    if (mode == LibraryStatus.Banner.Attention) {
+        Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text(L.scanFailedChats(shown.failedChats), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                Text(L.scanFailedChatsSub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+        }
+        return
+    }
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -473,6 +489,10 @@ private fun ScanBar(onOpen: () -> Unit) {
                 TextButton(onClick = { if (paused) Library.resume() else Library.pause() }) {
                     Text(if (paused) L.scanResume else L.scanPause)
                 }
+                TextButton(
+                    onClick = { Library.choices.setShowProgress(false) },
+                    modifier = Modifier.semantics { contentDescription = L.scanHideLabel },
+                ) { Text(L.scanHide) }
             }
             shown.progress?.let { fraction ->
                 LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), drawStopIndicator = {})

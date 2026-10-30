@@ -64,6 +64,7 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var failuresInARow = 0
     private var saveJob: Job? = null
+    private var checkpointJob: Job? = null
 
     /** When the cache was last trimmed to its ceiling, so a run of skips does not trim each time. */
     private var trimmedAt = 0L
@@ -109,6 +110,7 @@ class PlaybackService : MediaSessionService() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = session?.player
         save()
+        player?.let { keepCurrent(it, announce = false) }
         // Swiped away while paused or empty: nothing to keep going for.
         if (player == null || !player.playWhenReady || player.mediaItemCount == 0) stopSelf()
     }
@@ -116,6 +118,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         Library.setPlaying(false)
         save()
+        checkpointJob?.cancel()
         session?.run {
             player.release()
             release()
@@ -189,7 +192,63 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /**
+     * Keeps where [item] was left for Speed dial ([com.tmplayer.music.library.SpeedDial]); a spot not
+     * worth coming back to clears it. [announce] tells the lists, for a pause or a skip; the
+     * checkpoint while playing stays quiet, so a list is not read again every half minute.
+     */
+    private fun keepPosition(item: MediaItem?, positionMs: Long, durationMs: Long, announce: Boolean) {
+        val queued = item?.mediaId?.let { MediaIds.item(it) } ?: return
+        val length = durationMs.takeIf { it > 0 } ?: item.mediaMetadata.durationMs ?: 0L
+        val at = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) {
+            runCatching { Library.index().saveResume(queued.id, queued.songKey, positionMs.coerceAtLeast(0), length, at) }
+                .onFailure { Logger.w(TAG, "keeping where a track was left failed", it) }
+            if (announce) Library.notifyChanged()
+        }
+    }
+
+    /** [item] played to its end: its card starts from the top next time. */
+    private fun finished(item: MediaItem?) {
+        val queued = item?.mediaId?.let { MediaIds.item(it) } ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching { Library.index().clearResume(queued.id) }.onFailure { Logger.w(TAG, "clearing a finished track failed", it) }
+            Library.notifyChanged()
+        }
+    }
+
+    private fun keepCurrent(player: Player, announce: Boolean) {
+        if (player.playbackState == Player.STATE_ENDED) return
+        keepPosition(player.currentMediaItem, player.currentPosition, player.duration, announce)
+    }
+
+    /** While something plays, its spot is kept every [CHECKPOINT_MS], so a killed process loses little. Stops on pause. */
+    private fun checkpoint(player: Player, playing: Boolean) {
+        checkpointJob?.cancel()
+        checkpointJob = null
+        if (!playing) return
+        checkpointJob = scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(CHECKPOINT_MS)
+                keepCurrent(player, announce = false)
+            }
+        }
+    }
+
     private inner class Watcher(private val player: Player) : Player.Listener {
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            val left = oldPosition.mediaItem ?: return
+            val sameItem = newPosition.mediaItemIndex == oldPosition.mediaItemIndex && newPosition.mediaItem?.mediaId == left.mediaId
+            when {
+                // Played to the end, into the next item or round again with repeat one.
+                reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION -> finished(left)
+                // A seek inside the same track is kept at the next pause.
+                sameItem -> Unit
+                // Skipped, removed or another item picked: keep where it was left.
+                else -> keepPosition(left, oldPosition.positionMs, left.mediaMetadata.durationMs ?: 0L, announce = true)
+            }
+        }
+
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             // A new item, or the same one again with repeat one: its next start is a new play.
             recorded = null
@@ -220,9 +279,13 @@ class PlaybackService : MediaSessionService() {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             Library.setPlaying(isPlaying)
             if (isPlaying) recordPlay(player.currentMediaItem) else saveSoon()
+            checkpoint(player, isPlaying)
+            // A pause by the user (not a wait for data) keeps the spot and tells Speed dial.
+            if (!isPlaying && !player.playWhenReady) keepCurrent(player, announce = true)
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) finished(player.currentMediaItem)
             if (playbackState == Player.STATE_READY) {
                 failuresInARow = 0
                 PlaybackErrors.clear()
@@ -269,6 +332,7 @@ class PlaybackService : MediaSessionService() {
         private const val TAG = "PlaybackService"
         private const val MAX_SKIPS = 3
         private const val SAVE_DELAY_MS = 500L
+        private const val CHECKPOINT_MS = 30_000L
         private const val TRIM_GAP_MS = 5 * 60_000L
 
         /** A queue item as a playable MediaItem, from the index: the version, or the song's default. */

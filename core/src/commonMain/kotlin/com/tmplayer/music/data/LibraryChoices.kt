@@ -70,7 +70,20 @@ class LibraryChoices(private val store: KeyValues, private val now: () -> Long =
     private val _tagBytes = MutableStateFlow((read { store.getLong(TAG_BYTES, 0) } ?: 0L).coerceAtLeast(0))
     val tagBytes: StateFlow<Long> = _tagBytes.asStateFlow()
 
+    /**
+     * Whether the reading progress banner shows above the library. On for a new install; Hide on the
+     * banner turns it off, the Settings switch back on. Off keeps it off for every later scan, and
+     * never hides what needs the user ([LibraryStatus.banner]).
+     */
+    private val _showProgress = MutableStateFlow(read { store.getBoolean(SHOW_PROGRESS, true) } ?: true)
+    val showProgress: StateFlow<Boolean> = _showProgress.asStateFlow()
+
     private var bytesSavedAt = 0L
+
+    fun setShowProgress(on: Boolean) {
+        _showProgress.value = on
+        write { store.putBoolean(SHOW_PROGRESS, on) }
+    }
 
     /** The [ClipRules] mask the two switches make. */
     val hiddenMask: Int get() = ClipRules.mask(_showShort.value, _showVoice.value)
@@ -151,6 +164,7 @@ class LibraryChoices(private val store: KeyValues, private val now: () -> Long =
         private const val SHOW_SHORT = "show_short_clips"
         private const val SHOW_VOICE = "show_voice_files"
         private const val TAG_BYTES = "tag_bytes"
+        private const val SHOW_PROGRESS = "show_reading_progress"
         private const val ORDER = "chat_order_"
     }
 }

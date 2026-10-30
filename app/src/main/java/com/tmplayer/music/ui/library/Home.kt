@@ -54,7 +54,7 @@ suspend fun allSongs(): List<Song> {
 }
 
 /**
- * Home: the Continue card (the restored queue, paused), then Recently played, Recently added and
+ * Home: Speed dial (the restored queue first, paused, then what was played lately), then Recently played, Recently added and
  * Favourites as rows of covers, and Shuffle all. A row with nothing in it is left out; with nothing
  * anywhere, Home says how to start. Plain lists of what the user has, never a recommendation
  * (`plan/RESEARCH.md` 11).
@@ -80,8 +80,8 @@ fun HomeTab(actions: SongActions, onShuffleAll: () -> Unit) {
         loaded = true
     }
     LazyColumn(contentPadding = PaddingValues(vertical = 12.dp), modifier = Modifier.fillMaxSize()) {
-        // Draws nothing without a restored queue.
-        item(key = "continue") { ContinueCard(Modifier.padding(bottom = 16.dp)) }
+        // Draws nothing with nothing played yet.
+        item(key = "speed_dial") { SpeedDialSection(Modifier.padding(bottom = 16.dp)) }
         item(key = "buttons") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onShuffleAll, enabled = added.isNotEmpty()) { Text(L.homeShuffleAll) }

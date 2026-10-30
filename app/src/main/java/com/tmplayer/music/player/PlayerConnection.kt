@@ -139,15 +139,35 @@ object PlayerConnection {
      * Plays [songs] from [start]. A long list is cut around the start to [SavedQueue.MAX_ITEMS] so
      * a "play all" of 20,000 does not hand the session 20,000 items.
      */
-    fun play(songs: List<Song>, start: Int, shuffle: Boolean = false) {
+    fun play(songs: List<Song>, start: Int, shuffle: Boolean = false, positionMs: Long = 0) {
         val c = controller ?: return
         if (songs.isEmpty()) return
         val begin = (start - SavedQueue.MAX_ITEMS / 4).coerceIn(0, maxOf(0, songs.size - SavedQueue.MAX_ITEMS))
         val window = songs.subList(begin, minOf(songs.size, begin + SavedQueue.MAX_ITEMS))
         c.shuffleModeEnabled = shuffle
-        c.setMediaItems(window.map(::itemOf), (start - begin).coerceIn(0, window.lastIndex), 0)
+        c.setMediaItems(window.map(::itemOf), (start - begin).coerceIn(0, window.lastIndex), positionMs.coerceAtLeast(0))
         c.prepare()
         c.play()
+    }
+
+    /**
+     * Resumes [track] where the queue already holds it: the current item plays on (or from
+     * [positionMs] when it ended), another item is skipped to and started at [positionMs]. False when
+     * the queue does not hold it, so the caller builds a new queue.
+     */
+    fun resumeInQueue(track: TrackId, positionMs: Long): Boolean {
+        val c = controller ?: return false
+        val at = (0 until c.mediaItemCount).firstOrNull { i ->
+            MediaIds.item(c.getMediaItemAt(i).mediaId)?.let { TrackId(it.chatId, it.messageId) } == track
+        } ?: return false
+        if (at == c.currentMediaItemIndex && c.playbackState != Player.STATE_ENDED) {
+            if (!c.isPlaying) toggle()
+            return true
+        }
+        c.seekTo(at, positionMs.coerceAtLeast(0))
+        if (c.playbackState == Player.STATE_IDLE) c.prepare()
+        c.play()
+        return true
     }
 
     fun playNext(song: Song) {

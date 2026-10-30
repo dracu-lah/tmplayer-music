@@ -91,7 +91,13 @@
     "play_all": "Play all",
     "recently_added": "Recently added",
     "recently_played": "Recently played",
-    "shuffle_all": "Shuffle all"
+    "shuffle_all": "Shuffle all",
+    "speed_dial": "Speed dial",
+    "speed_dial_card": "{title}, {artist}",
+    "speed_dial_failed": "Could not start that track. {reason}",
+    "speed_dial_gone": "That track is no longer in its chat, so it was taken off Speed dial.",
+    "speed_dial_page": "Page {current} of {total}",
+    "speed_dial_remove": "Remove from Speed dial"
   },
   "library": {
     "albums": "{count, plural, one {# album} other {# albums}}",
@@ -103,7 +109,6 @@
     "versions": "{count, plural, one {# version} other {# versions}}"
   },
   "listening": {
-    "continue": "Continue listening",
     "now_paused": "Paused",
     "now_playing": "Playing",
     "progress": "{played} of {length}",
@@ -245,6 +250,10 @@
   },
   "scan": {
     "check_now": "Check for new tracks now",
+    "failed_chats": "{count, plural, one {# chat could not be read} other {# chats could not be read}}",
+    "failed_chats_sub": "Tap to see why and try again.",
+    "hide": "Hide",
+    "hide_label": "Hide the reading progress. Turn it back on in Settings, Library.",
     "keep_listening": "You can keep listening while this runs.",
     "offline": "Waiting for Telegram to connect",
     "offline_sub": "Reading carries on by itself once you are online.",
@@ -287,6 +296,8 @@
     "limit_note": "The cache never takes more than a share of this device's storage: at most {size} here.",
     "nothing": "nothing",
     "retry_failed": "Try these again",
+    "show_progress": "Show reading progress on Home",
+    "show_progress_detail": "The banner while chats are scanned and track details are read. This section always shows the progress, and a chat that could not be read is shown either way.",
     "state_paused": "Paused",
     "state_reading": "Reading track details",
     "state_scanning": "Looking for tracks in your chats",

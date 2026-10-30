@@ -12,7 +12,7 @@ import androidx.sqlite.execSQL
 internal object IndexSchema {
 
     /** Raised whenever a table or an index changes; [MIGRATIONS] carries an older file forward. */
-    const val VERSION = 3
+    const val VERSION = 4
 
     /**
      * Steps from one version to the next, keyed by the version they start from. Each step commits
@@ -31,6 +31,7 @@ internal object IndexSchema {
         },
         1 to ::splitArtistsV2,
         2 to ::clipsV3,
+        3 to ::resumeV4,
     )
 
     /** Tracks the version 2 step reads per transaction, so 100,000 tracks are 50 short commits. */
@@ -390,6 +391,33 @@ internal object IndexSchema {
             runCatching { write.close() }
         }
         inTransaction(db) { setVersion(db, 3) }
+    }
+
+    /**
+     * Version 4: `resume_points`, where each file was left, for Speed dial on Home ([SpeedDial]). One
+     * row per file, bounded to [SpeedDial.MAX_KEPT] by the writer. A row with `hidden` set is a card
+     * the user took off Speed dial at `at_ms`. It is the user's own data like the tables of
+     * [createUserData], so a later step carries it over. Safe to run twice.
+     */
+    private fun resumeV4(db: SQLiteConnection) {
+        inTransaction(db) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS resume_points(
+                    chat_id INTEGER NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    song_key TEXT NOT NULL,
+                    position_ms INTEGER NOT NULL,
+                    duration_ms INTEGER NOT NULL,
+                    at_ms INTEGER NOT NULL,
+                    hidden INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(chat_id, message_id)
+                ) WITHOUT ROWID
+                """,
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS resume_points_at ON resume_points(at_ms)")
+            setVersion(db, 4)
+        }
     }
 
     private fun hasColumn(db: SQLiteConnection, table: String, column: String): Boolean =

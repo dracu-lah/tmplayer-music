@@ -312,6 +312,7 @@ class LibraryIndex private constructor(
                 exec("DELETE FROM tracks WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
                 exec("DELETE FROM track_artists WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
                 exec("DELETE FROM lyrics_files WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
+                exec("DELETE FROM resume_points WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
                 touched.chats += id.chatId
             }
             rebuild(touched)
@@ -808,6 +809,121 @@ class LibraryIndex private constructor(
     /** Songs by the date their newest version was posted, newest first: the Recently added row. */
     suspend fun recentlyAdded(limit: Int): List<Song> = songs(SongSort.Added, null, limit)
 
+    // Resume points and Speed dial
+
+    /**
+     * Keeps where [id] was left, for Speed dial. A position not worth coming back to
+     * ([SpeedDial.worthKeeping]: the first seconds, or the last stretch) clears what was kept for the
+     * file instead. A file the index does not hold (its chat was left, its message deleted) is not
+     * kept. Only the newest [SpeedDial.MAX_KEPT] rows stay.
+     */
+    suspend fun saveResume(id: TrackId, songKey: String, positionMs: Long, durationMs: Long, atMs: Long) = io {
+        tx {
+            val known = query("SELECT 1 FROM tracks WHERE chat_id = ? AND message_id = ? LIMIT 1", id.chatId, id.messageId) { 1 }
+                .isNotEmpty()
+            if (!known) return@tx
+            if (!SpeedDial.worthKeeping(positionMs, durationMs)) {
+                exec("DELETE FROM resume_points WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
+                return@tx
+            }
+            exec(
+                "INSERT OR REPLACE INTO resume_points(chat_id, message_id, song_key, position_ms, duration_ms, at_ms, hidden) " +
+                    "VALUES(?, ?, ?, ?, ?, ?, 0)",
+                id.chatId, id.messageId, songKey, positionMs, durationMs.coerceAtLeast(0), atMs,
+            )
+            trimResumePoints()
+        }
+    }
+
+    /** Forgets where [id] was left: it ended, or its file is gone. A hidden card stays hidden. */
+    suspend fun clearResume(id: TrackId) = io {
+        exec("DELETE FROM resume_points WHERE chat_id = ? AND message_id = ? AND hidden = 0", id.chatId, id.messageId)
+    }
+
+    /** Forgets everything kept for [id], hidden or not: for a file that can no longer be played. */
+    suspend fun forgetResume(id: TrackId) = io {
+        exec("DELETE FROM resume_points WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
+    }
+
+    /**
+     * Takes [id]'s card off Speed dial at [atMs], position and all. Playing the song again after
+     * that brings it back, so no confirmation is needed.
+     */
+    suspend fun hideFromDial(id: TrackId, songKey: String, atMs: Long) = io {
+        tx {
+            exec(
+                "INSERT OR REPLACE INTO resume_points(chat_id, message_id, song_key, position_ms, duration_ms, at_ms, hidden) " +
+                    "VALUES(?, ?, ?, 0, 0, ?, 1)",
+                id.chatId, id.messageId, songKey, atMs,
+            )
+            trimResumePoints()
+        }
+    }
+
+    private fun trimResumePoints() {
+        exec(
+            "DELETE FROM resume_points WHERE at_ms <= " +
+                "(SELECT at_ms FROM resume_points ORDER BY at_ms DESC LIMIT 1 OFFSET ${SpeedDial.MAX_KEPT})",
+        )
+    }
+
+    /**
+     * The kept positions and the hidden cards whose files the index still holds, newest first, at
+     * most [limit] rows; each keyed by the song its file is in now ([DialItem.key]).
+     */
+    suspend fun resumePoints(limit: Int = SpeedDial.MAX_KEPT): Pair<List<DialItem>, List<DialHidden>> = io {
+        val items = ArrayList<DialItem>()
+        val hidden = ArrayList<DialHidden>()
+        query(
+            "SELECT r.chat_id, r.message_id, r.song_key, r.position_ms, r.duration_ms, r.at_ms, r.hidden, t.song_key, " +
+                "t.title, t.file_name, t.artist, t.cover_key, t.thumb_file_id, t.duration_ms FROM resume_points r " +
+                "JOIN tracks t ON t.chat_id = r.chat_id AND t.message_id = r.message_id ORDER BY r.at_ms DESC LIMIT ?",
+            limit.coerceIn(1, SpeedDial.MAX_KEPT),
+        ) { s ->
+            val id = TrackId(s.getLong(0), s.getLong(1))
+            val key = text(s, 7).ifEmpty { DialItem.fileKey(id) }
+            if (s.getLong(6) != 0L) {
+                hidden += DialHidden(key, s.getLong(5))
+            } else {
+                items += DialItem(
+                    key = key,
+                    track = id,
+                    songKey = text(s, 2),
+                    title = text(s, 8).ifBlank { text(s, 9) },
+                    artist = text(s, 10),
+                    coverKey = text(s, 11),
+                    thumbFileId = s.getLong(12).toInt(),
+                    positionMs = s.getLong(3).coerceAtLeast(0),
+                    durationMs = s.getLong(4).takeIf { it > 0 } ?: s.getLong(13).coerceAtLeast(0),
+                    atMs = s.getLong(5),
+                )
+            }
+        }
+        items to hidden
+    }
+
+    /** The latest play of each song, as Speed dial cards that start from the top, newest first. */
+    suspend fun recentPlays(limit: Int): List<DialItem> = io {
+        query(
+            "SELECT ${prefixed("s")}, MAX(p.at_sec) AS at, MAX(p.play_id) AS seq FROM plays p " +
+                "JOIN songs s ON s.song_key = ${resolved("p")} WHERE 1 = 1${visible("s.")} GROUP BY s.song_key ORDER BY at DESC, seq DESC LIMIT ?",
+            listSize(limit),
+        ) { s ->
+            val song = readSong(s)
+            DialItem(
+                key = song.groupKey,
+                track = song.defaultTrack,
+                songKey = song.groupKey,
+                title = song.title,
+                artist = song.artist,
+                coverKey = song.coverKey,
+                thumbFileId = song.thumbFileId,
+                durationMs = song.durationMs,
+                atMs = s.getLong(SONG_COLUMN_COUNT) * 1000,
+            )
+        }
+    }
+
     // Playlists
 
     /** Every playlist, the one changed last first, each with the songs it can still play counted. */
@@ -1225,6 +1341,7 @@ class LibraryIndex private constructor(
         // Listening history of a chat the user left goes with it; favourites and playlist entries
         // stay and fall back to another version, or hide until the chat is added again.
         exec("DELETE FROM plays WHERE chat_id = ?", chatId)
+        exec("DELETE FROM resume_points WHERE chat_id = ?", chatId)
         rebuild(touched)
         if (keepRow) {
             exec(
@@ -1407,6 +1524,7 @@ class LibraryIndex private constructor(
         private const val SONG_COLUMNS =
             "song_key, title, artist, album, duration_ms, default_chat_id, default_message_id, version_count, " +
                 "best_format, thumb_file_id, cover_key, variant, added_sec, album_key, artist_key"
+        private const val SONG_COLUMN_COUNT = 15
         private const val ALBUM_COLUMNS = "album_key, title, artist, year, song_count, thumb_file_id, cover_key"
         private const val ARTIST_COLUMNS = "artist_key, name, song_count, album_count"
         private const val CHAT_COLUMNS =
@@ -1461,7 +1579,7 @@ class LibraryIndex private constructor(
                 // not fails here, at open, instead of on the first screen.
                 for (table in listOf(
                         "chats", "tracks", "track_artists", "songs", "albums", "artists", "lyrics_files",
-                        "favourites", "plays", "playlists", "playlist_items", "recent_searches",
+                        "favourites", "plays", "playlists", "playlist_items", "recent_searches", "resume_points",
                     )) {
                     db.prepare("SELECT * FROM $table LIMIT 1").use { it.step() }
                 }

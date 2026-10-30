@@ -147,6 +147,7 @@ private fun LibrarySection(onManageChats: () -> Unit) {
     val showVoice by Library.choices.showVoice.collectAsStateWithLifecycle()
     val mobile by Library.choices.mobileAllowed.collectAsStateWithLifecycle()
     val tagBytes by Library.choices.tagBytes.collectAsStateWithLifecycle()
+    val showProgress by Library.choices.showProgress.collectAsStateWithLifecycle()
     var chats by remember { mutableStateOf<List<ChatRow>>(emptyList()) }
     var checking by remember { mutableStateOf(false) }
     var retrying by remember { mutableStateOf(false) }
@@ -240,7 +241,8 @@ private fun LibrarySection(onManageChats: () -> Unit) {
             }
         }
     }
-    SwitchLine(L.chatfirstSettingsShort, L.chatfirstSettingsShortDetail, showShort) { Library.setShowClips(showShort = it) }
+    SwitchLine(L.settingsShowProgress, L.settingsShowProgressDetail, showProgress) { Library.choices.setShowProgress(it) }
+    SwitchLine(L.chatfirstSettingsShort,L.chatfirstSettingsShortDetail, showShort) { Library.setShowClips(showShort = it) }
     SwitchLine(L.chatfirstSettingsVoice, L.chatfirstSettingsVoiceDetail, showVoice) { Library.setShowClips(showVoice = it) }
     SwitchLine(L.chatfirstSettingsMobile, L.chatfirstSettingsMobileDetail, mobile) { Library.setMobileAllowed(it) }
     Line(L.chatfirstSettingsDataUsed(Format.size(tagBytes).ifEmpty { L.settingsNothing }))
