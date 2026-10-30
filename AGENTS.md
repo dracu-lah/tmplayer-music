@@ -10,17 +10,17 @@ engine. Unofficial, not affiliated with Telegram.
 
 | Topic | File |
 | --- | --- |
-| What to build, in which order, and where it stopped | [plan/PLAN.md](plan/PLAN.md) (read its Progress section first) |
-| The demo cut: the bare minimum to show people | [plan/MVP.md](plan/MVP.md) |
-| The full research and every decision so far | [plan/RESEARCH.md](plan/RESEARCH.md) |
-| TV app, Connect (remote) and Cast | [plan/TV-CAST.md](plan/TV-CAST.md) |
-| Which TMPlayer files to read, and how they are reused | [plan/REFERENCE.md](plan/REFERENCE.md) |
+| What to build, in which order, and where it stopped | [private/PLAN.md](private/PLAN.md) (read its Progress section first) |
+| The demo cut: the bare minimum to show people | [private/MVP.md](private/MVP.md) |
+| The full research and every decision so far | [private/RESEARCH.md](private/RESEARCH.md) |
+| TV app, Connect (remote) and Cast | [private/TV-CAST.md](private/TV-CAST.md) |
+| Which TMPlayer files to read, and how they are reused | [private/REFERENCE.md](private/REFERENCE.md) |
 
 ## The two source repositories we learn from
 
 1. **TMPlayer** (`../TMPlayer`, same author, GPL-3.0). Its rules are ours, and its code is the base:
    TDLib wiring, `TdDataSource`, `DownloadWindow`, sign in, i18n, error handling, release machinery.
-   Read the code in `plan/REFERENCE.md` before writing the same thing again. Code taken from it keeps
+   Read the code in `private/REFERENCE.md` before writing the same thing again. Code taken from it keeps
    the GPL-3.0 header and the OpenSSL exception already in `LICENSE-OPENSSL-EXCEPTION.md`.
 2. **PixelPlayer** (github.com/PixelPlayerHQ/PixelPlayer). **Its licence is proprietary** (study and
    personal use only; no derivative work, no redistribution, no store publishing without the author's
@@ -29,7 +29,7 @@ engine. Unofficial, not affiliated with Telegram.
      **behaviour spec in plain words**, with no code in it.
    - We implement from the spec on our own stack. **Never copy, paste, translate or closely follow its
      code**, never copy its assets, icons, strings or layouts. The look is our own take on the same
-     ideas (see `plan/RESEARCH.md` section 3.3).
+     ideas (see `private/RESEARCH.md` section 3.3).
    - Never vendor its source into this repo (`/reference-src/` is ignored for a reason). Whoever reads
      the source does not also write the implementation of the same feature in the same session.
 
@@ -63,7 +63,7 @@ alone. The kinds of cases that keep coming up:
 - **Versions.** The same song in several files is one row with a Versions sheet (as TMPlayer folds copies);
   live, remix and other recordings are separate rows. Never fold different artists; the group key is made
   at index time.
-- **Music specifics** (from a mature player's real bug reports, `plan/RESEARCH.md` section 15): a
+- **Music specifics** (from a mature player's real bug reports, `private/RESEARCH.md` section 15): a
   missing duration is unknown, never hidden; tags are decoded by detecting the encoding; albums group
   by album artist plus album plus year; leaving a chat or logging out purges its rows and stats; hi-res
   and huge files stream, never load whole; the queue is saved and restored whole; gain lives on the
@@ -116,13 +116,13 @@ Commits: do **not** add a `Co-Authored-By: Claude` (or any Claude or Anthropic) 
 - A store build has no updater and no `REQUEST_INSTALL_PACKAGES`; only the GitHub APK updates itself.
   The local HTTP server and the Cast SDK belong in the regular APK only.
 - Music in chats is often pirated, so: nothing is scanned until the user picks the chat, no public
-  channel search, no catalogue, no recommendations of what to listen to (`plan/RESEARCH.md` section 11).
+  channel search, no catalogue, no recommendations of what to listen to (`private/RESEARCH.md` section 11).
 - Lyrics lookups are opt in and go through our own gateway, sending only title, artist, album and
   duration, never chat names.
 
 ## Process
 
-- **Token-efficient multi-phase work.** Keep the Progress / handoff section of `plan/PLAN.md` current: after
+- **Token-efficient multi-phase work.** Keep the Progress / handoff section of `private/PLAN.md` current: after
   each phase say what is done (files, commit), what is next, and decisions or gotchas. A fresh session
   must be able to resume from that file alone. After a phase, tell the user it is a clean point to
   `/clear`, with what is next, the model and effort to use, and the exact prompt to paste.

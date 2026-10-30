@@ -19,3 +19,6 @@ keystore.properties
 
 # Agent worktrees
 /.claude/worktrees/
+
+# Working notes kept off GitHub (plan, research, handoff)
+private/
