@@ -32,11 +32,28 @@ until you pick the chat.
 
 ## Screenshots
 
-<!-- TODO: add phone screenshots (WebP, quality 88) under docs/screenshots/ once the UI settles:
-     Home, a chat as a playlist, Songs, Now Playing and Lyrics, in light and dark. Use test files
-     with made up titles only, never real artist, album or song names. -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/readme-home-dark.webp" />
+    <img src="docs/screenshots/readme-home-light.webp" width="200" alt="Home" />
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/readme-albums-dark.webp" />
+    <img src="docs/screenshots/readme-albums-light.webp" width="200" alt="Albums" />
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/readme-nowplaying-dark.webp" />
+    <img src="docs/screenshots/readme-nowplaying-light.webp" width="200" alt="Now Playing" />
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/readme-queue-dark.webp" />
+    <img src="docs/screenshots/readme-queue-light.webp" width="200" alt="Queue" />
+  </picture>
+</p>
 
-Screenshots come with the first test version.
+<p align="center"><sub>Home, Albums, Now Playing and the Queue, in your system's light or dark theme. The screenshots use demo data: every track, album and artist name in them is invented.</sub></p>
+
+<!-- Made by scripts/prepare-screenshots.py from the captures of scripts/screenshots.sh. -->
 
 ## What it reads, and what it does not
 
@@ -128,6 +145,7 @@ A release build (`./gradlew :app:assembleRelease`) is signed only when a `keysto
 
 ## Read more
 
+- [Screenshots](#screenshots): Home, Albums, Now Playing and the Queue, light and dark.
 - [Install guide](INSTALL.md): installing the APK, updating, troubleshooting.
 - [Contributing](CONTRIBUTING.md): setup, ground rules, style, how to report an issue.
 - [Security policy](SECURITY.md): how to report a security problem privately.

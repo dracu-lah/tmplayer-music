@@ -1,0 +1,107 @@
+---
+// A phone drawn in CSS around a screenshot: a thin graphite body, rounded corners, a punch hole
+// camera, two side buttons and a soft shadow. No brand marks. Sizes are in em with 1em = 1% of the
+// phone's width, so the whole phone scales from one custom property, --pf-w (set it on the element
+// or a parent; 280px when unset).
+//
+// The images are the ones scripts/prepare-screenshots.py writes to public/screenshots/: each screen
+// at 1080 x 2400 and 540 x 1200, in light and dark. theme="auto" follows prefers-color-scheme with a
+// <source>; the gallery's toggle flips that source's media (see index.astro), nothing else.
+//
+// scripts/prepare-screenshots.py reads this <style> block to draw the README's framed phones, so
+// keep the class names (.pf, .pf-body, .pf-screen, .pf-cam, .pf-btn) and plain selectors.
+interface Props {
+  /** the screen's file name in public/screenshots/, such as "home" */
+  screen: string;
+  /** what the screenshot shows, for screen readers */
+  alt: string;
+  theme?: 'auto' | 'light' | 'dark';
+  /** the hero's phones: loaded at once instead of lazily */
+  eager?: boolean;
+  /** the hero's front phone: fetched first */
+  priority?: boolean;
+  /** the img sizes attribute: the phone's rendered width */
+  sizes?: string;
+  class?: string;
+  style?: string;
+}
+const { screen, alt, theme = 'auto', eager = false, priority = false, sizes = '280px', class: className, style } = Astro.props;
+const set = (t: string) => `/screenshots/${screen}-${t}-540.webp 540w, /screenshots/${screen}-${t}.webp 1080w`;
+const base = theme === 'dark' ? 'dark' : 'light';
+---
+<div class:list={['pf', className]} style={style}>
+  <div class="pf-body">
+    <span class="pf-btn pf-btn-power" aria-hidden="true"></span>
+    <span class="pf-btn pf-btn-vol" aria-hidden="true"></span>
+    <div class="pf-screen">
+      <picture>
+        {theme === 'auto' && <source media="(prefers-color-scheme: dark)" srcset={set('dark')} sizes={sizes} data-pf-dark />}
+        <img
+          src={`/screenshots/${screen}-${base}-540.webp`}
+          srcset={set(base)}
+          sizes={sizes}
+          width="1080"
+          height="2400"
+          alt={alt}
+          loading={eager ? 'eager' : 'lazy'}
+          fetchpriority={priority ? 'high' : 'auto'}
+          decoding="async"
+        />
+      </picture>
+      <span class="pf-cam" aria-hidden="true"></span>
+    </div>
+  </div>
+</div>
+
+<style>
+.pf {
+  position: relative;
+  flex: none;
+  width: var(--pf-w, 280px);
+  font-size: calc(var(--pf-w, 280px) / 100);
+}
+.pf-body {
+  position: relative;
+  padding: 2.3em;
+  border-radius: 13em;
+  background: linear-gradient(150deg, #55555e 0%, #2b2b31 22%, #1c1c21 60%, #34343b 100%);
+  box-shadow:
+    inset 0 0 0 .3em #6b6b74,
+    inset 0 0 0 .75em #141418,
+    0 .4em 1em rgba(8, 8, 16, .22),
+    0 4em 7em -2em rgba(8, 8, 16, .42);
+}
+.pf-screen {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10.8em;
+  background: #000;
+  /* WebKit clips the rounded corners of a child with a transform only with this. */
+  isolation: isolate;
+}
+.pf-screen img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.pf-cam {
+  position: absolute;
+  top: 2.9em;
+  left: 50%;
+  width: 3em;
+  height: 3em;
+  margin-left: -1.5em;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #3a3d4a 0 12%, #0b0b0e 30% 100%);
+  box-shadow: 0 0 0 .25em rgba(0, 0, 0, .55);
+}
+.pf-btn {
+  position: absolute;
+  right: -.55em;
+  width: .7em;
+  border-radius: 0 .5em .5em 0;
+  background: linear-gradient(90deg, #1c1c21, #4a4a52);
+}
+.pf-btn-power { top: 30em; height: 11em; }
+.pf-btn-vol { top: 46em; height: 20em; }
+</style>

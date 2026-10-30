@@ -1,15 +1,34 @@
 ---
-// The placeholder home page: what the app is in one line, the unofficial notice, the links, a
-// small "Chip in" block (Buy Me a Coffee first, as tmplayer.org has it) and the footer.
-// No download button, no screenshots and nothing about features until there is a release to
-// point at. It is noindex while INDEXABLE in site.config.mjs is false.
+// The placeholder home page: what the app is in one line, the unofficial notice, the links, three
+// framed phones in the hero, a sideways gallery of screenshots, a small "Chip in" block (Buy Me a
+// Coffee first, as tmplayer.org has it) and the footer. No download button and no feature list
+// until there is a release to point at. It is noindex while INDEXABLE in site.config.mjs is false.
+//
+// The screenshots come from scripts/prepare-screenshots.py (demo data, invented names). The hero's
+// phones follow prefers-color-scheme; the gallery has a Light and Dark toggle that only flips the
+// <source> media of its own pictures and remembers nothing.
 import Base from '../layouts/Base.astro';
 import JsonLd from '../components/JsonLd.astro';
 import { INDEXABLE } from '../../site.config.mjs';
 import { SOFTWARE_APP, WEBSITE } from '../lib/app-ld';
 import CoffeeButton from '../components/CoffeeButton.astro';
 import Footer from '../components/Footer.astro';
+import PhoneFrame from '../components/PhoneFrame.astro';
 import { REPO_URL as REPO, SPONSORS_URL } from '../lib/support';
+
+const SHOTS = [
+  { screen: 'home', title: 'Home', text: 'Speed dial keeps the tracks you come back to one tap away, with what you played recently below.', alt: 'The Home screen: a Speed dial grid of track covers, a Shuffle all button and Recently played.' },
+  { screen: 'chats', title: 'Chats', text: 'Each chat you picked opens as a playlist of its tracks.', alt: 'The Chats screen: five chats with their track counts and a play button each.' },
+  { screen: 'songs', title: 'Library', text: 'Every track from your chats in one list, with an A to Z index.', alt: 'The Library on its Songs tab: tracks with covers, artists and lengths, and an A to Z index on the side.' },
+  { screen: 'albums', title: 'Albums', text: 'Tracks grouped by album artist, album and year, read from the tags in the files.', alt: 'The Albums tab: a grid of album covers with their artists.' },
+  { screen: 'artists', title: 'Artists', text: 'Every artist with their track and album counts.', alt: 'The Artists tab: artists with initials, track counts and album counts.' },
+  { screen: 'playlists', title: 'Playlists', text: 'Your own playlists, kept on the device.', alt: 'The Playlists tab: a New playlist button and three playlists.' },
+  { screen: 'nowplaying', title: 'Now Playing', text: 'The cover, a seek bar, shuffle and repeat.', alt: 'Now Playing: a large cover, the track title and artist, a seek bar and the playback buttons.' },
+  { screen: 'queue', title: 'Queue', text: 'See what plays next, reorder it or take tracks out.', alt: 'The queue sheet over Now Playing: seven tracks with drag handles and remove buttons.' },
+  { screen: 'settings', title: 'Settings', text: 'Which chats are read, and how far the scan has got.', alt: 'Settings: the library status and the list of chats being read.' },
+];
+const GALLERY_SIZES = '(max-width: 480px) 62vw, 250px';
+const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
 ---
 <Base
   path="/"
@@ -21,17 +40,54 @@ import { REPO_URL as REPO, SPONSORS_URL } from '../lib/support';
     {INDEXABLE && <JsonLd data={SOFTWARE_APP} />}
   </Fragment>
 
-  <main id="main" class="soon">
-    <img class="mark" src="/favicon.svg" width="96" height="96" alt="">
-    <p class="eyebrow">Coming soon</p>
-    <h1>TMPlayer Music</h1>
-    <p class="lede">A player for the audio files already in your own Telegram chats. It is still being built, and this page will say more once there is something to try.</p>
-    <p class="notice">Unofficial, not affiliated with Telegram.</p>
-    <nav class="links" aria-label="Links">
-      <a href={REPO}>Source on GitHub</a>
-      <a href="https://tmplayer.org/legal/">Legal</a>
-      <a href="https://tmplayer.org/">TMPlayer, for the videos in your chats</a>
-    </nav>
+  <main id="main" class="home">
+    <section class="hero" aria-labelledby="title">
+      <div class="hero-text">
+        <img class="mark" src="/favicon.svg" width="96" height="96" alt="">
+        <p class="eyebrow">Coming soon</p>
+        <h1 id="title">TMPlayer Music</h1>
+        <p class="lede">A player for the audio files already in your own Telegram chats. It is still being built; below is how it looks so far.</p>
+        <p class="notice">Unofficial, not affiliated with Telegram.</p>
+        <nav class="links" aria-label="Links">
+          <a href={REPO}>Source on GitHub</a>
+          <a href="https://tmplayer.org/legal/">Legal</a>
+          <a href="https://tmplayer.org/">TMPlayer, for the videos in your chats</a>
+        </nav>
+      </div>
+      <div class="hero-phones">
+        <PhoneFrame class="hp hp-side hp-left" screen="albums" alt="The Albums tab: a grid of album covers." sizes={HERO_SIZES} eager />
+        <PhoneFrame class="hp hp-front" screen="home" alt="The Home screen with its Speed dial of track covers." sizes={HERO_SIZES} eager priority />
+        <PhoneFrame class="hp hp-side hp-right" screen="nowplaying" alt="Now Playing: a large cover, a seek bar and the playback buttons." sizes={HERO_SIZES} eager />
+      </div>
+    </section>
+
+    <section class="gallery" aria-labelledby="shots">
+      <div class="gallery-head">
+        <h2 id="shots">Screenshots</h2>
+        <div class="gallery-tools">
+          <div class="seg" role="group" aria-label="Screenshot theme" data-theme-toggle hidden>
+            <button type="button" data-theme="light" aria-pressed="false">Light</button>
+            <button type="button" data-theme="dark" aria-pressed="false">Dark</button>
+          </div>
+          <div class="gallery-nav" data-gallery-nav hidden>
+            <button type="button" data-step="-1" aria-label="Previous screenshots"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button type="button" data-step="1" aria-label="Next screenshots"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <p class="gallery-note">The screenshots use demo data: every track, album, artist and chat name in them is invented.</p>
+      <ul class="shots" tabindex="0" aria-label="Screenshots, scroll sideways" data-gallery>
+        {SHOTS.map((s) => (
+          <li>
+            <figure>
+              <PhoneFrame screen={s.screen} alt={s.alt} sizes={GALLERY_SIZES} />
+              <figcaption><strong>{s.title}</strong> {s.text}</figcaption>
+            </figure>
+          </li>
+        ))}
+      </ul>
+    </section>
+
     <section class="chip-in" aria-labelledby="chip-in">
       <h2 id="chip-in">Chip in, if you like</h2>
       <p>TMPlayer Music is free and open source, with no ads of its own and no paid tier. A coffee or a sponsorship pays for the time that goes into it. It is voluntary and unlocks nothing.</p>
@@ -42,5 +98,41 @@ import { REPO_URL as REPO, SPONSORS_URL } from '../lib/support';
       </div>
     </section>
   </main>
-  <Footer />
+  <Footer wide />
 </Base>
+
+<script>
+  // The gallery's Light and Dark toggle and its arrow buttons. Shown only when this runs; no timers,
+  // nothing stored. The toggle starts on the system scheme and only rewrites the media of the
+  // gallery's own <source> elements: "all" shows the dark image, "not all" the light one.
+  const DARK = '(prefers-color-scheme: dark)';
+  const gallery = document.querySelector<HTMLElement>('[data-gallery]');
+  const toggle = document.querySelector<HTMLElement>('[data-theme-toggle]');
+  const nav = document.querySelector<HTMLElement>('[data-gallery-nav]');
+  if (gallery && toggle) {
+    const buttons = Array.from(toggle.querySelectorAll<HTMLButtonElement>('button[data-theme]'));
+    const show = (theme: string) => {
+      gallery.querySelectorAll<HTMLSourceElement>('source[data-pf-dark]').forEach((s) => {
+        s.media = theme === 'dark' ? 'all' : 'not all';
+      });
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.theme === theme)));
+    };
+    const system = window.matchMedia(DARK).matches ? 'dark' : 'light';
+    buttons.forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.theme === system));
+      b.addEventListener('click', () => show(b.dataset.theme ?? 'light'));
+    });
+    toggle.hidden = false;
+  }
+  if (gallery && nav) {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    nav.querySelectorAll<HTMLButtonElement>('button[data-step]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const item = gallery.querySelector('li');
+        const step = item ? item.getBoundingClientRect().width : gallery.clientWidth / 2;
+        gallery.scrollBy({ left: Number(b.dataset.step) * step, behavior: reduce.matches ? 'auto' : 'smooth' });
+      });
+    });
+    nav.hidden = false;
+  }
+</script>

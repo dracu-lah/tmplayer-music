@@ -2,8 +2,14 @@
 // The footer, on every page but the 404: the unofficial notice and the few links, with Buy Me a
 // Coffee (its cup beside it) and GitHub Sponsors among them, as tmplayer.org's footer has them.
 import { BMC_URL, REPO_URL, SPONSORS_URL } from '../lib/support';
+
+interface Props {
+  /** the home page's wider column */
+  wide?: boolean;
+}
+const { wide = false } = Astro.props;
 ---
-<footer class="footer">
+<footer class:list={['footer', { 'footer-wide': wide }]}>
   <nav class="footer-links" aria-label="Footer">
     <a href="/support/">Support</a>
     <a class="footer-bmc" href={BMC_URL} rel="noopener"><img src="/brand/bmc-cup-on-yellow.svg" alt="" width="10" height="14" loading="lazy" decoding="async"> Buy me a coffee</a>

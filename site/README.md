@@ -1,7 +1,8 @@
 # music.tmplayer.org
 
 The product page of TMPlayer Music. For now it is a **placeholder**: one line about what the app is,
-the unofficial notice and three links, kept out of search engines until launch.
+the unofficial notice, three links, framed screenshots (demo data) and a gallery, kept out of search
+engines until launch.
 
 It is an [Astro](https://astro.build) project built the same way as tmplayer.org's site
 (`../TMPlayer/site/`): pnpm, the same Astro version, `dist/` as output, directories with a trailing
@@ -38,6 +39,8 @@ Cloudflare account wrangler is logged in to (`npx wrangler whoami`; `npx wrangle
 | `astro.config.mjs` | the build, and `tmHeaders`, which writes `dist/_headers` (security headers, caching, X-Robots-Tag) |
 | `src/layouts/Base.astro` | `<html>` and the whole `<head>`: canonical, robots, Open Graph, Twitter, icons, manifest |
 | `src/pages/index.astro`, `src/pages/support/index.astro`, `src/pages/404.astro` | the pages: home (with a small Chip in block), Support (English only, as tmplayer.org's) and 404 |
+| `src/components/PhoneFrame.astro` | a phone drawn in CSS (graphite body, punch hole, side buttons, shadow) around a screenshot, light and dark by `prefers-color-scheme`; `--pf-w` sets its width |
+| `public/screenshots/` | `<screen>-<light\|dark>.webp` (1080 x 2400) and `-540.webp`, written by `../scripts/prepare-screenshots.py` (below) |
 | `src/components/Footer.astro`, `src/components/CoffeeButton.astro`, `src/lib/support.ts` | the footer and the support links: Buy Me a Coffee first in its own yellow (`public/brand/`, their official cup), GitHub Sponsors beside it |
 | `src/pages/sitemap.xml.ts`, `src/pages/robots.txt.ts` | the sitemap and robots.txt, both following `INDEXABLE` |
 | `src/lib/app-ld.ts` | the JSON-LD: `WebSite` always, `SoftwareApplication` only when indexable |
@@ -50,6 +53,22 @@ Cloudflare account wrangler is logged in to (`npx wrangler whoami`; `npx wrangle
 `public/favicon.svg` is the launcher icon (`app/src/main/res/drawable/ic_launcher_foreground.xml`) on
 its tile; `icon-512.png`, `favicon.ico` and `og.png` were rendered from it with headless Chromium.
 Change `og.png` and bump `?v=` in `Base.astro`.
+
+## Screenshots
+
+The hero's three phones and the gallery come from the debug build's demo library (invented names
+only). To redo them:
+
+```sh
+scripts/screenshots.sh /tmp/shots                     # the raw PNGs from a device, light and dark
+python3 scripts/prepare-screenshots.py /tmp/shots     # clean status bar, WebP q88, README frames
+```
+
+`prepare-screenshots.py` replaces the top 120 px of each capture with a clean status bar (12:00,
+Wi-Fi, signal, full battery, in the theme's ink), writes `public/screenshots/` at two sizes, and
+renders `docs/screenshots/readme-*.webp` (the framed phones in the repository's README) with
+headless Chromium from the `<style>` of `PhoneFrame.astro`. WebP quality 88 is the only lossy
+step. Only the hero's phones load eagerly; the gallery's are lazy.
 
 ## Attaching music.tmplayer.org (once, in the dashboard)
 
