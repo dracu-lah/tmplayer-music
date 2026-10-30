@@ -16,3 +16,6 @@ keystore.properties
 
 # Never commit another project's source
 /reference-src/
+
+# Agent worktrees
+/.claude/worktrees/
