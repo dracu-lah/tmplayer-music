@@ -1,7 +1,7 @@
 ---
 // The placeholder home page: what the app is in one line, the unofficial notice, the links, three
 // framed phones in the hero, a sideways gallery of screenshots, a small "Chip in" block (Buy Me a
-// Coffee first, as tmplayer.org has it) and the footer. No download button and no feature list
+// Coffee first, as tmplayer.org has it), a card for the sibling app TMPlayer and the footer. No download button and no feature list
 // until there is a release to point at. It is noindex while INDEXABLE in site.config.mjs is false.
 //
 // The screenshots come from scripts/prepare-screenshots.py (demo data, invented names), in the app's
@@ -14,6 +14,8 @@ import { SOFTWARE_APP, WEBSITE } from '../lib/app-ld';
 import CoffeeButton from '../components/CoffeeButton.astro';
 import Footer from '../components/Footer.astro';
 import PhoneFrame from '../components/PhoneFrame.astro';
+import Icon from '../components/Icon.astro';
+import Sibling from '../components/Sibling.astro';
 import { REPO_URL as REPO, SPONSORS_URL } from '../lib/support';
 
 const SHOTS = [
@@ -48,9 +50,9 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
         <p class="lede">A player for the audio files already in your own Telegram chats. It is still being built; below is how it looks so far.</p>
         <p class="notice">Unofficial, not affiliated with Telegram.</p>
         <nav class="links" aria-label="Links">
-          <a href={REPO}>Source on GitHub</a>
-          <a href="https://tmplayer.org/legal/">Legal</a>
-          <a href="https://tmplayer.org/">TMPlayer, for the videos in your chats</a>
+          <a class="link-primary" href={REPO}><Icon name="github" />Source on GitHub</a>
+          <a href="https://tmplayer.org/legal/"><Icon name="legal" />Legal</a>
+          <a href="https://tmplayer.org/"><Icon name="play" />TMPlayer, for the videos in your chats</a>
         </nav>
       </div>
       <div class="hero-phones">
@@ -88,10 +90,12 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
       <p>TMPlayer Music is free and open source, with no ads of its own and no paid tier. A coffee or a sponsorship pays for the time that goes into it. It is voluntary and unlocks nothing.</p>
       <div class="support-coffee">
         <CoffeeButton />
-        <a class="support-alt" href={SPONSORS_URL} rel="noopener">Sponsor on GitHub</a>
-        <a class="support-alt" href="/support/">Other ways to help</a>
+        <a class="support-alt" href={SPONSORS_URL} rel="noopener"><Icon name="heart" size={16} />Sponsor on GitHub</a>
+        <a class="support-alt" href="/support/"><Icon name="help" size={16} />Other ways to help</a>
       </div>
     </section>
+
+    <Sibling />
   </main>
   <Footer wide />
 </Base>

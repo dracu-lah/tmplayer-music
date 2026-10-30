@@ -1,0 +1,22 @@
+---
+// The card for the sibling app, TMPlayer (video), by the same author. Its logo is tmplayer.org's own
+// public/logo.svg, copied as it is to public/brand/tmplayer.svg. The whole card is one plain link
+// (followed, no nofollow) whose words say where it goes.
+import Icon from './Icon.astro';
+
+const TMPLAYER_URL = 'https://tmplayer.org/';
+const TMPLAYER_REPO = 'https://github.com/dracu-lah/TMPlayer';
+---
+<section class="sibling" aria-labelledby="sibling">
+  <h2 id="sibling">Also by the same author</h2>
+  <div class="sibling-card">
+    <a class="sibling-main" href={TMPLAYER_URL}>
+      <img src="/brand/tmplayer.svg" width="72" height="72" alt="" loading="lazy" decoding="async">
+      <span class="sibling-text">
+        <strong>TMPlayer <Icon name="arrow" size={16} /></strong>
+        <span>A player for the videos already in your own Telegram chats, on Android phones, TV and the desktop. Free and open source.</span>
+      </span>
+    </a>
+    <a class="sibling-repo" href={TMPLAYER_REPO} rel="noopener"><Icon name="github" size={16} />TMPlayer on GitHub</a>
+  </div>
+</section>

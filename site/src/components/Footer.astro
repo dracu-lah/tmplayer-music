@@ -1,7 +1,9 @@
 ---
 // The footer, on every page but the 404: the unofficial notice and the few links, with Buy Me a
-// Coffee (its cup beside it) and GitHub Sponsors among them, as tmplayer.org's footer has them.
+// Coffee (its cup beside it) and GitHub Sponsors among them, as tmplayer.org's footer has them, the
+// app's mark (art/logo.svg) beside its name, and a link to the sibling app TMPlayer.
 import { BMC_URL, REPO_URL, SPONSORS_URL } from '../lib/support';
+import Icon from './Icon.astro';
 
 interface Props {
   /** the home page's wider column */
@@ -14,8 +16,9 @@ const { wide = false } = Astro.props;
     <a href="/support/">Support</a>
     <a class="footer-bmc" href={BMC_URL} rel="noopener"><img src="/brand/bmc-cup-on-yellow.svg" alt="" width="10" height="14" loading="lazy" decoding="async"> Buy me a coffee</a>
     <a href={SPONSORS_URL} rel="noopener">Sponsor on GitHub</a>
-    <a href={REPO_URL} rel="noopener">Source on GitHub</a>
+    <a class="footer-icon" href={REPO_URL} rel="noopener"><Icon name="github" size={14} />Source on GitHub</a>
     <a href="https://tmplayer.org/legal/">Legal</a>
+    <a class="footer-icon" href="https://tmplayer.org/"><img src="/brand/tmplayer.svg" alt="" width="14" height="14" loading="lazy" decoding="async">TMPlayer, the video player</a>
   </nav>
-  <p class="footer-note">TMPlayer Music. Unofficial, not affiliated with Telegram.</p>
+  <p class="footer-note"><Icon name="brand" size={16} class="footer-mark" /><span>TMPlayer Music. Unofficial, not affiliated with Telegram.</span></p>
 </footer>
