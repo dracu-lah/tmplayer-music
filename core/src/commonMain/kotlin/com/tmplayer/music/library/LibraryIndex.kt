@@ -435,6 +435,301 @@ class LibraryIndex private constructor(
         out
     }
 
+    // Going from a song to its album and artist
+
+    /** One album by its key, for "Go to album"; null when the key is blank or the album has no songs left. */
+    suspend fun album(key: String): Album? = io {
+        if (key.isEmpty()) return@io null
+        query("SELECT $ALBUM_COLUMNS FROM albums WHERE album_key = ? LIMIT 1", key, map = ::readAlbum).firstOrNull()
+    }
+
+    /** One artist by key, for "Go to artist"; null when the key is blank or the artist has no songs left. */
+    suspend fun artist(key: String): Artist? = io {
+        if (key.isEmpty()) return@io null
+        query("SELECT $ARTIST_COLUMNS FROM artists WHERE artist_key = ? LIMIT 1", key, map = ::readArtist).firstOrNull()
+    }
+
+    // Favourites
+
+    /**
+     * Marks [song] as a favourite or not. Turning it on stores the song's current default file, so
+     * the heart stays on whichever versions come and go; turning it off removes every favourite
+     * that now resolves to this song, including one made before two songs became one. Returns
+     * false only when the song cannot be stored (a blank key, or [MAX_FAVOURITES] reached).
+     */
+    suspend fun setFavourite(song: Song, on: Boolean): Boolean = io {
+        if (song.groupKey.isEmpty()) return@io false
+        tx {
+            val rows = refsOf("favourites", "r.rowid", song.groupKey) { it.getLong(0) }
+            if (!on) {
+                for (row in rows) exec("DELETE FROM favourites WHERE rowid = ?", row)
+                return@tx true
+            }
+            if (rows.isNotEmpty()) return@tx true
+            if (count("SELECT COUNT(*) FROM favourites") >= MAX_FAVOURITES) return@tx false
+            val target = currentDefault(song)
+            exec(
+                "INSERT OR REPLACE INTO favourites(chat_id, message_id, song_key, base_key, added_sec) VALUES(?, ?, ?, ?, ?)",
+                target.chatId, target.messageId, song.groupKey, baseOfSongKey(song.groupKey), nowSec(),
+            )
+            true
+        }
+    }
+
+    /** The current keys of every favourite song that can still be played, for the heart on each row. */
+    suspend fun favouriteKeys(): Set<String> = io {
+        query(
+            "SELECT DISTINCT s.song_key FROM favourites f JOIN songs s ON s.song_key = ${resolved("f")} LIMIT $MAX_FAVOURITES",
+        ) { text(it, 0) }.toHashSet()
+    }
+
+    /** Favourite songs, the one made a favourite last first; songs whose files are all gone are left out. */
+    suspend fun favourites(limit: Int): List<Song> = io {
+        query(
+            "SELECT ${prefixed("s")}, MAX(f.added_sec) AS at, MAX(f.rowid) AS seq FROM favourites f " +
+                "JOIN songs s ON s.song_key = ${resolved("f")} GROUP BY s.song_key ORDER BY at DESC, seq DESC LIMIT ?",
+            listSize(limit), map = ::readSong,
+        )
+    }
+
+    // Plays
+
+    /**
+     * Records that [id] was played at [atSec], for Recently played. The file's current song key is
+     * stored when the index knows the file, [songKey] otherwise; a file of a chat that is not chosen
+     * is not recorded, since leaving a chat clears its history. Only the newest [MAX_PLAYS] plays
+     * are kept.
+     */
+    suspend fun recordPlay(id: TrackId, songKey: String, atSec: Long) = io {
+        tx {
+            val current = query(
+                "SELECT song_key FROM tracks WHERE chat_id = ? AND message_id = ? LIMIT 1",
+                id.chatId, id.messageId,
+            ) { text(it, 0) }.firstOrNull()?.takeIf { it.isNotEmpty() }
+            if (current == null) {
+                val picked = query("SELECT picked FROM chats WHERE chat_id = ? LIMIT 1", id.chatId) { it.getLong(0) == 1L }
+                    .firstOrNull() == true
+                if (!picked || songKey.isEmpty()) return@tx
+            }
+            val key = current ?: songKey
+            exec(
+                "INSERT INTO plays(chat_id, message_id, song_key, base_key, at_sec) VALUES(?, ?, ?, ?, ?)",
+                id.chatId, id.messageId, key, baseOfSongKey(key), atSec,
+            )
+            exec(
+                "DELETE FROM plays WHERE play_id <= (SELECT play_id FROM plays ORDER BY play_id DESC LIMIT 1 OFFSET $MAX_PLAYS)",
+            )
+        }
+    }
+
+    /** Songs played lately, each once, the most recently played first. */
+    suspend fun recentlyPlayed(limit: Int): List<Song> = io {
+        query(
+            "SELECT ${prefixed("s")}, MAX(p.at_sec) AS at, MAX(p.play_id) AS seq FROM plays p " +
+                "JOIN songs s ON s.song_key = ${resolved("p")} GROUP BY s.song_key ORDER BY at DESC, seq DESC LIMIT ?",
+            listSize(limit), map = ::readSong,
+        )
+    }
+
+    /** Songs by the date their newest version was posted, newest first: the Recently added row. */
+    suspend fun recentlyAdded(limit: Int): List<Song> = songs(SongSort.Added, null, limit)
+
+    // Playlists
+
+    /** Every playlist, the one changed last first, each with the songs it can still play counted. */
+    suspend fun playlists(): List<Playlist> = io {
+        val rows = query(
+            "SELECT playlist_id, name, updated_sec FROM playlists ORDER BY updated_sec DESC, playlist_id DESC LIMIT $MAX_PLAYLISTS",
+        ) { Triple(it.getLong(0), text(it, 1), it.getLong(2)) }
+        rows.map { (id, name, updated) ->
+            val songs = count(
+                "SELECT COUNT(DISTINCT s.song_key) FROM playlist_items i JOIN songs s ON s.song_key = ${resolved("i")} " +
+                    "WHERE i.playlist_id = ?",
+                id,
+            )
+            val cover = query(
+                "SELECT s.thumb_file_id, s.cover_key FROM playlist_items i JOIN songs s ON s.song_key = ${resolved("i")} " +
+                    "WHERE i.playlist_id = ? ORDER BY i.position, i.item_id LIMIT 1",
+                id,
+            ) { it.getLong(0).toInt() to text(it, 1) }.firstOrNull()
+            Playlist(id, name, songs, cover?.first ?: 0, cover?.second.orEmpty(), updated)
+        }
+    }
+
+    /**
+     * Creates an empty playlist and returns its id. The name is trimmed, a blank one becomes
+     * "Playlist" and a long one is cut to 200 characters. Returns -1 when [MAX_PLAYLISTS] exist.
+     */
+    suspend fun createPlaylist(name: String): Long = io {
+        tx {
+            if (count("SELECT COUNT(*) FROM playlists") >= MAX_PLAYLISTS) return@tx -1L
+            val now = nowSec()
+            exec("INSERT INTO playlists(name, created_sec, updated_sec) VALUES(?, ?, ?)", playlistName(name), now, now)
+            query("SELECT last_insert_rowid()") { it.getLong(0) }.firstOrNull() ?: -1L
+        }
+    }
+
+    /** Renames a playlist, with the same rules as [createPlaylist]; an unknown id is ignored. */
+    suspend fun renamePlaylist(id: Long, name: String) = io {
+        exec("UPDATE playlists SET name = ?, updated_sec = ? WHERE playlist_id = ?", playlistName(name), nowSec(), id)
+    }
+
+    /** Deletes a playlist and its entries; the songs themselves stay in the library. */
+    suspend fun deletePlaylist(id: Long) = io {
+        tx {
+            exec("DELETE FROM playlist_items WHERE playlist_id = ?", id)
+            exec("DELETE FROM playlists WHERE playlist_id = ?", id)
+        }
+    }
+
+    /**
+     * Appends [songs] to a playlist in order, skipping any it already holds (by the song it now
+     * resolves to) and repeats within [songs]. Each entry stores the song's current default file.
+     * Stops at [MAX_PLAYLIST_ITEMS] entries. Returns how many were added; 0 for an unknown id.
+     */
+    suspend fun addToPlaylist(id: Long, songs: List<Song>): Int = io {
+        tx {
+            if (count("SELECT COUNT(*) FROM playlists WHERE playlist_id = ?", id) == 0) return@tx 0
+            val entries = playlistEntries(id)
+            val have = entries.mapNotNullTo(HashSet()) { it.songKey }
+            var total = entries.size
+            var added = 0
+            for (song in songs) {
+                if (total >= MAX_PLAYLIST_ITEMS) break
+                val key = song.groupKey
+                if (key.isEmpty() || !have.add(key)) continue
+                val target = currentDefault(song)
+                exec(
+                    "INSERT INTO playlist_items(playlist_id, position, chat_id, message_id, song_key, base_key) VALUES(?, ?, ?, ?, ?, ?)",
+                    id, total, target.chatId, target.messageId, key, baseOfSongKey(key),
+                )
+                total++
+                added++
+            }
+            if (added > 0) touchPlaylist(id)
+            added
+        }
+    }
+
+    /**
+     * Removes the song at [position] of [playlistSongs] (positions count only the songs shown,
+     * not hidden entries). Any hidden entry for the same song goes too, so it cannot reappear.
+     * An out of range position is ignored.
+     */
+    suspend fun removeFromPlaylist(id: Long, position: Int) = io {
+        tx {
+            val all = playlistEntries(id)
+            val target = visibleEntries(all).getOrNull(position) ?: return@tx
+            val gone = all.filter { it.songKey == target.songKey }.toSet()
+            for (entry in gone) exec("DELETE FROM playlist_items WHERE item_id = ?", entry.itemId)
+            renumber(all.filter { it !in gone })
+            touchPlaylist(id)
+        }
+    }
+
+    /**
+     * Moves the song at [from] to [to], both positions in [playlistSongs]. Hidden entries keep
+     * their place relative to their neighbours. Out of range positions are ignored.
+     */
+    suspend fun movePlaylistItem(id: Long, from: Int, to: Int) = io {
+        if (from == to) return@io
+        tx {
+            val all = playlistEntries(id)
+            val visible = visibleEntries(all)
+            val moving = visible.getOrNull(from) ?: return@tx
+            val anchor = visible.getOrNull(to) ?: return@tx
+            val rest = all.filter { it.itemId != moving.itemId }.toMutableList()
+            val anchorAt = rest.indexOfFirst { it.itemId == anchor.itemId }
+            if (anchorAt < 0) return@tx
+            rest.add(if (from < to) anchorAt + 1 else anchorAt, moving)
+            renumber(rest)
+            touchPlaylist(id)
+        }
+    }
+
+    /** The songs of a playlist in order; entries whose song cannot be found are left out, not deleted. */
+    suspend fun playlistSongs(id: Long): List<Song> = io {
+        query(
+            "SELECT ${prefixed("s")} FROM playlist_items i JOIN songs s ON s.song_key = ${resolved("i")} " +
+                "WHERE i.playlist_id = ? ORDER BY i.position, i.item_id LIMIT $MAX_PLAYLIST_ITEMS",
+            id, map = ::readSong,
+        ).distinctBy { it.groupKey }
+    }
+
+    /** The playlists that hold [song] now, for the ticks in the Add to playlist sheet. */
+    suspend fun playlistsContaining(song: Song): Set<Long> = io {
+        if (song.groupKey.isEmpty()) return@io emptySet()
+        refsOf("playlist_items", "r.playlist_id", song.groupKey) { it.getLong(0) }.toHashSet()
+    }
+
+    // Search
+
+    /**
+     * Finds songs (by title, artist or album), albums (by title or artist) and artists (by name)
+     * holding every word of [query], in any order, without regard to case or accents. Each list
+     * puts a name that starts with the whole query first, then one with a word starting with the
+     * first query word, then the rest, each by name. A blank query or one over 200 characters finds
+     * nothing. Each list holds at most [limit] rows.
+     */
+    suspend fun search(query: String, limit: Int = 30): SearchResults = io {
+        val words = searchWords(query)
+        if (words.isEmpty()) return@io SearchResults.EMPTY
+        val n = limit.coerceIn(1, MAX_SEARCH)
+        val contains: List<Any?> = words.map { "%" + likeEscape(it) + "%" }
+        val startsWithQuery = likeEscape(words.joinToString(" ")) + "%"
+        val wordStartsWithFirst = "% " + likeEscape(words.firstOrNull().orEmpty()) + "%"
+        val args: Array<Any?> = (contains + listOf(startsWithQuery, wordStartsWithFirst, n)).toTypedArray()
+
+        fun where(column: String) = words.joinToString(" AND ") { "$column LIKE ? ESCAPE '\\'" }
+        fun rank(column: String) =
+            "CASE WHEN $column LIKE ? ESCAPE '\\' THEN 0 WHEN (' ' || $column) LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END"
+
+        // Songs are found through the narrow search index first, then read whole by key.
+        val songKeys = this.query(
+            "SELECT song_key FROM songs WHERE ${where("search")} ORDER BY ${rank("search")}, search, song_key LIMIT ?",
+            *args,
+        ) { text(it, 0) }
+        val songs = songKeys.mapNotNull { key ->
+            this.query("SELECT $SONG_COLUMNS FROM songs WHERE song_key = ? LIMIT 1", key, map = ::readSong).firstOrNull()
+        }
+        val albums = this.query(
+            "SELECT $ALBUM_COLUMNS FROM albums WHERE ${where("search")} ORDER BY ${rank("search")}, search, album_key LIMIT ?",
+            *args, map = ::readAlbum,
+        )
+        val artists = this.query(
+            "SELECT $ARTIST_COLUMNS FROM artists WHERE ${where("name_sort")} " +
+                "ORDER BY ${rank("name_sort")}, name_sort, artist_key LIMIT ?",
+            *args, map = ::readArtist,
+        )
+        SearchResults(songs, albums, artists)
+    }
+
+    /** The last searches the user ran, newest first, at most [MAX_RECENT_SEARCHES]. */
+    suspend fun recentSearches(): List<String> = io {
+        query("SELECT query FROM recent_searches ORDER BY seq DESC LIMIT $MAX_RECENT_SEARCHES") { text(it, 0) }
+    }
+
+    /**
+     * Remembers a search the user ran. It is trimmed; a blank one or one over 200 characters is
+     * ignored; the same words in another case replace the older entry and move to the top.
+     */
+    suspend fun addRecentSearch(query: String) = io {
+        val key = recentSearchKey(query)
+        if (key.isEmpty() || key.length > MAX_QUERY_CHARS) return@io
+        val shown = query.trim().replace(SPACES, " ")
+        tx {
+            val seq = (this.query("SELECT MAX(seq) FROM recent_searches") { it.getLong(0) }.firstOrNull() ?: 0L) + 1
+            exec("INSERT OR REPLACE INTO recent_searches(folded, query, seq) VALUES(?, ?, ?)", key, shown, seq)
+            exec(
+                "DELETE FROM recent_searches WHERE seq <= " +
+                    "(SELECT seq FROM recent_searches ORDER BY seq DESC LIMIT 1 OFFSET $MAX_RECENT_SEARCHES)",
+            )
+        }
+    }
+
+    /** Forgets every recent search. */
+    suspend fun clearRecentSearches() = io { exec("DELETE FROM recent_searches") }
+
     override fun close() {
         lock.withLock {
             if (closed) return
@@ -505,6 +800,16 @@ class LibraryIndex private constructor(
                     "UPDATE tracks SET song_key = ? WHERE chat_id = ? AND message_id = ?",
                     songKey, member.track.chatId, member.track.messageId,
                 )
+                // A file that moved from one song to another carries what the user kept about it
+                // along, so a later fallback by base key looks for the song it is in now.
+                if (member.songKey.isNotEmpty()) {
+                    for (table in REF_TABLES) {
+                        exec(
+                            "UPDATE $table SET song_key = ?, base_key = ? WHERE chat_id = ? AND message_id = ?",
+                            songKey, base, member.track.chatId, member.track.messageId,
+                        )
+                    }
+                }
                 touched.albums += member.albumKey
                 touched.artists += member.artistKey
             }
@@ -527,12 +832,16 @@ class LibraryIndex private constructor(
         val cover = default.coverKey.ifBlank { versions.firstOrNull { it.coverKey.isNotBlank() }?.coverKey.orEmpty() }
         val duration = default.durationMs.takeIf { it > 0 } ?: versions.firstOrNull { it.durationMs > 0 }?.durationMs ?: 0
         val added = versions.maxOf { it.dateSec }
+        val albumKey = indexAlbumKey(default).ifEmpty {
+            versions.firstNotNullOfOrNull { v -> indexAlbumKey(v).takeIf { it.isNotEmpty() } }.orEmpty()
+        }
         exec(
-            "INSERT OR REPLACE INTO songs($SONG_COLUMNS, base_key, title_sort, artist_sort, album_sort, added_neg) " +
-                "VALUES(${List(18) { "?" }.joinToString()})",
+            "INSERT OR REPLACE INTO songs($SONG_COLUMNS, base_key, title_sort, artist_sort, album_sort, added_neg, search) " +
+                "VALUES(${List(21) { "?" }.joinToString()})",
             songKey, title, default.artist, default.album, duration, default.chatId, default.messageId,
-            versionCount, best.name, thumb, cover, default.variant, added,
+            versionCount, best.name, thumb, cover, default.variant, added, albumKey, indexArtistKey(default),
             base, titleOrder(title), artistOrder(default.artist, title), albumOrder(default.album, title), -added,
+            searchText(title, default.artist, default.album),
         )
     }
 
@@ -560,9 +869,10 @@ class LibraryIndex private constructor(
             )
         }.firstOrNull() ?: return
         exec(
-            "INSERT OR REPLACE INTO albums(album_key, title, artist, year, song_count, thumb_file_id, cover_key, title_sort) " +
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO albums(album_key, title, artist, year, song_count, thumb_file_id, cover_key, title_sort, search) " +
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
             key, album.title, album.artist, album.year, songs, album.thumbFileId, album.coverKey, titleOrder(album.title),
+            searchText(album.title, album.artist),
         )
     }
 
@@ -593,6 +903,9 @@ class LibraryIndex private constructor(
         }
         exec("DELETE FROM tracks WHERE chat_id = ?", chatId)
         exec("DELETE FROM lyrics_files WHERE chat_id = ?", chatId)
+        // Listening history of a chat the user left goes with it; favourites and playlist entries
+        // stay and fall back to another version, or hide until the chat is added again.
+        exec("DELETE FROM plays WHERE chat_id = ?", chatId)
         rebuild(touched)
         if (keepRow) {
             exec(
@@ -608,6 +921,60 @@ class LibraryIndex private constructor(
     }
 
     private class Member(val track: Track, val songKey: String, val albumKey: String, val artistKey: String)
+
+    // What the user keeps, resolved to songs
+
+    /** One stored playlist entry with the song it resolves to now, null when it is hidden. */
+    private data class Entry(val itemId: Long, val position: Int, val songKey: String?)
+
+    /** Every entry of a playlist in order, hidden ones included. */
+    private fun playlistEntries(id: Long): List<Entry> = query(
+        "SELECT i.item_id, i.position, s.song_key FROM playlist_items i LEFT JOIN songs s ON s.song_key = ${resolved("i")} " +
+            "WHERE i.playlist_id = ? ORDER BY i.position, i.item_id LIMIT $MAX_PLAYLIST_ITEMS",
+        id,
+    ) { Entry(it.getLong(0), it.getLong(1).toInt(), if (it.isNull(2)) null else it.getText(2)) }
+
+    /** The entries [playlistSongs] shows: resolvable, and only the first of two that became one song. */
+    private fun visibleEntries(all: List<Entry>): List<Entry> {
+        val seen = HashSet<String>()
+        return all.filter { entry -> entry.songKey?.let { seen.add(it) } == true }
+    }
+
+    /** Writes positions 0 to n-1 in the order of [entries], touching only rows that moved. */
+    private fun renumber(entries: List<Entry>) {
+        entries.forEachIndexed { i, entry ->
+            if (entry.position != i) exec("UPDATE playlist_items SET position = ? WHERE item_id = ?", i, entry.itemId)
+        }
+    }
+
+    private fun touchPlaylist(id: Long) {
+        exec("UPDATE playlists SET updated_sec = ? WHERE playlist_id = ?", nowSec(), id)
+    }
+
+    /**
+     * The file to store for [song]: its default as the index has it now, or the one the caller
+     * holds when the song is no longer there.
+     */
+    private fun currentDefault(song: Song): TrackId = query(
+        "SELECT default_chat_id, default_message_id FROM songs WHERE song_key = ? LIMIT 1",
+        song.groupKey,
+    ) { TrackId(it.getLong(0), it.getLong(1)) }.firstOrNull() ?: song.defaultTrack
+
+    /**
+     * The rows of [table] (favourites, plays or playlist items, aliased r) that resolve to
+     * [songKey] now. Only two kinds of row can: one whose file is a version of the song, and one
+     * whose stored base key is the song's, so both are found through an index instead of a scan.
+     */
+    private fun <T> refsOf(table: String, column: String, songKey: String, map: (SQLiteStatement) -> T): List<T> = query(
+        """
+        SELECT $column FROM $table r WHERE r.base_key = ? AND ${resolved("r")} = ?
+        UNION
+        SELECT $column FROM tracks t JOIN $table r ON r.chat_id = t.chat_id AND r.message_id = t.message_id
+        WHERE t.song_key = ? AND ${resolved("r")} = ?
+        LIMIT $MAX_ROWS
+        """,
+        baseOfSongKey(songKey), songKey, songKey, songKey, map = map,
+    )
 
     // SQLite plumbing
 
@@ -683,6 +1050,27 @@ class LibraryIndex private constructor(
         /** Files one base key may hold; a key shared by more is a tagging accident, not a song. */
         private const val MAX_GROUP = 20_000
 
+        /** Favourites kept; far above a real collection, there so the heart set stays bounded. */
+        const val MAX_FAVOURITES = 20_000
+
+        /** Plays kept for Recently played; older ones are trimmed as new ones come. */
+        const val MAX_PLAYS = 5_000
+
+        /** Playlists one library may hold, so the Playlists tab is one bounded read. */
+        const val MAX_PLAYLISTS = 1_000
+
+        /** Entries one playlist may hold. */
+        const val MAX_PLAYLIST_ITEMS = 10_000
+
+        /** Recent searches kept. */
+        const val MAX_RECENT_SEARCHES = 10
+
+        private const val MAX_SEARCH = 200
+        private val SPACES = Regex("\\s+")
+
+        /** The tables whose rows point at a file and a song key, kept current when a file changes song. */
+        private val REF_TABLES = listOf("favourites", "plays", "playlist_items")
+
         private const val MAX_VERSIONS = 500
         private const val MAX_PAGE = 1_000
         private const val MAX_LIST = 5_000
@@ -694,7 +1082,7 @@ class LibraryIndex private constructor(
         private const val TRACK_COLUMN_COUNT = 25
         private const val SONG_COLUMNS =
             "song_key, title, artist, album, duration_ms, default_chat_id, default_message_id, version_count, " +
-                "best_format, thumb_file_id, cover_key, variant, added_sec"
+                "best_format, thumb_file_id, cover_key, variant, added_sec, album_key, artist_key"
         private const val ALBUM_COLUMNS = "album_key, title, artist, year, song_count, thumb_file_id, cover_key"
         private const val ARTIST_COLUMNS = "artist_key, name, song_count, album_count"
         private const val CHAT_COLUMNS =
@@ -751,7 +1139,10 @@ class LibraryIndex private constructor(
                 }
                 // Reads one row of each table, so a file whose header is fine but whose tables are
                 // not fails here, at open, instead of on the first screen.
-                for (table in listOf("chats", "tracks", "songs", "albums", "artists", "lyrics_files")) {
+                for (table in listOf(
+                        "chats", "tracks", "songs", "albums", "artists", "lyrics_files",
+                        "favourites", "plays", "playlists", "playlist_items", "recent_searches",
+                    )) {
                     db.prepare("SELECT * FROM $table LIMIT 1").use { it.step() }
                 }
                 return db
@@ -772,6 +1163,22 @@ class LibraryIndex private constructor(
                 File("$path-shm").delete()
             }.onFailure { Logger.w(TAG, "could not move the broken library index aside", it) }
         }
+
+        /**
+         * SQL for the song a stored row (aliased [alias], with chat_id, message_id, song_key and
+         * base_key) resolves to: the song its file is in now, else the song with its base key,
+         * preferring its own cluster, else NULL, which hides the row.
+         */
+        private fun resolved(alias: String): String =
+            "COALESCE((SELECT NULLIF(t.song_key, '') FROM tracks t WHERE t.chat_id = $alias.chat_id AND " +
+                "t.message_id = $alias.message_id), " +
+                "(SELECT b.song_key FROM songs b WHERE b.song_key = $alias.song_key AND b.base_key = $alias.base_key), " +
+                "(SELECT b.song_key FROM songs b WHERE b.base_key = $alias.base_key ORDER BY b.song_key LIMIT 1))"
+
+        /** [SONG_COLUMNS] each prefixed by a table alias, for joins. */
+        private fun prefixed(alias: String): String = SONG_COLUMNS.split(", ").joinToString { "$alias.$it" }
+
+        private fun nowSec(): Long = System.currentTimeMillis() / 1000
 
         private fun sortColumn(sort: SongSort): String = when (sort) {
             SongSort.Title -> "title_sort"
@@ -844,6 +1251,8 @@ class LibraryIndex private constructor(
             coverKey = text(s, 10),
             variant = text(s, 11),
             addedSec = s.getLong(12),
+            albumKey = text(s, 13),
+            artistKey = text(s, 14),
         )
 
         private fun readAlbum(s: SQLiteStatement) = Album(

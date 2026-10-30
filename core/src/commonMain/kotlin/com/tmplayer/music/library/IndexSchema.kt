@@ -101,10 +101,16 @@ internal object IndexSchema {
                 title_sort TEXT NOT NULL,
                 artist_sort TEXT NOT NULL,
                 album_sort TEXT NOT NULL,
-                added_neg INTEGER NOT NULL
+                added_neg INTEGER NOT NULL,
+                album_key TEXT NOT NULL DEFAULT '',
+                artist_key TEXT NOT NULL DEFAULT '',
+                search TEXT NOT NULL DEFAULT ''
             ) WITHOUT ROWID
             """,
         )
+        // Search reads this narrow index instead of the wide rows: it holds the folded text and,
+        // as the table has no rowid, the song key, so a LIKE over every song never touches the table.
+        db.execSQL("CREATE INDEX songs_search ON songs(search)")
         db.execSQL("CREATE INDEX songs_base ON songs(base_key)")
         db.execSQL("CREATE INDEX songs_title ON songs(title_sort, song_key)")
         db.execSQL("CREATE INDEX songs_artist ON songs(artist_sort, song_key)")
@@ -120,11 +126,13 @@ internal object IndexSchema {
                 song_count INTEGER NOT NULL,
                 thumb_file_id INTEGER NOT NULL,
                 cover_key TEXT NOT NULL,
-                title_sort TEXT NOT NULL
+                title_sort TEXT NOT NULL,
+                search TEXT NOT NULL DEFAULT ''
             ) WITHOUT ROWID
             """,
         )
         db.execSQL("CREATE INDEX albums_title ON albums(title_sort, album_key)")
+        db.execSQL("CREATE INDEX albums_search ON albums(search)")
         db.execSQL(
             """
             CREATE TABLE artists(
@@ -150,5 +158,82 @@ internal object IndexSchema {
             """,
         )
         db.execSQL("CREATE INDEX lyrics_name ON lyrics_files(chat_id, base_name)")
+        createUserData(db)
+    }
+
+    /**
+     * What the user keeps about songs: favourites, plays and playlists. A song's key can change when
+     * a new version arrives, so each row stores the file it was made from plus the song key and base
+     * key of that moment, and is resolved to the song that now holds the file, or failing that to
+     * the song with the same base key. A row whose song cannot be found is kept and hidden, so adding
+     * its chat back brings it back. Unlike the tables above, these are not a cache of Telegram and
+     * cannot be scanned again, so a later schema step must carry them over, never drop them.
+     */
+    private fun createUserData(db: SQLiteConnection) {
+        db.execSQL(
+            """
+            CREATE TABLE favourites(
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                song_key TEXT NOT NULL,
+                base_key TEXT NOT NULL,
+                added_sec INTEGER NOT NULL,
+                PRIMARY KEY(chat_id, message_id)
+            )
+            """,
+        )
+        db.execSQL("CREATE INDEX favourites_base ON favourites(base_key)")
+        db.execSQL("CREATE INDEX favourites_added ON favourites(added_sec)")
+        db.execSQL(
+            """
+            CREATE TABLE plays(
+                play_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                song_key TEXT NOT NULL,
+                base_key TEXT NOT NULL,
+                at_sec INTEGER NOT NULL
+            )
+            """,
+        )
+        db.execSQL("CREATE INDEX plays_track ON plays(chat_id, message_id)")
+        db.execSQL(
+            """
+            CREATE TABLE playlists(
+                playlist_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                created_sec INTEGER NOT NULL,
+                updated_sec INTEGER NOT NULL
+            )
+            """,
+        )
+        db.execSQL("CREATE INDEX playlists_updated ON playlists(updated_sec, playlist_id)")
+        // Positions are dense from 0 but not unique in the index, so a move can shift a range with
+        // one UPDATE without tripping over a row that has not moved yet.
+        db.execSQL(
+            """
+            CREATE TABLE playlist_items(
+                item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                playlist_id INTEGER NOT NULL,
+                position INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                song_key TEXT NOT NULL,
+                base_key TEXT NOT NULL
+            )
+            """,
+        )
+        db.execSQL("CREATE INDEX playlist_items_order ON playlist_items(playlist_id, position)")
+        db.execSQL("CREATE INDEX playlist_items_track ON playlist_items(chat_id, message_id)")
+        db.execSQL("CREATE INDEX playlist_items_base ON playlist_items(base_key)")
+        db.execSQL(
+            """
+            CREATE TABLE recent_searches(
+                folded TEXT PRIMARY KEY,
+                query TEXT NOT NULL,
+                seq INTEGER NOT NULL
+            ) WITHOUT ROWID
+            """,
+        )
     }
 }
