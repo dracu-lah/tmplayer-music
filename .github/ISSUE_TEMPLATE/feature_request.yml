@@ -1,0 +1,22 @@
+name: Feature request
+description: An idea that would make TMPlayer Music better
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        TMPlayer Music plays the audio files already in your own Telegram chats. Ideas about finding
+        audio that is not in your chats (public channel search, catalogues, recommendations) are out
+        of scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the situation and what is missing today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could it work?
+      description: Any idea of how it should look or behave. Screenshots from other apps are welcome, with made up track names.

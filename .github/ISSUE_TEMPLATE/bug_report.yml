@@ -1,0 +1,44 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting! Please check that the problem still happens on the latest version
+        first. Please do not paste real track, artist or chat names; describe the file instead.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown in Settings, under About.
+      placeholder: "0.1.0-beta.1"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone and Android version
+      description: For example "Pixel 6a, Android 15".
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: The file, if it is a playback or tag problem
+      description: Its format (MP3, FLAC, M4A, Ogg, WAV and so on), roughly its size and length, and whether it was sent as music or as a file.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        Settings, Send logs, makes a log file with chat names, ids, file names and phone numbers
+        taken out. Attach it here, or paste the part around the failure.
+      render: text
