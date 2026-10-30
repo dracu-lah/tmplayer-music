@@ -65,6 +65,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Installs beside the signed app, so a test build never asks to wipe the real install.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             ndk.abiFilters += listOf("armeabi-v7a", "arm64-v8a")
             isMinifyEnabled = true
