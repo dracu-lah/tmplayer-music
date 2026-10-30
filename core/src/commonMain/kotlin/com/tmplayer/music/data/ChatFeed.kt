@@ -19,8 +19,8 @@ sealed interface FeedStep {
 }
 
 /**
- * A chat's audio straight from Telegram, page by page, in message order (`plan/MVP-REVISION.md`
- * decision h). Two searches run side by side, as the scanner's do: audio messages, and documents
+ * A chat's audio straight from Telegram, page by page, in message order.
+ * Two searches run side by side, as the scanner's do: audio messages, and documents
  * (where FLAC and other lossless files usually are). Each keeps its own keyset cursor, and each
  * [next] asks only the search that is furthest behind, so the rows gathered so far are always in
  * order and never the whole chat at once.

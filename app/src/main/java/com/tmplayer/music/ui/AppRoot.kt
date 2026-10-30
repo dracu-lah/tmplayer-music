@@ -32,7 +32,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * The onboarding order (`plan/RESEARCH.md` 4.1): Welcome once, sign in, pick the chats with music
+ * The onboarding order: Welcome once, sign in, pick the chats with music
  * once, then the library. The picker is not forced again after it was finished, even empty;
  * Manage chats opens it later.
  */

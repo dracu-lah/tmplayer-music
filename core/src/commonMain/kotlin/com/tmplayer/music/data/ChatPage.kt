@@ -63,7 +63,7 @@ data class ChatPageState(
 )
 
 /**
- * One chat as a playlist in message order (`plan/MVP-REVISION.md` decision h), loaded page by page
+ * One chat as a playlist in message order, loaded page by page
  * and never whole:
  *
  * - A chat whose scan has finished is read from the index alone, by message id (keyset), so its first

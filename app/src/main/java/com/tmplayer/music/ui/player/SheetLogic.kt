@@ -14,7 +14,7 @@ object SheetLogic {
 
     /**
      * The anchors. Dismissed is offered only while playback is paused and the sheet rests on the
-     * mini-player (`plan/RESEARCH.md` 4 item 5: swipe down dismisses it only when paused), so a fast
+     * mini-player, so a fast
      * fling down from Now Playing never throws the queue away.
      */
     fun anchors(containerHeight: Float, collapsedTop: Float, allowDismiss: Boolean): Map<SheetValue, Float> {

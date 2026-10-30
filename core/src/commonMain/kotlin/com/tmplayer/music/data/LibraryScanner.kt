@@ -60,7 +60,7 @@ data class ScanStatus(
 )
 
 /**
- * Reads the chosen chats for audio, page by page, into the index (`plan/RESEARCH.md` 4.1, 6.1, 6.3).
+ * Reads the chosen chats for audio, page by page, into the index.
  *
  * Every page is stored as it arrives, so the library fills while the scan runs, and its cursor is
  * saved with it, so a scan cut short (the app closed, the phone restarted) carries on where it

@@ -9,7 +9,7 @@ composeBom = "2026.09.00"
 # The BOM maps material3 to 1.4.0, whose Expressive components (wavy progress, button groups,
 # toggle buttons, MaterialExpressiveTheme) are internal. 1.5.0 makes them public but raises
 # minSdk to 24 (material3-ripple), below our Android 6 floor, so it is not used: the app draws its
-# own versions (app/.../ui/theme and ui/player). See plan/EXPRESSIVE-BRIEF.md.
+# own versions (app/.../ui/theme and ui/player).
 lifecycle = "2.11.0"
 coroutines = "1.11.0"
 tdl = "15.0.0"

@@ -340,7 +340,7 @@ fun EmptyLibrary() {
 }
 
 /**
- * The Versions sheet (`plan/RESEARCH.md` 4.2): one line per file with its quality, size, chat and
+ * The Versions sheet: one line per file with its quality, size, chat and
  * date, the one that plays by default marked, and why it was chosen. Tap a line to play that version.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)

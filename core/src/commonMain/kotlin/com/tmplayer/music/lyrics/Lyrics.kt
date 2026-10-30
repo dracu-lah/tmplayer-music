@@ -14,7 +14,7 @@ data class Lyrics(val lines: List<LyricLine>, val plain: String) {
 
     /**
      * The line playing at [positionMs], or -1 before the first. [latencyMs] is added to the clock,
-     * so the highlight is not late on a Bluetooth headset (`plan/RESEARCH.md` 15).
+     * so the highlight is not late on a Bluetooth headset.
      */
     fun lineAt(positionMs: Long, latencyMs: Long = 0): Int {
         val at = positionMs + latencyMs
@@ -35,7 +35,7 @@ data class Lyrics(val lines: List<LyricLine>, val plain: String) {
 }
 
 /**
- * Reads lyrics from a `.lrc` file or a tag (`plan/RESEARCH.md` 8 and 15). LRC lines are
+ * Reads lyrics from a `.lrc` file or a tag. LRC lines are
  * `[mm:ss.xx]text`, with several stamps on one line allowed; `[offset:+250]` moves every line;
  * the header tags (`[ar:]`, `[ti:]`, `[al:]`, `[by:]`, `[length:]` and the like) are dropped, and
  * enhanced LRC's word stamps (`<mm:ss.xx>`) are taken out of the text for now. Text with no stamps

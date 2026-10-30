@@ -61,7 +61,7 @@ import java.text.Normalizer
 data class PickedChat(val chatId: Long, val title: String)
 
 /**
- * Pick the chats with music (`plan/RESEARCH.md` 4.1). Saved Messages first, then the user's chats in
+ * Pick the chats with music. Saved Messages first, then the user's chats in
  * Telegram's order, then the archive. Each row asks for its audio count only once it is on screen,
  * and remembers it. Nothing is ticked for the user except Saved Messages, and only when it has
  * audio in it. An empty choice is allowed and lands on an empty library.

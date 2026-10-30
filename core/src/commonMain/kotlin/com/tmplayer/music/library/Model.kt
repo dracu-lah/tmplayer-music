@@ -2,7 +2,7 @@ package com.tmplayer.music.library
 
 /**
  * The library's shared shapes: what the tag reader finds in a file, what one audio file in a chat
- * is once indexed, and the song a set of versions folds into (`plan/RESEARCH.md` 4.2, 6.2, 6.3).
+ * is once indexed, and the song a set of versions folds into.
  * Every field read from outside may be missing: text is blank and numbers are 0 when unknown,
  * and a 0 duration means unknown, never "hide this track".
  */

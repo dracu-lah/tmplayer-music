@@ -24,7 +24,7 @@ data class ScanCursor(val fromMessageId: Long = 0, val done: Boolean = false, va
 
 /**
  * How far the scan of one chat got, so a restart resumes instead of reading the chat again
- * (`plan/RESEARCH.md` 6.3). Audio messages and documents are two searches with their own cursors:
+ * Audio messages and documents are two searches with their own cursors:
  * sharing one would let a top-up of one skip what is new in the other.
  */
 data class ScanState(
@@ -77,7 +77,7 @@ data class SongCursor(val key: String, val groupKey: String) {
 /**
  * The library on disk: every audio file of the chosen chats, folded into songs, albums and
  * artists, so the app shows its first rows from here within 3 s of starting and never waits for a
- * scan (`plan/RESEARCH.md` 6.3). Sized for 100,000 tracks over 3,000 chats with 20,000 in one.
+ * scan. Sized for 100,000 tracks over 3,000 chats with 20,000 in one.
  *
  * Writes recompute only the songs, albums and artists they touch. Reads are keyset paged and
  * capped, so a list never loads every row. One SQLite connection is shared and guarded by a lock;

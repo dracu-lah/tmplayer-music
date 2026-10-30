@@ -83,7 +83,7 @@ fun defaultPick(tracks: List<Track>): Track? = tracks.minWithOrNull(
 /**
  * Splits the files of one base key into recordings by length: files more than max(3 s, 2 percent)
  * apart are different edits, so they become separate songs. When the artist is unknown the title
- * alone is weak evidence, so the window narrows to 1 s (`plan/RESEARCH.md` 4.2). An unknown
+ * alone is weak evidence, so the window narrows to 1 s. An unknown
  * duration (0) proves nothing either way and joins cluster 0. Clusters are numbered from the
  * shortest, and each is measured from its own shortest file so a long chain cannot drift.
  */

@@ -242,7 +242,7 @@ private fun ChatsEndDark() = ChatsEndSample(dark = true)
 private fun ChatsEndLargeText() = ChatsEndSample(dark = false)
 
 /**
- * A chat as a playlist in message order (`plan/MVP-REVISION.md` decision h): Oldest first or Newest
+ * A chat as a playlist in message order: Oldest first or Newest
  * first (remembered per chat), Play and Shuffle, loaded a page at a time as the list nears its end.
  * Tapping a row plays the chat's order from there. The rows on screen get their tags read first.
  * Offline, a flood wait, a chat that is gone and a chat removed while open each say so and offer

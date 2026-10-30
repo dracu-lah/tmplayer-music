@@ -56,8 +56,7 @@ suspend fun allSongs(): List<Song> {
 /**
  * Home: Speed dial (the restored queue first, paused, then what was played lately), then Recently played, Recently added and
  * Favourites as rows of covers, and Shuffle all. A row with nothing in it is left out; with nothing
- * anywhere, Home says how to start. Plain lists of what the user has, never a recommendation
- * (`plan/RESEARCH.md` 11).
+ * anywhere, Home says how to start. Plain lists of what the user has, never a recommendation.
  */
 @Composable
 fun HomeTab(actions: SongActions, onShuffleAll: () -> Unit) {

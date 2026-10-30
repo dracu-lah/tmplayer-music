@@ -2,7 +2,7 @@ package com.tmplayer.music.data
 
 /**
  * How much audio the app keeps in TDLib's cache, and whether a file may start downloading
- * (`plan/RESEARCH.md` 7, Q5). Pure, so the disk-full cases are unit tests.
+ * Pure, so the disk-full cases are unit tests.
  *
  * The cache is bounded by a ceiling the user picks (2 GB by default, 1 GB on a weak device) that
  * never takes more than a share of the disk and always leaves the device room of its own. Before a

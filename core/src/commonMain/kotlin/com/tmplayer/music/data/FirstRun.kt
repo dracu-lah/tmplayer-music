@@ -1,7 +1,7 @@
 package com.tmplayer.music.data
 
 /**
- * The one tap first run (`plan/MVP-REVISION.md` decision h): "Start with Saved Messages" picks Saved
+ * The one tap first run: "Start with Saved Messages" picks Saved
  * Messages and the few chats with the most audio, so the first song plays within seconds and more
  * chats can be added later. Plain logic over the counts the picker already has, so it is tested
  * without Telegram.

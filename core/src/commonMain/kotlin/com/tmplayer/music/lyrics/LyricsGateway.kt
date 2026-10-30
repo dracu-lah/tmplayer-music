@@ -12,7 +12,7 @@ import java.net.URI
 import java.net.URLEncoder
 
 /**
- * What a lyrics lookup sends to our gateway (`plan/LYRICS-GATEWAY.md`): the title, artist, album and
+ * What a lyrics lookup sends to our gateway: the title, artist, album and
  * length of one song, nothing else. [songKey] never leaves the device: it names the cache entry, so the
  * versions of one song share one answer.
  */

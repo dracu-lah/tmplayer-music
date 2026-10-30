@@ -6,8 +6,7 @@ import kotlinx.serialization.json.Json
 
 /**
  * The queue as it is kept on disk between runs: every item, which one is current, where in it, and
- * the shuffle and repeat modes. Saved whole and restored whole (`plan/RESEARCH.md` 15: a queue cut
- * short after a restart was a real bug elsewhere), and restored paused: nothing autoplays.
+ * the shuffle and repeat modes. Saved whole and restored whole, and restored paused: nothing autoplays.
  *
  * Items are the version's track id (chat and message) plus the song's key, so a queue survives a
  * version that disappears: the song is looked up by its key and its default version plays.

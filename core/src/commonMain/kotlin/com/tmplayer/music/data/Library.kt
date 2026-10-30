@@ -45,8 +45,7 @@ import java.io.File
  * chosen chats, and the tag reader that improves it. Started once by the app with its own folder.
  *
  * The library belongs to one Telegram account. When a different account signs in, or the user
- * logs out, it is wiped: rows of chats the user can no longer see must not linger
- * (`plan/RESEARCH.md` 15, AGENTS.md "leaving a chat or logging out purges its rows").
+ * logs out, it is wiped: rows of chats the user can no longer see must not linger (AGENTS.md: leaving a chat or logging out purges its rows).
  */
 object Library {
     private const val TAG = "Library"

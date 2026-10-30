@@ -1,7 +1,7 @@
 package com.tmplayer.music.library
 
 /**
- * The key that folds several files of one recording into one song (`plan/RESEARCH.md` 4.2). It is made
+ * The key that folds several files of one recording into one song. It is made
  * once at index time and stored on the track, so finding a song's versions is a lookup, never a
  * comparison of every track with every other.
  *

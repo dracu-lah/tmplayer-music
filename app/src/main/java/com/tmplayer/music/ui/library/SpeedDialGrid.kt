@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Speed dial, at the top of Home: what the user played lately as small square covers, 3 by 3 a page
- * (`plan/RESEARCH.md` 4 item 2). What the player holds now comes first, marked playing or paused;
+ * What the player holds now comes first, marked playing or paused;
  * then the rest by when they were last played or paused ([SpeedDial.pick]). A card that was left part
  * way has a thin bar and resumes there. Tap resumes, long press (or the accessibility action) takes
  * a card off, and playing it again brings it back. Nothing plays until a card is tapped. With nothing

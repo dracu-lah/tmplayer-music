@@ -28,7 +28,7 @@ enum class PickReason {
 }
 
 /**
- * Which version of a song plays by default (`plan/RESEARCH.md` 4.2). The order is: the user's own choice,
+ * Which version of a song plays by default. The order is: the user's own choice,
  * then one this build can play, then one already on the device, then lossless over lossy (or, with Save
  * mobile data, the smaller file), then the higher bit rate, then the fuller tags, then the oldest post.
  * Every step is a plain comparison, so the pick is the same whatever order the versions come in.

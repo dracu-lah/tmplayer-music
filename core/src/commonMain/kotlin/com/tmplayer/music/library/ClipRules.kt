@@ -1,7 +1,7 @@
 package com.tmplayer.music.library
 
 /**
- * Which files the library hides by default (`plan/MVP-REVISION.md` decision j): clips shorter than
+ * Which files the library hides by default: clips shorter than
  * [SHORT_MS], and voice style files (a voice recording sent as a document). Both have a switch in
  * Settings. The rules are conservative on purpose:
  *

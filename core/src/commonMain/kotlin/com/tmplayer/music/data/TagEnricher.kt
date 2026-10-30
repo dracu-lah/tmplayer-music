@@ -93,7 +93,7 @@ data class EnrichStatus(
 
 /**
  * Reads the real tags of indexed tracks, a few files at a time, after the scan has listed them
- * (`plan/RESEARCH.md` 6.2). Only the head of each file is fetched: [TagReader.HEAD_BYTES], or as much
+ * Only the head of each file is fetched: [TagReader.HEAD_BYTES], or as much
  * as [TagReader.bytesNeeded] says the tag block takes up to [MAX_TAG_BYTES]; the tail too when the
  * head leaves the duration unknown (an MP4 with its index at the end, an Ogg file). A partial copy
  * made for this is deleted afterwards unless the file was already on the device.

@@ -1,7 +1,7 @@
 package com.tmplayer.music.library
 
 /**
- * The title and artist a track shows when its tags say nothing, in the order of `plan/RESEARCH.md` 6.2:
+ * The title and artist a track shows when its tags say nothing, in this order:
  * the file's tags, then Telegram's own fields, then `Artist - Title` read from the file name, then the
  * file name itself. A name is only tidied (track numbers, underscores and bracketed upload noise go);
  * its letters are never rewritten, so a title in any script shows as the sender wrote it.

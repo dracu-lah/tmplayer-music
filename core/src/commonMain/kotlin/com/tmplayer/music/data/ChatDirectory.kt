@@ -26,8 +26,7 @@ data class ChatEntry(
 
 /**
  * The user's own chats, for the picker: Saved Messages first, then the main list in Telegram's
- * order, then the archive. Only chats the user is in: there is no public search here, by design
- * (`plan/RESEARCH.md` section 11).
+ * order, then the archive. Only chats the user is in: there is no public search here, by design.
  *
  * Large accounts are the case to design for. The list is TDLib's own (it is on disk after the
  * first run, so it answers offline); at most [MAX_CHATS] are listed, and each chat's audio count

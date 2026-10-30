@@ -80,7 +80,7 @@ class LyricsChoices(private val store: KeyValues) {
 }
 
 /**
- * Asks our lyrics gateway for one song at a time (`plan/LYRICS-GATEWAY.md`). Sends only the title,
+ * Asks our lyrics gateway for one song at a time. Sends only the title,
  * artist, album and length with a `User-Agent` naming the app; never a chat, file or account.
  *
  * - Nothing is sent while [enabled] is false, or for a song whose length is unknown.

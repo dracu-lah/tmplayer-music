@@ -3,7 +3,7 @@ package com.tmplayer.music.library
 import java.util.Locale
 
 /**
- * Decides what a file in a chat is from its mime type and its name alone (`plan/RESEARCH.md` 6.1).
+ * Decides what a file in a chat is from its mime type and its name alone.
  * Lossless audio is mostly posted as a document with a generic mime type, so the extension counts as
  * much as the mime. Both come from Telegram and the sender's client, so either may be null, blank,
  * wrong or absurd; nothing here throws on them.

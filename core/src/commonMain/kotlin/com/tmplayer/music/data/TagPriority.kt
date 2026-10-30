@@ -6,8 +6,8 @@ import com.tmplayer.music.library.Track
 enum class NetState { Unmetered, Metered, Offline }
 
 /**
- * Which kinds of tag reads may run now (`plan/MVP-REVISION.md` 7, "tag reading respects mobile
- * data"). [onDemand] covers the rows on screen and the tracks about to play; [documents] the audio
+ * Which kinds of tag reads may run now.
+ * [onDemand] covers the rows on screen and the tracks about to play; [documents] the audio
  * sent as documents whose length is still unknown; [trickle] the rest of the library, a little at a
  * time. [documentsCap] bounds the documents read per app session (on mobile data without the
  * user's yes); [Int.MAX_VALUE] is no bound.

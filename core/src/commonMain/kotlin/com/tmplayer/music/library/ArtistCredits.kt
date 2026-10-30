@@ -7,7 +7,7 @@ data class CreditedArtist(val name: String, val key: String)
  * Splits an artist credit ("A, B feat. C") into the artists it names, for the Artists tab, artist
  * pages and "Go to artist". The song keeps the whole credit as the artist it shows everywhere else.
  *
- * Rules (decided by the user on 2026-10-30, `plan/MVP-REVISION.md` decision k):
+ * Rules (decided by the user on 2026-10-30):
  * - Always a separator: a comma (except between two digits, so a number keeps its comma), a pipe,
  *   a NUL (ID3v2.4 writes one between artists), and " feat. ", " ft. ", " featuring " (also after
  *   an opening bracket). " with " is not a separator.

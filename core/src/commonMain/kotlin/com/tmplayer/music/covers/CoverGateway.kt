@@ -14,7 +14,7 @@ import java.net.URI
 import java.net.URLEncoder
 
 /**
- * What a cover lookup sends to our gateway (`GET /v1/cover`, `plan/LYRICS-GATEWAY.md`): the title,
+ * What a cover lookup sends to our gateway (`GET /v1/cover`): the title,
  * artist and album of one track, nothing else. [key] never leaves the device: it is the generated
  * cover's key ([CoverArt.keyOf]: the album key, else the song's base key), so every track of an album
  * and every version of a song share one answer.
