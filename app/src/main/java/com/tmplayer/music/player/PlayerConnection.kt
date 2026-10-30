@@ -132,7 +132,11 @@ object PlayerConnection {
     /** An item the service resolves by id from the index (see [PlaybackService]). */
     private fun itemOf(song: Song): MediaItem = MediaItem.Builder()
         .setMediaId(MediaIds.of(song.defaultTrack, song.groupKey))
-        .setMediaMetadata(MediaMetadata.Builder().setTitle(song.title).setArtist(ArtistDisplay.of(song.artist)).build())
+        .setMediaMetadata(
+            MediaMetadata.Builder().setTitle(song.title).setArtist(ArtistDisplay.of(song.artist))
+                .setExtras(android.os.Bundle().apply { putString(MediaIds.COVER_ART, com.tmplayer.music.library.CoverArt.keyOf(song.albumKey, song.groupKey)) })
+                .build(),
+        )
         .build()
 
     /**

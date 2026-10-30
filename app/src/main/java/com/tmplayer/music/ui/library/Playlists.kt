@@ -85,7 +85,7 @@ fun PlaylistsTab(onPlaylist: (Playlist) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Cover(name = playlist.name, fileId = playlist.thumbFileId.takeIf { com.tmplayer.music.data.FileIds.isFresh(it) } ?: 0, coverPath = Library.coverFile(playlist.coverKey)?.path.orEmpty(), size = 56.dp)
+                Cover(name = playlist.name, fileId = playlist.thumbFileId.takeIf { com.tmplayer.music.data.FileIds.isFresh(it) } ?: 0, coverPath = Library.coverFile(playlist.coverKey)?.path.orEmpty(), size = 56.dp, art = com.tmplayer.music.library.CoverArt.keyOfPlaylist(playlist.id))
                 Column(Modifier.weight(1f)) {
                     Text(playlist.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(L.librarySongs(playlist.songCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

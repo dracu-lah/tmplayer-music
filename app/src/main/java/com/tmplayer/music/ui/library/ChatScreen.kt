@@ -380,6 +380,7 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onLongClick: () -> Unit)
             fileId = 0,
             coverPath = Library.coverFile(track.coverKey)?.path.orEmpty(),
             track = track.id.takeIf { track.thumbFileId != 0 },
+            art = com.tmplayer.music.library.CoverArt.keyOf(track),
         )
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

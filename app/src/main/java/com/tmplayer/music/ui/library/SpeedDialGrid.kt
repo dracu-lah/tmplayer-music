@@ -279,6 +279,7 @@ private fun DialCard(item: DialItem, size: Dp, playing: Boolean?, onTap: () -> U
             coverPath = Library.coverFile(item.coverKey)?.path.orEmpty(),
             size = size,
             track = item.track.takeIf { item.thumbFileId != 0 },
+            art = item.coverArt.ifBlank { com.tmplayer.music.library.CoverArt.keyOf("", item.songKey.ifEmpty { item.key }) },
         )
         Box(
             Modifier

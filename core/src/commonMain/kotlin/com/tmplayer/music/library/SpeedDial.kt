@@ -20,6 +20,8 @@ data class DialItem(
     val durationMs: Long = 0,
     /** When it was last played or paused, Unix milliseconds. */
     val atMs: Long = 0,
+    /** The key of its generated cover ([CoverArt]), for a card with no picture; blank when not known. */
+    val coverArt: String = "",
 ) {
     /** A card is partly played (shows its thin bar) when it resumes somewhere past the start. */
     val partlyPlayed: Boolean get() = positionMs > 0

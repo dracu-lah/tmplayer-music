@@ -32,6 +32,7 @@ import com.tmplayer.music.data.SupportReminder
 import com.tmplayer.music.data.TagEnricher
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.ArtistDisplay
+import com.tmplayer.music.library.CoverArt
 import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.platform.JobFailures
@@ -363,6 +364,7 @@ class PlaybackService : MediaSessionService() {
                 .setDurationMs(track.durationMs.takeIf { it > 0 })
                 .setIsPlayable(true)
                 .setIsBrowsable(false)
+                .setExtras(android.os.Bundle().apply { putString(MediaIds.COVER_ART, CoverArt.keyOf(track)) })
                 .build()
             return MediaItem.Builder()
                 .setMediaId(MediaIds.of(track.id, songKey))
@@ -382,6 +384,21 @@ object MediaIds {
         val chat = parts.getOrNull(0)?.toLongOrNull() ?: return null
         val message = parts.getOrNull(1)?.toLongOrNull() ?: return null
         return SavedQueue.Item(chat, message, parts.getOrNull(2).orEmpty())
+    }
+
+    /** The metadata extra holding the item's generated cover key ([CoverArt.keyOf]). */
+    const val COVER_ART = "tmplayer.coverArt"
+
+    /**
+     * The key of the generated cover for [item]: the one stored with it (its album, else its song),
+     * else its song's from the media id, so an item from an older saved queue still gets the same
+     * cover as its row. Null for no item.
+     */
+    fun coverArt(media: MediaItem?): String? {
+        media ?: return null
+        media.mediaMetadata.extras?.getString(COVER_ART)?.takeIf { it.isNotBlank() }?.let { return it }
+        val songKey = item(media.mediaId)?.songKey.orEmpty()
+        return CoverArt.keyOf("", songKey.ifBlank { media.mediaId })
     }
 }
 

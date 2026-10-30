@@ -72,7 +72,7 @@ fun rememberPositionState(state: PlayerState): State<Long> {
 }
 
 /**
- * The playing item's cover, or the initials placeholder (never a blank box). [size] is the size it is
+ * The playing item's cover, or its generated cover when it has none (never a blank box). [size] is the size it is
  * decoded at; [fill] stretches it over its slot (the caller clips it to the shape it wants).
  */
 @Composable
@@ -85,6 +85,7 @@ internal fun ItemCover(item: MediaItem?, size: Dp, name: String, fill: Boolean =
         coverPath = if (uri?.scheme == "file") uri.path.orEmpty() else "",
         track = if (uri?.scheme == TD_SCHEME) com.tmplayer.music.player.tdTrackOf(uri) else null,
         size = size,
+        art = item?.let { com.tmplayer.music.player.MediaIds.coverArt(it) },
     )
 }
 

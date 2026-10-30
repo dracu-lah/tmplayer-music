@@ -238,7 +238,7 @@ fun SongRow(
         if (leading != null) {
             leading()
         } else {
-            Cover(name = song.title, fileId = 0, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), track = song.defaultTrack.takeIf { song.thumbFileId != 0 })
+            Cover(name = song.title, fileId = 0, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), track = song.defaultTrack.takeIf { song.thumbFileId != 0 }, art = com.tmplayer.music.library.CoverArt.keyOf(song.albumKey, song.groupKey))
         }
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

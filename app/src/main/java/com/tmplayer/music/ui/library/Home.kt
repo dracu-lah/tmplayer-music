@@ -107,7 +107,7 @@ private fun SongShelf(title: String, songs: List<Song>, actions: SongActions) {
                         onLongClick = { actions.menu(song) },
                     ),
                 ) {
-                    Cover(name = song.title, fileId = 0, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), size = 128.dp, track = song.defaultTrack.takeIf { song.thumbFileId != 0 })
+                    Cover(name = song.title, fileId = 0, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), size = 128.dp, track = song.defaultTrack.takeIf { song.thumbFileId != 0 }, art = com.tmplayer.music.library.CoverArt.keyOf(song.albumKey, song.groupKey))
                     Text(song.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         ArtistDisplay.of(song.artist).ifBlank { L.libraryUnknownArtist },

@@ -302,5 +302,5 @@ fun AlbumCover(album: Album, size: androidx.compose.ui.unit.Dp) {
     val track by androidx.compose.runtime.produceState<com.tmplayer.music.library.TrackId?>(null, album.key, path) {
         if (path.isEmpty() && album.thumbFileId != 0) value = runCatching { Library.index().albumThumbTrack(album.key) }.getOrNull()
     }
-    Cover(name = album.title, fileId = 0, coverPath = path, size = size, track = track)
+    Cover(name = album.title, fileId = 0, coverPath = path, size = size, track = track, art = com.tmplayer.music.library.CoverArt.keyOfAlbum(album.key))
 }

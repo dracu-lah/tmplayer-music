@@ -35,15 +35,17 @@ import kotlinx.coroutines.withTimeoutOrNull
  * The items themselves keep their artwork URI, so the app's own screens load covers as before;
  * only [getMediaMetadata], the playing item's metadata that the session reads, is changed. The
  * bytes are loaded off the main thread when the item changes ([ArtworkBytes]), bounded by
- * [ArtworkBounds], and announced with a metadata change once they are there. Until then, or when
- * there is no cover or it cannot be read, there is simply no artwork. A few recent covers are kept,
- * so skipping back does not load again.
+ * [ArtworkBounds], and announced with a metadata change once they are there. Until then there is
+ * no artwork. When the track has no cover, or it cannot be read, the session gets the generated one
+ * ([generate], the same picture the app's screens show), unless the stream carries a picture of its
+ * own, which wins. A few recent covers are kept, so skipping back does not load again.
  */
 @OptIn(UnstableApi::class)
 class SessionArtworkPlayer(
     private val inner: Player,
     private val scope: CoroutineScope,
     private val load: suspend (MediaItem) -> ByteArray? = ArtworkBytes::load,
+    private val generate: (MediaItem) -> ByteArray? = ArtworkBytes::generated,
 ) : ForwardingPlayer(inner) {
 
     /** The listeners added through this player; main thread only. */
@@ -53,6 +55,10 @@ class SessionArtworkPlayer(
     }
     private var shownFor: String? = null
     private var shown: ByteArray? = null
+
+    /** Whether [shown] is a generated cover, which gives way to a picture embedded in the stream. */
+    private var shownGenerated = false
+    private val generatedIds = HashSet<String>()
     private var job: Job? = null
 
     init {
@@ -66,10 +72,12 @@ class SessionArtworkPlayer(
         val base = super.getMediaMetadata()
         val builder = base.buildUpon().setArtworkUri(null)
         val mine = shown?.takeIf { shownFor != null && shownFor == inner.currentMediaItem?.mediaId }
+        val embedded = ArtworkBounds.fits(base.artworkData)
         when {
+            mine != null && shownGenerated && embedded -> Unit
             mine != null -> builder.setArtworkData(mine, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
             // A picture embedded in the stream, as ExoPlayer read it: kept only when small enough.
-            !ArtworkBounds.fits(base.artworkData) -> builder.setArtworkData(null, null)
+            !embedded -> builder.setArtworkData(null, null)
         }
         return builder.build()
     }
@@ -95,9 +103,11 @@ class SessionArtworkPlayer(
         job?.cancel()
         shownFor = id
         shown = null
+        shownGenerated = false
         if (item == null || id.isNullOrEmpty()) return
         recent.get(id)?.let {
             shown = it
+            shownGenerated = id in generatedIds
             announce()
             return
         }
@@ -110,11 +120,23 @@ class SessionArtworkPlayer(
                 Logger.w(TAG, "the cover for the media session could not be loaded", e)
                 null
             }
-            val bytes = loaded?.takeIf { ArtworkBounds.fits(it) } ?: return@launch
+            val real = loaded?.takeIf { ArtworkBounds.fits(it) }
+            val bytes = real ?: try {
+                withContext(Dispatchers.Default) { generate(item) }?.takeIf { ArtworkBounds.fits(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Logger.w(TAG, "the generated cover for the media session could not be drawn", e)
+                null
+            } ?: return@launch
             recent.put(id, bytes)
+            if (real == null) generatedIds += id else generatedIds -= id
+            // The set only names ids whose bytes may still be in [recent]; it stays small.
+            if (generatedIds.size > MAX_GENERATED_IDS) generatedIds.clear()
             if (inner.currentMediaItem?.mediaId != id) return@launch
             shownFor = id
             shown = bytes
+            shownGenerated = real == null
             announce()
         }
     }
@@ -134,6 +156,7 @@ class SessionArtworkPlayer(
     private companion object {
         const val TAG = "SessionArtwork"
         const val CACHE_BYTES = 2 * 1024 * 1024
+        const val MAX_GENERATED_IDS = 256
     }
 }
 
@@ -164,6 +187,15 @@ object ArtworkBytes {
             Td.awaitAuthorizedSession().client.downloadFile(fileId, 8, 0, 0, true)
         }?.let { (it as? TdlResult.Success)?.result?.local }?.takeIf { it.isDownloadingCompleted }?.path
         return path?.takeIf { it.isNotEmpty() }?.let(::File)
+    }
+
+    /**
+     * The generated cover of [item] ([com.tmplayer.music.ui.common.GeneratedCover]) as JPEG bytes of
+     * [ArtworkBounds.MAX_PX] a side, for a track with no picture of its own. Null on failure.
+     */
+    fun generated(item: MediaItem): ByteArray? {
+        val key = MediaIds.coverArt(item) ?: return null
+        return com.tmplayer.music.ui.common.GeneratedCover.jpeg(key, ArtworkBounds.MAX_PX)
     }
 
     /** The picture in [file], at most [ArtworkBounds.MAX_PX] a side, as JPEG within [ArtworkBounds.MAX_BYTES]. */

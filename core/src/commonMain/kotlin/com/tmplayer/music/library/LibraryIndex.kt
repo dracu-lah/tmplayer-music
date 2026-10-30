@@ -876,7 +876,7 @@ class LibraryIndex private constructor(
         val hidden = ArrayList<DialHidden>()
         query(
             "SELECT r.chat_id, r.message_id, r.song_key, r.position_ms, r.duration_ms, r.at_ms, r.hidden, t.song_key, " +
-                "t.title, t.file_name, t.artist, t.cover_key, t.thumb_file_id, t.duration_ms FROM resume_points r " +
+                "t.title, t.file_name, t.artist, t.cover_key, t.thumb_file_id, t.duration_ms, t.album_key FROM resume_points r " +
                 "JOIN tracks t ON t.chat_id = r.chat_id AND t.message_id = r.message_id ORDER BY r.at_ms DESC LIMIT ?",
             limit.coerceIn(1, SpeedDial.MAX_KEPT),
         ) { s ->
@@ -896,6 +896,7 @@ class LibraryIndex private constructor(
                     positionMs = s.getLong(3).coerceAtLeast(0),
                     durationMs = s.getLong(4).takeIf { it > 0 } ?: s.getLong(13).coerceAtLeast(0),
                     atMs = s.getLong(5),
+                    coverArt = CoverArt.keyOf(text(s, 14), text(s, 7).ifEmpty { "${KEY_SEPARATOR}m${id.chatId}:${id.messageId}" }),
                 )
             }
         }
@@ -920,6 +921,7 @@ class LibraryIndex private constructor(
                 thumbFileId = song.thumbFileId,
                 durationMs = song.durationMs,
                 atMs = s.getLong(SONG_COLUMN_COUNT) * 1000,
+                coverArt = CoverArt.keyOf(song.albumKey, song.groupKey),
             )
         }
     }
