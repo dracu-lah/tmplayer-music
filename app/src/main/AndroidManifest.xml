@@ -16,11 +16,17 @@
       on) across a restart: JobScheduler drops a persisted job without it. Nothing runs at boot itself.
     -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- The self-updater of the GitHub APK: hands the downloaded, checked update to Android's
-         installer, without its question where Android 12 and later allow that. A store build
-         takes both out again (src/store/AndroidManifest.xml, -PtmStore=true). -->
+    <!--
+      The self-updater of the GitHub APK: hands the downloaded, checked update to Android's
+      installer, and Android always asks the user to confirm. A store build takes it out again
+      (src/store/AndroidManifest.xml, -PtmStore=true).
+
+      UPDATE_PACKAGES_WITHOUT_USER_ACTION, which would let Android 12 and later install the app's
+      own update without asking, is not declared: next to REQUEST_INSTALL_PACKAGES it made Play
+      Protect call TMPlayer's sideloaded APK harmful (TMPlayer 1.28.3). Declaring it again turns the
+      silent update back on; SelfInstaller.silentAllowed checks for it.
+    -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <application
         android:name=".MusicApp"

@@ -1,5 +1,6 @@
 package com.tmplayer.music.data
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -27,10 +28,13 @@ import java.security.MessageDigest
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Installs a downloaded TMPlayer Music APK over this app, with as little asking as Android allows.
+ * Installs a downloaded TMPlayer Music APK over this app. Android asks the user to confirm: the
+ * manifest no longer declares UPDATE_PACKAGES_WITHOUT_USER_ACTION (Play Protect flagged it next to
+ * REQUEST_INSTALL_PACKAGES), so the silent path below stays off unless that permission is declared
+ * again.
  *
- * - **Android 12 and later**: a `PackageInstaller` session. Where [SilentUpdateRule] allows it the
- *   session asks for no confirmation, and Android replaces the app and ends this process without a
+ * - **Android 12 and later**: a `PackageInstaller` session. Where the permission is granted and
+ *   [SilentUpdateRule] allows it the session asks for no confirmation, and Android replaces the app and ends this process without a
  *   dialog. If the platform asks anyway (`STATUS_PENDING_USER_ACTION`) or aborts the silent
  *   session unasked, the refusal is remembered for this Android release and the user gets
  *   Android's question, now and from then on. A session a system component killed falls back to
@@ -97,7 +101,8 @@ object SelfInstaller {
     /**
      * Whether Android would install this app's next update without asking, judged on the
      * installed app (the update itself is judged again once it is downloaded). Before Android 12,
-     * or in a build without the updater, never.
+     * in a build without the updater, or without UPDATE_PACKAGES_WITHOUT_USER_ACTION (not declared
+     * now), never.
      */
     suspend fun canUpdateSilently(context: Context): Boolean {
         if (!Updates.enabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
@@ -109,6 +114,9 @@ object SelfInstaller {
     private suspend fun silentAllowed(context: Context, apkPackage: String, apkTargetSdk: Int): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         val app = context.applicationContext
+        // Not declared in the manifest (Play Protect flagged the pair with
+        // REQUEST_INSTALL_PACKAGES), so Android would only ask: do not try a silent session.
+        if (app.checkSelfPermission(Manifest.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION) != PackageManager.PERMISSION_GRANTED) return false
         val refused = runCatching { UpdateSettings(app).silentRefused() }.getOrDefault(0L)
         return SilentUpdateRule.allows(
             sdkInt = Build.VERSION.SDK_INT,

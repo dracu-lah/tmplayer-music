@@ -105,7 +105,8 @@ object UpdateRunner {
 
     /**
      * Fetches the APK (resuming a part left by an earlier try) and installs it ([SelfInstaller]):
-     * on Android 12 and later without Android's question where it allows that, else with it. The
+     * Android asks the user to confirm (a silent install only where the manifest declares
+     * UPDATE_PACKAGES_WITHOUT_USER_ACTION, which it does not now). The
      * space check is [Updates.download]'s, before a byte is fetched.
      */
     fun start(context: Context, release: Release) {
