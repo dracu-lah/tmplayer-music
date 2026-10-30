@@ -294,7 +294,7 @@ fun AccountMenu(
     onAbout: () -> Unit,
     onLogOut: () -> Unit,
 ) {
-    var open by remember { mutableStateOf(false) }
+    var open by remember { mutableStateOf(com.tmplayer.music.BuildHooks.takeAccountMenuAtStart()) }
     val profile by Account.profile.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { Account.load() }
     Box {

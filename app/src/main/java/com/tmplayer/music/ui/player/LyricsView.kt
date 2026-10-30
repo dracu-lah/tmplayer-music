@@ -220,7 +220,7 @@ private fun LyricsText(lyrics: Lyrics, state: PlayerState, shown: Boolean, sourc
                 )
             }
         }
-        if (source) {
+        if (source && com.tmplayer.music.BuildHooks.lyricsSourceShown()) {
             Text(
                 L.lyricsSource,
                 style = MaterialTheme.typography.labelSmall,

@@ -90,7 +90,7 @@ internal fun NowPlayingContent(
     onQueue: () -> Unit,
 ) {
     var sleepOpen by rememberSaveable { mutableStateOf(false) }
-    var showLyrics by rememberSaveable { mutableStateOf(false) }
+    var showLyrics by rememberSaveable { mutableStateOf(com.tmplayer.music.BuildHooks.takeLyricsAtStart()) }
     val anchor = remember { CoverAnchor() }
     val density = LocalDensity.current
     // The mini-player's row keeps clear of a side cutout or side navigation buttons in landscape.

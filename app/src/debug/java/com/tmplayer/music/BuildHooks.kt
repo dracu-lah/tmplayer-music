@@ -29,4 +29,13 @@ object BuildHooks {
     /** In the demo every track plays a generated tone of its own length; nothing asks Telegram. */
     @OptIn(UnstableApi::class)
     fun audioSource(): DataSource? = if (DemoMode.active) DemoAudioSource() else null
+
+    /** The demo serves its own invented lyrics, so there is no source to name under them. */
+    fun lyricsSourceShown(): Boolean = !DemoMode.active
+
+    /** True once when a demo launch asked for Now Playing with the lyrics page showing. */
+    fun takeLyricsAtStart(): Boolean = DemoMode.takeLyricsAtStart()
+
+    /** True once when a demo launch asked for the account menu open. */
+    fun takeAccountMenuAtStart(): Boolean = DemoMode.takeAccountMenuAtStart()
 }

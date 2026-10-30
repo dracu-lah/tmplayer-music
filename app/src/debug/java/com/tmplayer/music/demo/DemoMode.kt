@@ -18,14 +18,17 @@ package com.tmplayer.music.demo
  *     adb shell am start -n com.tmplayer.music.debug/com.tmplayer.music.MainActivity --ez demo true
  *
  * A process that is not in demo mode arms it (the marker file `files/demo_mode`) and restarts
- * itself, so the demo always runs in a process that never started Telegram. `scripts/screenshots.sh`
- * arms the marker with `run-as` first, so each shot starts straight in the demo.
+ * itself, so the demo always runs in a process that never started Telegram. The marker stays, so
+ * after that first start every launch with `--ez demo true` starts straight in the demo; this is how
+ * `scripts/screenshots.sh` works, with no `run-as` (which some phones refuse).
  *
  * Intent extras (all optional except `demo`):
  *
  *     --ez demo true            enter the demo (or stay in it); `--ez demo false` leaves it
  *     --es demo_screen NAME     home (default), chats, songs, albums, artists, playlists, favourites,
- *                               album, artist, playlist, settings, nowplaying, queue
+ *                               album, artist, playlist, settings, nowplaying, lyrics, queue, account
+ *                               (lyrics: Now Playing on its lyrics page, a line part way down lit;
+ *                               account: Home with the account menu open)
  *     (`demo_dark`, `demo_dynamic` and `demo_black` are ignored: the app has one look, pure black.)
  *     --ez demo_playing false   the player paused (playing by default)
  *     --es demo_album TITLE     the album for `album` (default Northern Glass)
@@ -102,6 +105,17 @@ internal object DemoMode {
 
     /** The options the queue was last started for, so turning the phone does not start it again. */
     private var playedFor: Options? = null
+
+    /** Asks, once each, for Now Playing on its lyrics page and for the account menu open. */
+    @Volatile
+    private var lyricsAtStart = false
+
+    @Volatile
+    private var accountMenuAtStart = false
+
+    fun takeLyricsAtStart(): Boolean = active && lyricsAtStart.also { lyricsAtStart = false }
+
+    fun takeAccountMenuAtStart(): Boolean = active && accountMenuAtStart.also { accountMenuAtStart = false }
     private var shownIn = WeakReference<ComponentActivity>(null)
 
     private fun marker(context: Context) = File(context.applicationContext.filesDir, MARKER)
@@ -130,6 +144,7 @@ internal object DemoMode {
         scope.launch {
             DemoLibrary.fill(File(folder, "covers2"))
             holdReady()
+            holdIdle()
             Library.notifyChanged()
             _loaded.value = true
         }
@@ -147,6 +162,22 @@ internal object DemoMode {
         }.onFailure { Logger.w(TAG, "could not mark the demo library ready", it) }.getOrNull() ?: return
         ready.value = true
         scope.launch { ready.collect { if (!it) ready.value = true } }
+    }
+
+    /**
+     * The tag reader is asked for the rows on screen and the track about to play, finds no Telegram
+     * (the demo never connects) and would wait for it for good, so Settings would say "Waiting for
+     * Telegram". Every file's tags are read already, so its status is held at finished and idle.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun holdIdle() {
+        val status = runCatching {
+            com.tmplayer.music.data.TagEnricher::class.java.getDeclaredField("_status").apply { isAccessible = true }
+                .get(Library.enricher) as MutableStateFlow<com.tmplayer.music.data.EnrichStatus>
+        }.onFailure { Logger.w(TAG, "could not hold the demo tag reader idle", it) }.getOrNull() ?: return
+        fun idle(s: com.tmplayer.music.data.EnrichStatus) = s.copy(running = false, waiting = false, paused = false, background = true)
+        status.value = idle(status.value)
+        scope.launch { status.collect { if (it.running || it.waiting || it.paused) status.value = idle(it) } }
     }
 
     fun takeOver(activity: ComponentActivity, intent: Intent?): Boolean {
@@ -181,6 +212,8 @@ internal object DemoMode {
 
     private fun show(activity: ComponentActivity, options: Options) {
         shownIn = WeakReference(activity)
+        lyricsAtStart = options.screen == Screen.Lyrics
+        accountMenuAtStart = options.screen == Screen.Account
         activity.enableBlackEdgeToEdge()
         PlayerConnection.connect(activity)
         options.screen.shelf?.let { shelf ->
@@ -234,12 +267,13 @@ internal object DemoMode {
         LaunchedEffect(state.connected) {
             if (!state.connected || playedFor == options) return@LaunchedEffect
             playedFor = options
-            runCatching { DemoLibrary.startQueue(options.playing) }.onFailure { Logger.w(TAG, "the demo queue did not start", it) }
+            val at = if (options.screen == Screen.Lyrics) DemoCatalog.LYRICS_POSITION_MS else DemoCatalog.NOW_POSITION_MS
+            runCatching { DemoLibrary.startQueue(options.playing, at) }.onFailure { Logger.w(TAG, "the demo queue did not start", it) }
         }
         val hasQueue = state.count > 0
         LaunchedEffect(hasQueue) {
             if (!hasQueue) return@LaunchedEffect
-            if (options.screen == Screen.NowPlaying || options.screen == Screen.Queue) {
+            if (options.screen == Screen.NowPlaying || options.screen == Screen.Lyrics || options.screen == Screen.Queue) {
                 // The sheet is composed once the queue is there; give it a moment to lay out.
                 delay(600)
                 sheet?.expand()
@@ -280,7 +314,9 @@ internal object DemoMode {
         Playlist("playlist", MainTab.Library, LibraryShelf.Playlists),
         Settings("settings", MainTab.Home),
         NowPlaying("nowplaying", MainTab.Home),
+        Lyrics("lyrics", MainTab.Home),
         Queue("queue", MainTab.Home),
+        Account("account", MainTab.Home),
         ;
 
         companion object {

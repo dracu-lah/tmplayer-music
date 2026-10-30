@@ -29,4 +29,13 @@ object BuildHooks {
     /** A source for the player's `tdfile` audio in place of Telegram's (none here). */
     @OptIn(UnstableApi::class)
     fun audioSource(): DataSource? = null
+
+    /** Whether the lyrics page names where its lines came from (always here). */
+    fun lyricsSourceShown(): Boolean = true
+
+    /** Whether Now Playing opens on its lyrics page (never here). */
+    fun takeLyricsAtStart(): Boolean = false
+
+    /** Whether the account menu opens by itself (never here). */
+    fun takeAccountMenuAtStart(): Boolean = false
 }

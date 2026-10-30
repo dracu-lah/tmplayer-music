@@ -2,6 +2,7 @@ package com.tmplayer.music.demo
 
 import com.tmplayer.music.library.AudioFormat
 import com.tmplayer.music.library.ChatPick
+import com.tmplayer.music.library.GroupKey
 import com.tmplayer.music.library.TagState
 import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
@@ -153,6 +154,12 @@ internal object DemoCatalog {
     const val NOW_TRACK = 1
     const val NOW_POSITION_MS = 83_000L
 
+    /**
+     * Where `demo_screen lyrics` starts the same track: 1:34 into its 3:46, so a line part way down
+     * the invented lyric is lit, with lines above and below it ([DemoLyrics]).
+     */
+    const val LYRICS_POSITION_MS = 94_000L
+
     /** The album page shown by `demo_screen album`, unless `demo_album` names another. */
     const val PAGE_ALBUM = "Northern Glass"
 
@@ -226,6 +233,10 @@ internal object DemoCatalog {
                 tagState = TagState.Read,
                 coverKey = album.coverKey,
                 channels = 2,
+                // Keyed as the real mapper keys a file, so the second copies fold into one row with
+                // Versions (84 songs, 89 files) instead of showing the same title twice.
+                groupKey = GroupKey.of(title, album.artist, ms),
+                variant = GroupKey.variantOf(title),
             )
         }
         albums.forEachIndexed { a, album ->

@@ -71,13 +71,13 @@ internal object DemoLibrary {
         }
     }
 
-    /** The queue the demo opens with, at its track and spot; paused when [playing] is false. Main thread. */
-    suspend fun startQueue(playing: Boolean) {
+    /** The queue the demo opens with, at its track and [positionMs] in it; paused when [playing] is false. Main thread. */
+    suspend fun startQueue(playing: Boolean, positionMs: Long = DemoCatalog.NOW_POSITION_MS) {
         val index = Library.index()
         val album = index.albums(null, 100).firstOrNull { it.title == DemoCatalog.NOW_ALBUM } ?: return
         val songs = index.albumSongs(album.key)
         if (songs.isEmpty()) return
-        PlayerConnection.play(songs, DemoCatalog.NOW_TRACK.coerceIn(0, songs.lastIndex), positionMs = DemoCatalog.NOW_POSITION_MS)
+        PlayerConnection.play(songs, DemoCatalog.NOW_TRACK.coerceIn(0, songs.lastIndex), positionMs = positionMs)
         if (!playing) PlayerConnection.pause()
     }
 }
