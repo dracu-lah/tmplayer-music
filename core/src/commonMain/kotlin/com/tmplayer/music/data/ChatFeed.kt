@@ -27,9 +27,11 @@ sealed interface FeedStep {
  *
  * Newest first pages from the newest message down ([PageResult.Page.nextFromMessageId] is the next
  * cursor). Oldest first starts at the oldest message and pages up with a negative offset, the newest
- * id of a page being the next cursor. A message seen twice is kept once. A flood wait is waited out
- * by the call that got it (up to [MAX_WAIT_S], [onWait] tells the screen), and then the same page is
- * asked again.
+ * id of a page being the next cursor; a page with nothing newer is the end only when the search's
+ * newest message is not further on (else it is asked again, [MAX_EMPTY] times at most). A message
+ * seen twice is kept once. A flood wait is waited out by the call that got it (up to [MAX_WAIT_S],
+ * [onWait] tells the screen), and then the same page is asked again. A failed page leaves the cursor
+ * where it was, so Try again asks the same page.
  *
  * [fetch] is TDLib's `searchChatMessages` behind a seam: (pass, fromMessageId, offset, limit).
  */
@@ -43,6 +45,9 @@ class ChatFeed(
         var cursor = 0L
         var started = false
         var ended = false
+
+        /** Pages in a row that brought nothing while the search's newest message is further on. */
+        var empty = 0
 
         /** The message id this search has reached: the lowest seen newest first, the highest oldest first. */
         var frontier = 0L
@@ -68,27 +73,57 @@ class ChatFeed(
     /** One page of the search furthest behind. */
     suspend fun next(): FeedStep {
         val stream = behind() ?: return FeedStep.End
+        val (from, offset) = when {
+            order == ChatOrder.NewestFirst -> (if (stream.started) stream.cursor else 0L) to 0
+            // From the oldest message up: a negative offset asks for the page after from.
+            else -> (if (stream.started) stream.cursor else 1L) to -(PAGE - 1)
+        }
+        val page = when (val result = ask(stream.pass, from, offset, PAGE)) {
+            is PageResult.Page -> result
+            is PageResult.Failed -> return failed(result)
+            is PageResult.FloodWait -> return failed(PageResult.Failed("FLOOD_WAIT_${result.seconds}"))
+        }
+        if (order == ChatOrder.OldestFirst && page.messageIds.none { it > from }) {
+            // Nothing newer than the cursor: the end of the chat, unless the newest message of this
+            // search says otherwise (Telegram can answer a page with nothing). Then the same page is
+            // asked again on the next call, and after a few such answers the page says it failed.
+            val probe = when (val result = ask(stream.pass, 0L, 0, 1)) {
+                is PageResult.Page -> result
+                is PageResult.Failed -> return failed(result)
+                is PageResult.FloodWait -> return failed(PageResult.Failed("FLOOD_WAIT_${result.seconds}"))
+            }
+            val newest = probe.messageIds.maxOrNull()
+            if (newest != null && newest > from) {
+                if (++stream.empty >= MAX_EMPTY) {
+                    stream.empty = 0
+                    return FeedStep.Failed(Failures.DEFAULT, notAvailable = false)
+                }
+                return FeedStep.Added(emptyList())
+            }
+        }
+        stream.empty = 0
+        return take(stream, from, page)
+    }
+
+    /** One fetch, a flood wait waited out (up to [MAX_WAITS] times, each up to [MAX_WAIT_S]). */
+    private suspend fun ask(pass: ScanPass, from: Long, offset: Int, limit: Int): PageResult {
         var waits = 0
         while (true) {
-            val (from, offset) = when {
-                order == ChatOrder.NewestFirst -> (if (stream.started) stream.cursor else 0L) to 0
-                // From the oldest message up: a negative offset asks for the page after from.
-                else -> (if (stream.started) stream.cursor else 1L) to -(PAGE - 1)
-            }
-            when (val result = fetch(stream.pass, from, offset, PAGE)) {
-                is PageResult.Page -> return take(stream, from, result)
-                is PageResult.FloodWait -> {
-                    if (++waits > MAX_WAITS || result.seconds > MAX_WAIT_S) {
-                        return FeedStep.Failed(Failures.humanise("FLOOD_WAIT_${result.seconds}"), notAvailable = false)
-                    }
-                    onWait(result.seconds)
-                    wait(result.seconds)
-                    onWait(0)
-                }
-                is PageResult.Failed -> return FeedStep.Failed(Failures.humanise(result.message), isGone(result.message))
+            val result = fetch(pass, from, offset, limit)
+            if (result !is PageResult.FloodWait) return result
+            if (++waits > MAX_WAITS || result.seconds > MAX_WAIT_S) return result
+            onWait(result.seconds)
+            try {
+                wait(result.seconds)
+            } finally {
+                // Also when the page is left mid wait, so the screen does not keep saying it waits.
+                onWait(0)
             }
         }
     }
+
+    private fun failed(result: PageResult.Failed): FeedStep.Failed =
+        FeedStep.Failed(Failures.humanise(result.message), isGone(result.message))
 
     private fun behind(): Stream? {
         val open = streams.filter { !it.ended }
@@ -101,9 +136,13 @@ class ChatFeed(
         val first = !stream.started
         stream.started = true
         if (order == ChatOrder.NewestFirst) {
-            ids.minOrNull()?.let { low -> stream.frontier = if (first) low else minOf(stream.frontier, low) }
-            stream.cursor = page.nextFromMessageId
-            if (page.nextFromMessageId == 0L || ids.isEmpty()) stream.ended = true
+            val next = page.nextFromMessageId
+            // Telegram can answer a page with nothing but a cursor further down: go on from there.
+            val moved = next != 0L && (from == 0L || next < from)
+            val low = ids.minOrNull() ?: next.takeIf { moved }
+            low?.let { stream.frontier = if (first) it else minOf(stream.frontier, it) }
+            stream.cursor = next
+            if (next == 0L || (ids.isEmpty() && !moved)) stream.ended = true
         } else {
             val newer = ids.filter { it > from }
             val high = (newer.maxOrNull() ?: from)
@@ -124,6 +163,9 @@ class ChatFeed(
         const val PAGE = 100
         const val MAX_WAITS = 5
         const val MAX_WAIT_S = 600
+
+        /** Empty answers in a row, short of the chat's end, before a page says it failed. */
+        const val MAX_EMPTY = 3
 
         /** Bounds the ids remembered for removing repeats; past it a repeat can come through once. */
         private const val MAX_SEEN = 100_000

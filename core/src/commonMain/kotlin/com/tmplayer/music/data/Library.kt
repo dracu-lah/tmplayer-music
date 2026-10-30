@@ -436,6 +436,19 @@ object Library {
         override suspend fun byIds(chatId: Long, messageIds: Collection<Long>): Map<Long, Track> =
             index().chatTracksByIds(chatId, messageIds)
 
+        override suspend fun scannedDownTo(chatId: Long): Long? {
+            val scan = index().scanState(chatId) ?: return null
+            // A pass that has not read a page (cursor 0, not done) says nothing yet.
+            fun mark(c: ScanCursor): Long? = when {
+                c.done -> Long.MIN_VALUE
+                c.fromMessageId == 0L -> null
+                else -> c.fromMessageId
+            }
+            val audio = mark(scan.audio) ?: return null
+            val documents = mark(scan.documents) ?: return null
+            return maxOf(audio, documents)
+        }
+
         override suspend fun addMissing(tracks: List<Track>) {
             FileIds.prime(tracks)
             if (index().upsertMissing(tracks) > 0) notifyChangedSoon()

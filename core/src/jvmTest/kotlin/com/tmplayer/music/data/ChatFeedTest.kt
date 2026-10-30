@@ -30,27 +30,47 @@ class ChatFeedTest {
         val documents: List<Long>,
         val other: List<Long> = emptyList(),
         val page: Int = 10,
+        /** Newest first, a full last page still hands a cursor on, and the page after it is empty. */
+        val lazyEnd: Boolean = false,
+        /** Messages the search passes over without returning them (the cursor still moves past them). */
+        val hollow: List<Long> = emptyList(),
     ) {
         val calls = ArrayList<Triple<ScanPass, Long, Int>>()
         var floodOnce = 0
+        var floodAlways = 0
         var fail: String? = null
 
+        /** The next this many pages (not the one message probes) come back empty. */
+        var emptyPages = 0
+
+        /** The page calls, without the one message probes for the newest message. */
+        val pages = ArrayList<Triple<ScanPass, Long, Int>>()
+
         fun fetch(pass: ScanPass, from: Long, offset: Int, limit: Int): PageResult {
-            calls += Triple(pass, from, offset)
+            val call = Triple(pass, from, offset)
+            calls += call
+            if (limit > 1) pages += call
             fail?.let { return PageResult.Failed(it) }
+            if (floodAlways > 0) return PageResult.FloodWait(floodAlways)
             if (floodOnce > 0) {
                 val s = floodOnce
                 floodOnce = 0
                 return PageResult.FloodWait(s)
             }
-            val all = (if (pass == ScanPass.Audio) audio else documents + other).sortedDescending()
+            if (limit > 1 && emptyPages > 0) {
+                emptyPages--
+                return PageResult.Page(emptyList(), emptyList(), if (offset == 0) from else 0L)
+            }
+            val all = (if (pass == ScanPass.Audio) audio + hollow else documents + other).sortedDescending()
             val n = minOf(page, limit)
-            val ids = if (offset == 0) {
+            val window = if (offset == 0) {
                 all.filter { from == 0L || it < from }.take(n)
             } else {
                 all.filter { it >= from }.sorted().take(n).sortedDescending()
             }
-            val next = if (offset == 0 && ids.size == n && all.any { it < ids.min() }) ids.min() else 0L
+            val ids = window.filter { it !in hollow }
+            val more = window.isNotEmpty() && all.any { it < window.min() }
+            val next = if (offset == 0 && window.size == n && (more || lazyEnd)) window.min() else 0L
             return PageResult.Page(ids, ids.filter { it !in other }.map { Mapped.Audio(track(it)) }, next)
         }
     }
@@ -90,7 +110,7 @@ class ChatFeedTest {
         val got = drain(feed(chat, ChatOrder.OldestFirst))
         assertEquals((audio + documents).sorted(), got.sorted())
         assertEquals(1L, chat.calls.first().second)
-        assertTrue(chat.calls.all { it.third == -(ChatFeed.PAGE - 1) })
+        assertTrue(chat.pages.all { it.third == -(ChatFeed.PAGE - 1) })
     }
 
     @Test
@@ -135,7 +155,9 @@ class ChatFeedTest {
 
     // The loader
 
-    private class FakeStore(var done: Boolean?, indexed: List<Track>) : ChatStore {
+    private class FakeStore(var done: Boolean?, indexed: List<Track>, val scanMark: Long? = null) : ChatStore {
+        override suspend fun scannedDownTo(chatId: Long) = scanMark
+
         val rows = java.util.TreeMap<Long, Track>().apply { indexed.forEach { put(it.messageId, it) } }
         val added = ArrayList<Long>()
 
@@ -162,7 +184,240 @@ class ChatFeedTest {
         order: ChatOrder,
         online: MutableStateFlow<Boolean> = MutableStateFlow(true),
         mask: Int = 0,
-    ) = ChatLoader(7, order, store, { o, onWait -> ChatFeed(o, { p, f, off, l -> chat.fetch(p, f, off, l) }, onWait, wait = {}) }, online, { mask })
+        gate: (suspend () -> Unit)? = null,
+        wait: suspend (Int) -> Unit = {},
+    ) = ChatLoader(7, order, store, { o, onWait ->
+        ChatFeed(o, { p, f, off, l ->
+            gate?.invoke()
+            chat.fetch(p, f, off, l)
+        }, onWait, wait = wait)
+    }, online, { mask })
+
+    // The rows shown are always the start of the chat's list (the bug: rows older than the first one
+    // turned up above it while scrolling, oldest first on an unscanned chat).
+
+    /** Every list the page publishes must be the start of [expected]: nothing above the first, nothing between. */
+    private fun ChatLoader.checkPrefix(expected: List<Long>, seen: MutableList<List<Long>>) {
+        val rows = state.value.rows.map { it.messageId }
+        seen += rows
+        assertEquals(expected.take(rows.size), rows, "the rows shown are the start of the chat's list")
+    }
+
+    private suspend fun ChatLoader.drainChecked(expected: List<Long>): List<List<Long>> {
+        val seen = ArrayList<List<Long>>()
+        start()
+        checkPrefix(expected, seen)
+        var steps = 0
+        while (!state.value.end && state.value.problem == null && steps++ < 1_000) {
+            more()
+            checkPrefix(expected, seen)
+        }
+        assertTrue(state.value.end, "the page reached the end")
+        assertEquals(expected, state.value.rows.map { it.messageId })
+        return seen
+    }
+
+    /** A large chat: lossless documents are the oldest files, audio messages come later (35,865 track chat). */
+    private val oldDocs = (5L..304L).toList()
+    private val laterAudio = (1_000L..1_449L).toList()
+
+    @Test
+    fun oldestFirstStartsAtTheTrueOldestWhenTheOtherSearchHoldsIt() = runTest {
+        val chat = FakeChat(laterAudio, oldDocs, page = 100)
+        val l = loader(chat, FakeStore(done = false, indexed = emptyList()), ChatOrder.OldestFirst)
+        val expected = (laterAudio + oldDocs).sorted()
+        val seen = l.drainChecked(expected)
+        assertEquals(5L, seen.first { it.isNotEmpty() }.first(), "the first row shown is the chat's oldest")
+    }
+
+    @Test
+    fun newestFirstStartsAtTheTrueNewestWhenTheOtherSearchHoldsIt() = runTest {
+        // The symmetric case: the newest files are documents, the audio search answers first.
+        val chat = FakeChat((5L..304L).toList(), (1_000L..1_449L).toList(), page = 100)
+        val l = loader(chat, FakeStore(done = false, indexed = emptyList()), ChatOrder.NewestFirst)
+        val expected = (5L..304L).toList().plus(1_000L..1_449L).sortedDescending()
+        val seen = l.drainChecked(expected)
+        assertEquals(1_449L, seen.first { it.isNotEmpty() }.first())
+        assertEquals(5L, l.state.value.rows.last().messageId, "the bottom end is the chat's oldest")
+    }
+
+    @Test
+    fun oldestFirstNeverShowsTheIndexOfAnUnscannedChatFirst() = runTest {
+        // The scan started at the newest end: the index holds the middle and the top, not the start.
+        val chat = FakeChat(laterAudio, oldDocs, page = 100)
+        val store = FakeStore(done = false, indexed = laterAudio.takeLast(200).map { track(it).copy(title = "Tagged $it") }, scanMark = 1_250)
+        val l = loader(chat, store, ChatOrder.OldestFirst)
+        l.drainChecked((laterAudio + oldDocs).sorted())
+        assertEquals("Tagged 1449", l.state.value.rows.last().title, "the index's copy still wins")
+    }
+
+    @Test
+    fun newestFirstShowsTheIndexAboveTheScanMarkAtOnce() = runTest {
+        val chat = FakeChat(laterAudio, oldDocs, page = 100)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val store = FakeStore(done = false, indexed = laterAudio.takeLast(50).map(::track), scanMark = 1_400)
+        val l = loader(chat, store, ChatOrder.NewestFirst, gate = { gate.await() })
+        val job = launch { l.start() }
+        runCurrent()
+        assertEquals((1_449L downTo 1_400L).toList(), l.state.value.rows.map { it.messageId }, "before Telegram answers")
+        gate.complete(Unit)
+        job.join()
+        val expected = (laterAudio + oldDocs).sortedDescending()
+        assertEquals(expected.take(l.state.value.rows.size), l.state.value.rows.map { it.messageId })
+    }
+
+    @Test
+    fun newestFirstHidesTheIndexWhenTheScanHasNotReadBothSearches() = runTest {
+        // Only the audio pass has run: a document newer than every audio file must not land on top later.
+        val docs = oldDocs + 2_000L
+        val chat = FakeChat(laterAudio, docs, page = 100)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val store = FakeStore(done = false, indexed = laterAudio.map(::track), scanMark = null)
+        val l = loader(chat, store, ChatOrder.NewestFirst, gate = { gate.await() })
+        val job = launch { l.start() }
+        runCurrent()
+        assertTrue(l.state.value.rows.isEmpty())
+        gate.complete(Unit)
+        job.join()
+        assertEquals(2_000L, l.state.value.rows.first().messageId)
+        l.drainChecked((laterAudio + docs).sortedDescending())
+    }
+
+    @Test
+    fun anEmptyChatAndAChatSmallerThanAPageEndInBothOrders() = runTest {
+        for (order in ChatOrder.entries) {
+            val empty = loader(FakeChat(emptyList(), emptyList(), page = 100), FakeStore(done = false, indexed = emptyList()), order)
+            empty.drainChecked(emptyList())
+            val small = listOf(3L, 8, 13)
+            val tiny = loader(FakeChat(small, listOf(10L), page = 100), FakeStore(done = false, indexed = emptyList()), order)
+            val expected = (small + 10L).let { if (order == ChatOrder.OldestFirst) it.sorted() else it.sortedDescending() }
+            tiny.drainChecked(expected)
+        }
+    }
+
+    @Test
+    fun historyEndingExactlyOnAPageBoundary() = runTest {
+        for (order in ChatOrder.entries) for (lazy in listOf(false, true)) {
+            val a = (1L..10L).toList()
+            val d = (11L..30L).toList()
+            val chat = FakeChat(a, d, page = 10, lazyEnd = lazy)
+            val l = loader(chat, FakeStore(done = false, indexed = emptyList()), order)
+            val expected = (a + d).let { if (order == ChatOrder.OldestFirst) it.sorted() else it.sortedDescending() }
+            l.drainChecked(expected)
+            assertTrue(chat.calls.size < 20, "no extra pages past the end ($order, lazy $lazy): ${chat.calls.size}")
+        }
+    }
+
+    @Test
+    fun aFailedOrLongFloodWaitPageStopsAndTryAgainGoesOnFromTheSamePage() = runTest {
+        for (order in ChatOrder.entries) {
+            val chat = FakeChat(laterAudio, oldDocs, page = 100)
+            val l = loader(chat, FakeStore(done = false, indexed = emptyList()), order)
+            l.start()
+            val before = l.state.value.rows
+            chat.floodAlways = 7
+            l.more()
+            assertIs<ChatProblem.Failed>(l.state.value.problem)
+            assertTrue(chat.calls.size < 20, "flood waits are bounded")
+            chat.floodAlways = 0
+            chat.fail = "timeout"
+            val calls = chat.calls.size
+            l.more()
+            assertEquals(calls + 1, chat.calls.size, "a failure is not retried by itself")
+            assertEquals(before, l.state.value.rows)
+            chat.fail = null
+            l.retry()
+            val expected = (laterAudio + oldDocs).let { if (order == ChatOrder.OldestFirst) it.sorted() else it.sortedDescending() }
+            val seen = ArrayList<List<Long>>()
+            while (!l.state.value.end && l.state.value.problem == null) {
+                l.more()
+                l.checkPrefix(expected, seen)
+            }
+            assertEquals(expected, l.state.value.rows.map { it.messageId })
+        }
+    }
+
+    @Test
+    fun leavingMidLoadOrSwitchingOrderLosesNothingAndClearsTheWait() = runTest {
+        val chat = FakeChat(laterAudio, oldDocs, page = 100)
+        val store = FakeStore(done = false, indexed = emptyList())
+        val l = loader(chat, store, ChatOrder.OldestFirst, wait = { kotlinx.coroutines.delay(it * 1000L) })
+        chat.floodOnce = 30
+        val job = launch { l.start() }
+        runCurrent()
+        assertEquals(ChatProblem.Waiting(30), l.state.value.problem)
+        // The user switches to Newest first: this page's work is cancelled mid wait.
+        job.cancel()
+        job.join()
+        assertNull(l.state.value.problem, "the wait note does not stay after the page is left")
+        val other = loader(chat, store, ChatOrder.NewestFirst)
+        other.drainChecked((laterAudio + oldDocs).sortedDescending())
+        // Back to Oldest first: the same loader goes on from where it stopped.
+        val expected = (laterAudio + oldDocs).sorted()
+        val seen = ArrayList<List<Long>>()
+        l.start()
+        while (!l.state.value.end && l.state.value.problem == null) {
+            l.more()
+            l.checkPrefix(expected, seen)
+        }
+        assertEquals(expected, l.state.value.rows.map { it.messageId })
+    }
+
+    @Test
+    fun cancelledWhileTheIndexIsAskedKeepsTheRowsTheFeedAlreadyCounted() = runTest {
+        val chat = FakeChat(laterAudio, oldDocs, page = 100)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val store = object : ChatStore by FakeStore(done = false, indexed = emptyList()) {
+            override suspend fun byIds(chatId: Long, messageIds: Collection<Long>): Map<Long, Track> {
+                gate.await()
+                return emptyMap()
+            }
+        }
+        val l = loader(chat, store, ChatOrder.OldestFirst)
+        val job = launch { l.start() }
+        runCurrent()
+        job.cancel()
+        job.join()
+        gate.complete(Unit)
+        val expected = (laterAudio + oldDocs).sorted()
+        val seen = ArrayList<List<Long>>()
+        while (!l.state.value.end && l.state.value.problem == null) {
+            l.more()
+            l.checkPrefix(expected, seen)
+        }
+        assertEquals(expected, l.state.value.rows.map { it.messageId })
+    }
+
+    @Test
+    fun anEmptyAnswerShortOfTheEndIsAskedAgainNotTakenAsTheEnd() = runTest {
+        val chat = FakeChat(laterAudio, oldDocs, page = 100)
+        val f = feed(chat, ChatOrder.OldestFirst)
+        assertIs<FeedStep.Added>(f.next())
+        chat.emptyPages = 1
+        assertEquals(emptyList(), (f.next() as FeedStep.Added).tracks)
+        assertTrue(!f.ended)
+        val rest = drain(f)
+        assertEquals((laterAudio + oldDocs).size, rest.size + 100)
+
+        // Empty again and again: the page says it failed, and asks no more by itself.
+        val stuck = FakeChat(laterAudio, oldDocs, page = 100)
+        val g = feed(stuck, ChatOrder.OldestFirst)
+        g.next()
+        stuck.emptyPages = 1_000
+        var step: FeedStep = g.next()
+        var n = 0
+        while (step is FeedStep.Added && n++ < 10) step = g.next()
+        assertIs<FeedStep.Failed>(step)
+        assertTrue(n < ChatFeed.MAX_EMPTY, "bounded retries")
+    }
+
+    @Test
+    fun newestFirstGoesOnPastAPageWithNothingButACursor() = runTest {
+        // A page of messages the search passes over (deleted, say) comes back empty with a cursor.
+        val a = (100L..109L).toList() + (1L..10L).toList()
+        val chat = FakeChat(a, emptyList(), page = 10, hollow = (50L..59L).toList())
+        assertEquals(a.sortedDescending(), drain(feed(chat, ChatOrder.NewestFirst)))
+    }
 
     @Test
     fun aScannedChatPagesFromTheIndexAloneInBothOrders() = runTest {
@@ -213,7 +468,7 @@ class ChatFeedTest {
     fun offlineTheIndexRowsShowAndThePageWaits() = runTest {
         val chat = FakeChat(audio, documents)
         val online = MutableStateFlow(false)
-        val l = loader(chat, FakeStore(done = false, indexed = listOf(track(130))), ChatOrder.NewestFirst, online)
+        val l = loader(chat, FakeStore(done = false, indexed = listOf(track(130)), scanMark = 130), ChatOrder.NewestFirst, online)
         val job = launch { l.start() }
         runCurrent()
         assertEquals(listOf(130L), l.state.value.rows.map { it.messageId })

@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.TreeMap
 
 /** What the chat page reads the index through; [Library] answers it, the tests fake it. */
@@ -26,6 +25,12 @@ interface ChatStore {
 
     /** Stores files read from Telegram that the index does not hold yet, so they play and get their tags. */
     suspend fun addMissing(tracks: List<Track>)
+
+    /**
+     * The message id down to which the chat's scan has read both searches from the newest end (every
+     * file at or above it is in the index), or null when one of them has not read a page yet.
+     */
+    suspend fun scannedDownTo(chatId: Long): Long? = null
 }
 
 /** Why a chat page cannot show more right now. */
@@ -64,10 +69,15 @@ data class ChatPageState(
  * - A chat whose scan has finished is read from the index alone, by message id (keyset), so its first
  *   rows show at once and a page deep in 20,000 tracks costs what the first does.
  * - Any other chat is read from Telegram through a [ChatFeed] (audio and document searches merged by
- *   message id). What the index already holds of it shows at once (newest first, where the scan has
- *   been), or after [FIRST_BUDGET_MS] without an answer (oldest first); Telegram's rows then fill in
- *   around it, each replaced by the index's copy when that has its tags read. Rows the index lacks are
- *   added to it, so they play, get their tags and show in the library.
+ *   message id). Newest first, what the index holds above the scan's mark ([ChatStore.scannedDownTo])
+ *   shows at once; oldest first nothing does, as the scan starts at the newest end and the index never
+ *   holds the start of an unscanned chat. Each of Telegram's rows is replaced by the index's copy when
+ *   that has its tags read. Rows the index lacks are added to it, so they play, get their tags and
+ *   show in the library.
+ * - Only rows up to the mark where the gathered rows are known to be whole are shown ([ChatFeed.complete],
+ *   or the index's mark newest first), so the rows shown are always the start of the chat's list in
+ *   the page's order: a later page only adds rows after the last one, never above the first or in
+ *   between. Rows past the mark wait until both searches pass them.
  *
  * Offline it says so and waits for the connection; a flood wait is waited out by the feed; a chat
  * that is gone says so (clean up is offered by the screen); a chat removed while open says so. Rows
@@ -81,7 +91,6 @@ class ChatLoader(
     private val feedOf: (ChatOrder, onWait: (Int) -> Unit) -> ChatFeed,
     private val online: StateFlow<Boolean>,
     private val hiddenMask: () -> Int = { 0 },
-    private val firstBudgetMs: Long = FIRST_BUDGET_MS,
 ) {
     private val _state = MutableStateFlow(ChatPageState())
     val state: StateFlow<ChatPageState> = _state.asStateFlow()
@@ -91,6 +100,9 @@ class ChatLoader(
     private var feed: ChatFeed? = null
     private var indexAfter: Long? = null
     private var indexEnd = false
+
+    /** Newest first: the message id down to which the index's preview is whole, null when not known. */
+    private var previewMark: Long? = null
     private var shownMask = -1
 
     /** Where the list was scrolled to, so coming back to the page lands there again. */
@@ -122,12 +134,7 @@ class ChatLoader(
                 // Newest first, the index holds the top of the chat already (the scan starts there).
                 if (!oldestFirst) addIndexPreview()
                 _state.update { it.copy(started = true) }
-                val first = withTimeoutOrNull(firstBudgetMs) { feedSteps() }
-                if (first == null) {
-                    // Telegram is slow: what the index holds shows now, Telegram's rows come in around it.
-                    if (oldestFirst) addIndexPreview()
-                    feedSteps()
-                }
+                feedSteps()
             }
         }
     }
@@ -170,8 +177,16 @@ class ChatLoader(
     fun shown(): List<Track> = _state.value.rows
 
     private suspend fun addIndexPreview() {
-        val page = store.indexPage(chatId, oldestFirst, null, PAGE)
+        val scanned = store.scannedDownTo(chatId)
+        val page = store.indexPage(chatId, false, null, PAGE)
         for (t in page) rows.putIfAbsent(t.messageId, t)
+        // A full page may stop above the scan's mark: the preview is whole down to its last row then.
+        val last = page.lastOrNull()?.messageId
+        previewMark = when {
+            scanned == null -> null
+            page.size >= PAGE && last != null -> maxOf(scanned, last)
+            else -> scanned
+        }
         publish()
     }
 
@@ -191,6 +206,7 @@ class ChatLoader(
      */
     private suspend fun feedSteps(): Boolean {
         val source = feed ?: return true
+        val visibleBefore = visibleCount()
         var added = 0
         var steps = 0
         while (steps < MAX_STEPS && added < MIN_NEW && rows.size < MAX_ROWS) {
@@ -214,12 +230,30 @@ class ChatLoader(
                 is FeedStep.Added -> {
                     val tracks = step.tracks
                     if (tracks.isNotEmpty()) {
-                        val known = runCatching { store.byIds(chatId, tracks.map { it.messageId }) }.getOrDefault(emptyMap())
+                        // Kept before anything suspends: leaving the page now must not lose rows the
+                        // feed has already counted as seen.
+                        for (t in tracks) rows.putIfAbsent(t.messageId, t)
+                        val known = try {
+                            store.byIds(chatId, tracks.map { it.messageId })
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            emptyMap()
+                        }
                         val missing = tracks.filter { it.messageId !in known }
-                        if (missing.isNotEmpty()) runCatching { store.addMissing(missing) }
-                        for (t in tracks) rows[t.messageId] = known[t.messageId] ?: t
-                        added += tracks.size
+                        if (missing.isNotEmpty()) {
+                            try {
+                                store.addMissing(missing)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                // They still show and play; the scan stores them later.
+                            }
+                        }
+                        for ((id, t) in known) if (id in rows) rows[id] = t
                     }
+                    // Rows past the whole mark do not count: they wait for the other search.
+                    added = visibleCount() - visibleBefore
                 }
             }
         }
@@ -227,11 +261,27 @@ class ChatLoader(
         return true
     }
 
+    /**
+     * The rows that may show, in the page's order: all of them read from the index alone, else those
+     * up to the mark where the gathered rows are whole (none before it is known).
+     */
+    private fun visibleRows(): Collection<Track> {
+        val source = feed ?: return if (oldestFirst) rows.values else rows.descendingMap().values
+        val marks = listOfNotNull(source.complete, previewMark.takeIf { !oldestFirst })
+        if (marks.isEmpty()) return emptyList()
+        return if (oldestFirst) {
+            rows.headMap(marks.max(), true).values
+        } else {
+            rows.tailMap(marks.min(), true).descendingMap().values
+        }
+    }
+
+    private fun visibleCount(): Int = visibleRows().size
+
     private fun publish(loading: Boolean = _state.value.loading, end: Boolean = _state.value.end) {
         val mask = hiddenMask()
         shownMask = mask
-        val ordered = if (oldestFirst) rows.values else rows.descendingMap().values
-        val list = ordered.filter { !ClipRules.hidden(it, mask) }
+        val list = visibleRows().filter { !ClipRules.hidden(it, mask) }
         _state.update { it.copy(rows = list, loading = loading, end = end) }
     }
 
@@ -248,9 +298,6 @@ class ChatLoader(
 
     companion object {
         const val PAGE = 100
-
-        /** The first rows from Telegram are waited for this long before the index's show (oldest first). */
-        const val FIRST_BUDGET_MS = 3_000L
 
         /** Pages read per [more] at most, so a chat of mostly other documents cannot hold the list. */
         const val MAX_STEPS = 4
