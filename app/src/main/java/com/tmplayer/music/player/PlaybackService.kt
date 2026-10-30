@@ -1,0 +1,276 @@
+package com.tmplayer.music.player
+
+import android.app.PendingIntent
+import android.content.Intent
+import android.net.Uri
+import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSourceBitmapLoader
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.CacheBitmapLoader
+import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
+import com.google.common.util.concurrent.SettableFuture
+import com.tmplayer.music.MainActivity
+import com.tmplayer.music.R
+import com.tmplayer.music.data.Failures
+import com.tmplayer.music.data.Library
+import com.tmplayer.music.i18n.L
+import com.tmplayer.music.library.Track
+import com.tmplayer.music.library.TrackId
+import com.tmplayer.music.platform.JobFailures
+import com.tmplayer.music.platform.Logger
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+/**
+ * The music player and its media session, alive while anything is connected to it or it plays:
+ * the app's screens, the notification, the lock screen, Bluetooth and car displays.
+ *
+ * Audio focus, a headset being unplugged (pause) and the wake lock are Media3's, switched on here.
+ * Gapless playback is ExoPlayer's own between items of the playlist. FLAC, Opus and ALAC fall back
+ * to FFmpeg where the phone has no decoder (Android 6 and 7 have none for FLAC).
+ *
+ * Nothing autoplays: there is no media button receiver, so a headset or a car connecting cannot
+ * start the service, and the queue restored on open is paused. A track that cannot be played is
+ * skipped with its reason shown ([PlaybackErrors]); three failures in a row stop the skipping.
+ */
+@OptIn(UnstableApi::class)
+class PlaybackService : MediaSessionService() {
+
+    private val scope = JobFailures.scope("PlaybackService", Dispatchers.Main.immediate)
+    private var session: MediaSession? = null
+    private var failuresInARow = 0
+    private var saveJob: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notify) },
+        )
+        val sources = TdDataSource.Factory(this)
+        val renderers = NextRenderersFactory(this).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        val player = ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(sources))
+            .setAudioAttributes(
+                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
+                true,
+            )
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .build()
+        player.addListener(Watcher(player))
+        val open = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        session = MediaSession.Builder(this, player)
+            .setSessionActivity(open)
+            .setCallback(Callback())
+            .setBitmapLoader(CacheBitmapLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(sources).build()))
+            .build()
+        restore(player)
+    }
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val player = session?.player
+        save()
+        // Swiped away while paused or empty: nothing to keep going for.
+        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) stopSelf()
+    }
+
+    override fun onDestroy() {
+        save()
+        session?.run {
+            player.release()
+            release()
+        }
+        session = null
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    /** The saved queue, back in the player, paused at its position. */
+    private fun restore(player: Player) {
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                SavedQueue.decode(runCatching { queueFile().readText() }.getOrNull())
+            } ?: return@launch
+            if (player.mediaItemCount > 0) return@launch
+            val items = withContext(Dispatchers.IO) { saved.items.mapNotNull { resolve(it) } }
+            if (items.isEmpty()) return@launch
+            val current = saved.current.coerceIn(0, items.lastIndex)
+            player.setMediaItems(items, current, saved.positionMs)
+            player.shuffleModeEnabled = saved.shuffle
+            player.repeatMode = saved.repeat
+            player.playWhenReady = false
+        }
+    }
+
+    /** Writes the queue soon, once, however many changes come together. */
+    private fun saveSoon() {
+        saveJob?.cancel()
+        saveJob = scope.launch {
+            kotlinx.coroutines.delay(SAVE_DELAY_MS)
+            save()
+        }
+    }
+
+    private fun save() {
+        val player = session?.player ?: return
+        val items = (0 until player.mediaItemCount).mapNotNull { MediaIds.item(player.getMediaItemAt(it).mediaId) }
+        val (window, current) = SavedQueue.window(items, player.currentMediaItemIndex)
+        val queue = SavedQueue(window, current, player.currentPosition, player.shuffleModeEnabled, player.repeatMode)
+        val text = if (items.isEmpty()) "" else queue.encode()
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val file = queueFile()
+                val temp = File(file.path + ".part")
+                temp.writeText(text)
+                if (!temp.renameTo(file)) temp.delete()
+            }.onFailure { Logger.w(TAG, "saving the queue failed", it) }
+        }
+    }
+
+    private fun queueFile() = File(filesDir, "queue.json")
+
+    private inner class Watcher(private val player: Player) : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = saveSoon()
+
+        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) = saveSoon()
+
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = saveSoon()
+
+        override fun onRepeatModeChanged(repeatMode: Int) = saveSoon()
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (!isPlaying) saveSoon()
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY) {
+                failuresInARow = 0
+                PlaybackErrors.clear()
+            }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            val title = player.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty()
+            Logger.w(TAG, "could not play $title: ${error.errorCodeName}", error)
+            PlaybackErrors.report(L.playerSkipped(title, Failures.humanise(error.cause ?: error)))
+            failuresInARow++
+            if (failuresInARow < MAX_SKIPS && player.hasNextMediaItem()) {
+                player.seekToNextMediaItem()
+                player.prepare()
+                player.play()
+            }
+        }
+    }
+
+    /** Items sent by a controller carry only their id; the track is found in the index here. */
+    private inner class Callback : MediaSession.Callback {
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+        ): ListenableFuture<MutableList<MediaItem>> {
+            val future = SettableFuture.create<MutableList<MediaItem>>()
+            scope.launch {
+                val resolved = runCatching {
+                    withContext(Dispatchers.IO) {
+                        mediaItems.mapNotNull { item ->
+                            if (item.localConfiguration != null) item else MediaIds.item(item.mediaId)?.let { resolve(it) }
+                        }.toMutableList()
+                    }
+                }
+                resolved.onSuccess { future.set(it) }.onFailure { future.setException(it) }
+            }
+            return future
+        }
+    }
+
+    companion object {
+        private const val TAG = "PlaybackService"
+        private const val MAX_SKIPS = 3
+        private const val SAVE_DELAY_MS = 500L
+
+        /** A queue item as a playable MediaItem, from the index: the version, or the song's default. */
+        suspend fun resolve(item: SavedQueue.Item): MediaItem? {
+            val index = Library.index()
+            val track = index.track(item.id)
+                ?: item.songKey.takeIf { it.isNotBlank() }?.let { key -> index.song(key)?.let { index.track(it.defaultTrack) } }
+                ?: return null
+            return mediaItem(track, item.songKey)
+        }
+
+        fun mediaItem(track: Track, songKey: String): MediaItem {
+            val artwork: Uri? = Library.coverFile(track.coverKey)?.let(Uri::fromFile)
+                ?: track.thumbFileId.takeIf { it != 0 }?.let { tdFileUri(it) }
+            val metadata = MediaMetadata.Builder()
+                .setTitle(track.title)
+                .setArtist(track.artist.ifBlank { L.libraryUnknownArtist })
+                .setAlbumTitle(track.album.ifBlank { null })
+                .setAlbumArtist(track.albumArtist.ifBlank { null })
+                .setTrackNumber(track.trackNumber.takeIf { it > 0 })
+                .setArtworkUri(artwork)
+                .setDurationMs(track.durationMs.takeIf { it > 0 })
+                .setIsPlayable(true)
+                .setIsBrowsable(false)
+                .build()
+            return MediaItem.Builder()
+                .setMediaId(MediaIds.of(track.id, songKey))
+                .setUri(tdFileUri(track.fileId, track.mime.ifBlank { null }))
+                .setMediaMetadata(metadata)
+                .build()
+        }
+    }
+}
+
+/** The media id of a queue item: chat, message and the song's key, so a lost version can be replaced. */
+object MediaIds {
+    fun of(id: TrackId, songKey: String): String = "${id.chatId}:${id.messageId}:$songKey"
+
+    fun item(mediaId: String): SavedQueue.Item? {
+        val parts = mediaId.split(':', limit = 3)
+        val chat = parts.getOrNull(0)?.toLongOrNull() ?: return null
+        val message = parts.getOrNull(1)?.toLongOrNull() ?: return null
+        return SavedQueue.Item(chat, message, parts.getOrNull(2).orEmpty())
+    }
+}
+
+/** The last thing playback could not do, for the mini-player to say; cleared once a track plays. */
+object PlaybackErrors {
+    private val _last = MutableStateFlow<String?>(null)
+    val last: StateFlow<String?> = _last.asStateFlow()
+
+    fun report(message: String) {
+        _last.value = message
+    }
+
+    fun clear() {
+        _last.value = null
+    }
+}

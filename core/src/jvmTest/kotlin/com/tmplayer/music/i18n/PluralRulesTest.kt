@@ -1,3 +1,4 @@
+// From TMPlayer (GPL-3.0), core/src/jvmTest/kotlin/com/tmplayer/i18n/PluralRulesTest.kt.
 package com.tmplayer.music.i18n
 
 import org.junit.Assert.assertEquals

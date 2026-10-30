@@ -86,6 +86,11 @@
     "title": "Manage chats",
     "tracks": "{count, plural, one {# track} other {# tracks}}"
   },
+  "menu": {
+    "add_to_queue": "Add to queue",
+    "file_details": "File details",
+    "play_next": "Play next"
+  },
   "picker": {
     "archived": "Archived chats",
     "body": "Tick the chats that hold your music. You can add or remove chats later in Manage chats.",
@@ -103,6 +108,27 @@
     "title": "Pick the chats with music",
     "total": "{chats, plural, one {# chat} other {# chats}}, {files, plural, =0 {counting files} one {about # file} other {about # files}}",
     "untitled": "Untitled chat"
+  },
+  "player": {
+    "close": "Close",
+    "next": "Next",
+    "pause": "Pause",
+    "play": "Play",
+    "previous": "Previous",
+    "queue": "Queue",
+    "repeat_all": "Repeat all, on",
+    "repeat_off": "Repeat, off",
+    "repeat_one": "Repeat one, on",
+    "seek": "Position in the track",
+    "shuffle_off": "Shuffle, off",
+    "shuffle_on": "Shuffle, on",
+    "skipped": "Couldn't play {title}: {reason}",
+    "unknown_length": "The length of this track is not known, so it can't be seeked."
+  },
+  "queue": {
+    "clear": "Clear",
+    "move": "Hold and drag to move",
+    "remove": "Remove from the queue"
   },
   "scan": {
     "pause": "Pause",
@@ -135,6 +161,7 @@
   "versions": {
     "cant_play": "Can't play this format",
     "default": "Plays by default",
+    "tap_to_play": "Tap a version to play it.",
     "why_lossless": "Plays the lossless version by default.",
     "why_oldest": "These versions are alike, so the first one posted plays by default.",
     "why_on_device": "Plays the version already on this device by default.",

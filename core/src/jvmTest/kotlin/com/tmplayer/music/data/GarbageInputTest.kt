@@ -1,7 +1,10 @@
 package com.tmplayer.music.data
 
+import com.tmplayer.music.player.SavedQueue
 import com.tmplayer.music.tags.Samples
 import com.tmplayer.music.tags.TagReader
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
@@ -95,5 +98,35 @@ class GarbageInputTest {
         }
         val seconds = (System.nanoTime() - started) / 1e9
         assertTrue("took $seconds s", seconds < 10)
+    }
+
+    @Test
+    fun `a saved queue that is garbage restores as nothing, never a crash`() {
+        val good = SavedQueue(listOf(SavedQueue.Item(1, 2, "k")), current = 0, positionMs = 1000).encode()
+        val cases = listOf(
+            null, "", " ", "{", "[]", "null", "42", "\"text\"", "{\"items\": 5}",
+            "{\"items\": [], \"current\": 0, \"positionMs\": 0}",
+            "{\"items\": [{\"chatId\": \"x\"}], \"current\": 0, \"positionMs\": 0}",
+            "{\"items\": [{\"chatId\": 0, \"messageId\": 0}], \"current\": 0, \"positionMs\": 0}",
+            good.substring(0, good.length / 2),
+            "x".repeat(5 * 1024 * 1024),
+        )
+        for (case in cases) assertNull(case?.take(40), SavedQueue.decode(case))
+        val random = Random(7)
+        repeat(2000) {
+            val text = String(CharArray(random.nextInt(0, 300)) { random.nextInt(0, 0x2FFF).toChar() })
+            SavedQueue.decode(text)
+            SavedQueue.decode(good.substring(0, random.nextInt(0, good.length)))
+        }
+    }
+
+    @Test
+    fun `a saved queue with values out of range is brought back in`() {
+        val text = "{\"items\": [{\"chatId\": 1, \"messageId\": 2}], \"current\": 99, \"positionMs\": -5, \"repeat\": 7}"
+        val queue = SavedQueue.decode(text)
+        assertEquals(0, queue?.current)
+        assertEquals(0L, queue?.positionMs)
+        assertEquals(0, queue?.repeat)
+        assertEquals(1, queue?.items?.size)
     }
 }

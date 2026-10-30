@@ -20,6 +20,7 @@ import com.tmplayer.music.data.AuthState
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.Prefs
 import com.tmplayer.music.data.Td
+import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.library.ChatPick
 import com.tmplayer.music.ui.auth.SignInScreen
 import com.tmplayer.music.ui.library.LibraryHome
@@ -77,6 +78,8 @@ fun AppRoot() {
         else -> LibraryHome(
             onLogOut = {
                 scope.launch {
+                    PlayerConnection.clear()
+                    runCatching { context.deleteFile("queue.json") }
                     runCatching { Library.wipe() }
                     prefs.pickerDone = false
                     pickerDone = false

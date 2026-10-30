@@ -1,3 +1,4 @@
+// From TMPlayer (GPL-3.0), core/src/jvmTest/kotlin/com/tmplayer/platform/JobFailuresTest.kt.
 package com.tmplayer.music.platform
 
 import kotlinx.coroutines.CancellationException

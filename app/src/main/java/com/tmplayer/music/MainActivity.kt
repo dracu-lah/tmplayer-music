@@ -13,12 +13,14 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.ui.AppRoot
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        PlayerConnection.connect(this)
         setContent {
             MusicTheme { AppRoot() }
         }

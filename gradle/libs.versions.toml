@@ -13,6 +13,9 @@ zxing = "3.5.4"
 desugarJdkLibs = "2.1.5"
 kotlinxSerialization = "1.11.0"
 junit = "4.13.2"
+# nextlib is published as <media3 version>-<nextlib version>: the two move together (TMPlayer notes).
+media3 = "1.11.1"
+nextlib = "1.11.1-0.16.0"
 sqlite = "2.7.1"
 
 [libraries]
@@ -32,6 +35,10 @@ androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecyc
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 tdl-coroutines = { group = "dev.g000sha256", name = "tdl-coroutines", version.ref = "tdl" }
 androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
+androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+androidx-media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
+nextlib-media3ext = { group = "io.github.anilbeesetti", name = "nextlib-media3ext", version.ref = "nextlib" }
+androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 [plugins]

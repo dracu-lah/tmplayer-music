@@ -98,20 +98,20 @@ fun ArtistsTab(onArtist: (Artist) -> Unit, header: @Composable () -> Unit) {
 
 /** One album: its songs by disc and track number. */
 @Composable
-fun AlbumScreen(album: Album, onSong: (Song) -> Unit) {
+fun AlbumScreen(album: Album, actions: SongActions) {
     val songs = rememberList(album.key) { Library.index().albumSongs(album.key) }
     DetailList(
         title = album.title,
         subtitle = listOfNotNull(album.artist.ifBlank { null }, album.year.takeIf { it > 0 }?.toString()).joinToString("  ·  "),
         cover = { Cover(name = album.title, fileId = album.thumbFileId, coverPath = Library.coverFile(album.coverKey)?.path.orEmpty(), size = 120.dp) },
         songs = songs,
-        onSong = onSong,
+        actions = actions,
     )
 }
 
 /** One artist: their albums in a row, then every song. */
 @Composable
-fun ArtistScreen(artist: Artist, onSong: (Song) -> Unit, onAlbum: (Album) -> Unit) {
+fun ArtistScreen(artist: Artist, actions: SongActions, onAlbum: (Album) -> Unit) {
     val songs = rememberList(artist.key) { Library.index().artistSongs(artist.key) }
     val albums = rememberList("albums:" + artist.key) { Library.index().artistAlbums(artist.key) }
     DetailList(
@@ -119,7 +119,7 @@ fun ArtistScreen(artist: Artist, onSong: (Song) -> Unit, onAlbum: (Album) -> Uni
         subtitle = L.librarySongs(artist.songCount),
         cover = { Cover(name = artist.name, fileId = 0, round = true, size = 120.dp) },
         songs = songs,
-        onSong = onSong,
+        actions = actions,
         extra = {
             val list = albums.value.orEmpty()
             if (list.isNotEmpty()) {
@@ -162,7 +162,7 @@ private fun DetailList(
     subtitle: String,
     cover: @Composable () -> Unit,
     songs: Loaded<Song>,
-    onSong: (Song) -> Unit,
+    actions: SongActions,
     extra: @Composable () -> Unit = {},
 ) {
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
@@ -184,7 +184,10 @@ private fun DetailList(
             item(key = "loading") { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
         } else {
             // Distinct, so a song listed twice by the index cannot crash the list on a repeated key.
-            items(list.distinctBy { it.groupKey }, key = { it.groupKey }) { song -> SongRow(song, onClick = { onSong(song) }) }
+            val distinct = list.distinctBy { it.groupKey }
+            items(distinct, key = { it.groupKey }) { song ->
+                SongRow(song, onClick = { actions.play(distinct, distinct.indexOf(song)) }, onLongClick = { actions.menu(song) })
+            }
         }
     }
 }

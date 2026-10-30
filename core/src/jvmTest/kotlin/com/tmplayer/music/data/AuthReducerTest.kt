@@ -1,3 +1,4 @@
+// From TMPlayer (GPL-3.0), core/src/jvmTest/kotlin/com/tmplayer/data/AuthReducerTest.kt.
 package com.tmplayer.music.data
 
 import dev.g000sha256.tdl.dto.AuthenticationCodeInfo

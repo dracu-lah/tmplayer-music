@@ -1,6 +1,20 @@
 package com.tmplayer.music.ui.library
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.tmplayer.music.data.Prefs
+import com.tmplayer.music.player.PlayerConnection
+import com.tmplayer.music.ui.player.MiniPlayer
+import com.tmplayer.music.ui.player.NowPlaying
+import com.tmplayer.music.ui.player.QueueScreen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,7 +89,30 @@ fun LibraryHome(onLogOut: () -> Unit) {
     }
     BackHandler(enabled = page != null) { stack.removeAt(stack.lastIndex) }
 
-    val onSong: (Song) -> Unit = { versionsOf = it }
+    var menuFor by remember { mutableStateOf<Song?>(null) }
+    var playerOpen by rememberSaveable { mutableStateOf(false) }
+    var queueOpen by rememberSaveable { mutableStateOf(false) }
+    val askNotifications = rememberNotificationAsk()
+    val actions = remember {
+        SongActions(
+            play = { songs, index ->
+                askNotifications()
+                PlayerConnection.play(songs, index)
+            },
+            menu = { menuFor = it },
+        )
+    }
+
+    if (queueOpen) {
+        BackHandler { queueOpen = false }
+        QueueScreen(onClose = { queueOpen = false })
+        return
+    }
+    if (playerOpen) {
+        BackHandler { playerOpen = false }
+        NowPlaying(onClose = { playerOpen = false }, onQueue = { queueOpen = true })
+        return
+    }
 
     if (page == Page.Picker) {
         ChatPicker(
@@ -91,6 +128,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
     }
 
     Scaffold(
+        bottomBar = { MiniPlayer(onOpen = { playerOpen = true }) },
         topBar = {
             TopAppBar(
                 title = {
@@ -132,13 +170,13 @@ fun LibraryHome(onLogOut: () -> Unit) {
                         }
                     }
                     when (tab) {
-                        LibraryTab.Songs -> SongsTab(sort, onSong) { SongsHeader(sort) { sort = it } }
+                        LibraryTab.Songs -> SongsTab(sort, actions) { SongsHeader(sort) { sort = it } }
                         LibraryTab.Albums -> AlbumsTab(onAlbum = { stack += Page.AlbumPage(it) }) {}
                         LibraryTab.Artists -> ArtistsTab(onArtist = { stack += Page.ArtistPage(it) }) {}
                     }
                 }
-                is Page.AlbumPage -> AlbumScreen(page.album, onSong)
-                is Page.ArtistPage -> ArtistScreen(page.artist, onSong, onAlbum = { stack += Page.AlbumPage(it) })
+                is Page.AlbumPage -> AlbumScreen(page.album, actions)
+                is Page.ArtistPage -> ArtistScreen(page.artist, actions, onAlbum = { stack += Page.AlbumPage(it) })
                 is Page.ChatPage -> {
                     val state = rememberLazyListState()
                     val chatId = page.chat.chatId
@@ -148,7 +186,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
                         load = { after, limit -> Library.index().chatSongs(chatId, after, limit) },
                         cursorOf = { SongCursor.of(it, SongSort.Title) },
                     )
-                    SongList(pager, state, onSong)
+                    SongList(pager, state, actions)
                 }
                 Page.Manage -> ManageChats(onAddChats = { stack += Page.Picker }, onChat = { stack += Page.ChatPage(it) })
                 Page.Picker -> Unit
@@ -157,6 +195,72 @@ fun LibraryHome(onLogOut: () -> Unit) {
     }
 
     versionsOf?.let { song -> VersionsSheet(song, chatTitles, onDismiss = { versionsOf = null }) }
+    menuFor?.let { song ->
+        SongMenu(
+            song = song,
+            onDismiss = { menuFor = null },
+            onVersions = {
+                menuFor = null
+                versionsOf = song
+            },
+        )
+    }
+}
+
+/** What can be done with one song: play it next, add it to the queue, see its versions. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SongMenu(song: Song, onDismiss: () -> Unit, onVersions: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(bottom = 24.dp)) {
+            Text(
+                song.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            MenuLine(L.menuPlayNext) {
+                PlayerConnection.playNext(song)
+                onDismiss()
+            }
+            MenuLine(L.menuAddToQueue) {
+                PlayerConnection.addToQueue(song)
+                onDismiss()
+            }
+            MenuLine(if (song.versionCount > 1) L.libraryVersions(song.versionCount) else L.menuFileDetails, onVersions)
+        }
+    }
+}
+
+@Composable
+private fun MenuLine(text: String, onClick: () -> Unit) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+    )
+}
+
+/**
+ * Asks for the notification permission once, the first time something plays (Android 13 and later).
+ * Refused, playback still works; only the notification and the lock screen controls are missing.
+ */
+@Composable
+private fun rememberNotificationAsk(): () -> Unit {
+    val context = LocalContext.current
+    val prefs = remember { Prefs(context) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    return remember {
+        {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !prefs.notificationsAsked &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                prefs.notificationsAsked = true
+                runCatching { launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+            }
+        }
+    }
 }
 
 @Composable

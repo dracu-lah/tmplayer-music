@@ -48,7 +48,7 @@ import kotlinx.coroutines.CancellationException
 
 /** Songs: every song of every chosen chat in one list, repeats folded into versions. */
 @Composable
-fun SongsTab(sort: SongSort, onSong: (Song) -> Unit, header: @Composable () -> Unit) {
+fun SongsTab(sort: SongSort, actions: SongActions, header: @Composable () -> Unit) {
     val state = rememberLazyListState()
     val pager = rememberPager<SongCursor, Song>(
         key = sort,
@@ -56,20 +56,25 @@ fun SongsTab(sort: SongSort, onSong: (Song) -> Unit, header: @Composable () -> U
         load = { after, limit -> Library.index().songs(sort, after, limit) },
         cursorOf = { SongCursor.of(it, sort) },
     )
-    SongList(pager, state, onSong, header)
+    SongList(pager, state, actions, header)
 }
+
+/** What a tap and a hold on a song do, from any list. */
+class SongActions(val play: (List<Song>, Int) -> Unit, val menu: (Song) -> Unit)
 
 @Composable
 fun SongList(
     pager: Pager<SongCursor, Song>,
     state: LazyListState,
-    onSong: (Song) -> Unit,
+    actions: SongActions,
     header: @Composable () -> Unit = {},
     empty: @Composable () -> Unit = { EmptyLibrary() },
 ) {
     LazyColumn(state = state, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "header") { header() }
-        items(pager.items, key = { it.groupKey }) { song -> SongRow(song, onClick = { onSong(song) }) }
+        items(pager.items, key = { it.groupKey }) { song ->
+            SongRow(song, onClick = { actions.play(pager.items.toList(), pager.items.indexOf(song)) }, onLongClick = { actions.menu(song) })
+        }
         if (pager.loaded && pager.items.isEmpty()) item(key = "empty") { empty() }
         pager.error?.let { message ->
             item(key = "error") { Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(20.dp)) }
@@ -79,12 +84,12 @@ fun SongList(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SongRow(song: Song, onClick: () -> Unit, leading: (@Composable () -> Unit)? = null) {
+fun SongRow(song: Song, onClick: () -> Unit, onLongClick: () -> Unit = onClick, leading: (@Composable () -> Unit)? = null) {
     val subtitle = listOf(song.artist.ifBlank { L.libraryUnknownArtist }, Format.duration(song.durationMs)).joinToString("  ·  ")
     Row(
         Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -107,7 +112,7 @@ fun SongRow(song: Song, onClick: () -> Unit, leading: (@Composable () -> Unit)? 
         if (song.variant.isNotBlank()) Badge(song.variant)
         if (song.bestFormat.lossless) Badge(song.bestFormat.label)
         if (song.versionCount > 1) {
-            AssistChip(onClick = onClick, label = { Text(L.libraryVersions(song.versionCount)) })
+            AssistChip(onClick = onLongClick, label = { Text(L.libraryVersions(song.versionCount)) })
         }
     }
 }
@@ -133,10 +138,9 @@ fun EmptyLibrary() {
 
 /**
  * The Versions sheet (`plan/RESEARCH.md` 4.2): one line per file with its quality, size, chat and
- * date, the one that plays by default marked, and why it was chosen. Playing a version comes with
- * playback (step V2).
+ * date, the one that plays by default marked, and why it was chosen. Tap a line to play that version.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun VersionsSheet(song: Song, chatTitles: Map<Long, String>, onDismiss: () -> Unit) {
     var versions by remember(song.groupKey) { mutableStateOf<List<Track>?>(null) }
@@ -157,12 +161,18 @@ fun VersionsSheet(song: Song, chatTitles: Map<Long, String>, onDismiss: () -> Un
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             val list = versions.orEmpty()
             val reason = TrackVersions.reason(list, emptySet(), null, false)
+            if (list.size > 1) Text(L.versionsTapToPlay, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (list.size > 1 && reason != null) {
                 Text(reasonText(reason), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             for (track in list) {
                 val isDefault = track.id == song.defaultTrack
-                Column(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.fillMaxWidth().combinedClickable(onClick = {
+                        com.tmplayer.music.player.PlayerConnection.playVersion(song, track)
+                        onDismiss()
+                    }),
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             Format.quality(track).ifBlank { track.fileName },

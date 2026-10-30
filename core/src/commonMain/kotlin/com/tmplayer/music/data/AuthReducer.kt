@@ -1,3 +1,4 @@
+// From TMPlayer (GPL-3.0), core/src/commonMain/kotlin/com/tmplayer/data/AuthReducer.kt.
 package com.tmplayer.music.data
 
 import dev.g000sha256.tdl.dto.AuthenticationCodeInfo

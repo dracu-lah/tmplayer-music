@@ -1,3 +1,4 @@
+// From TMPlayer (GPL-3.0), core/src/pureMain/kotlin/com/tmplayer/data/AuthState.kt.
 package com.tmplayer.music.data
 
 import com.tmplayer.music.i18n.L

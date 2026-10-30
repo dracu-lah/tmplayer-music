@@ -1,3 +1,4 @@
+// From TMPlayer (GPL-3.0), core/src/jvmTest/kotlin/com/tmplayer/data/AuthStallTest.kt.
 package com.tmplayer.music.data
 
 import kotlinx.coroutines.flow.MutableStateFlow

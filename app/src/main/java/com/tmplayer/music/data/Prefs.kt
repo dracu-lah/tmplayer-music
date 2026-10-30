@@ -16,7 +16,13 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(PICKER_DONE, false)
         set(value) = prefs.edit().putBoolean(PICKER_DONE, value).apply()
 
+    /** The notification permission is asked once, on the first play; never nagged again. */
+    var notificationsAsked: Boolean
+        get() = prefs.getBoolean(NOTIFICATIONS_ASKED, false)
+        set(value) = prefs.edit().putBoolean(NOTIFICATIONS_ASKED, value).apply()
+
     private companion object {
+        const val NOTIFICATIONS_ASKED = "notifications_asked"
         const val WELCOMED = "welcomed"
         const val PICKER_DONE = "picker_done"
     }

@@ -1,3 +1,4 @@
+// From TMPlayer (GPL-3.0), core/src/pureMain/kotlin/com/tmplayer/i18n/Icu.kt.
 package com.tmplayer.music.i18n
 
 /**

@@ -4,3 +4,7 @@
 
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# FFmpeg decoders are found by reflection.
+-keep class io.github.anilbeesetti.nextlib.media3ext.** { *; }
+-dontwarn androidx.media3.**
