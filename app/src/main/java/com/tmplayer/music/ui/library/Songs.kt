@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.library.AudioFormat
 import com.tmplayer.music.library.AudioKinds
 import com.tmplayer.music.library.Song
@@ -218,8 +219,8 @@ fun SongRow(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val subtitle = listOf(song.artist.ifBlank { L.libraryUnknownArtist }, Format.duration(song.durationMs)).joinToString("  ·  ")
-    val mark = playingMarkOf(song.groupKey)
+    val subtitle = listOf(ArtistDisplay.of(song.artist).ifBlank { L.libraryUnknownArtist }, Format.duration(song.durationMs)).joinToString("  ·  ")
+    val mark = playingMarkOf(song.groupKey, song.defaultTrack)
     Row(
         Modifier
             .fillMaxWidth()
@@ -262,15 +263,26 @@ fun SongRow(
 }
 
 /**
- * Whether the song keyed [songKey] is the current one: true playing, false paused, null not current.
- * Each row reads the shared mark through a derived state, so when the current song changes only the
- * row that gains it and the row that loses it are redrawn, and the position never redraws any.
+ * Whether the song keyed [songKey] (default file [defaultTrack]) is the current one: true playing,
+ * false paused, null not current ([com.tmplayer.music.player.PlayingMatch.song]). Each row reads the
+ * shared mark through a derived state, so when the current song changes only the row that gains it
+ * and the row that loses it are redrawn, and the position never redraws any.
  */
 @Composable
-fun playingMarkOf(songKey: String): Boolean? {
+fun playingMarkOf(songKey: String, defaultTrack: com.tmplayer.music.library.TrackId?): Boolean? {
     val mark = com.tmplayer.music.player.PlayerConnection.mark.collectAsStateWithLifecycle()
-    val mine = remember(songKey) {
-        androidx.compose.runtime.derivedStateOf { mark.value?.takeIf { it.songKey == songKey }?.playing }
+    val mine = remember(songKey, defaultTrack) {
+        androidx.compose.runtime.derivedStateOf { com.tmplayer.music.player.PlayingMatch.song(mark.value, songKey, defaultTrack) }
+    }
+    return mine.value
+}
+
+/** The same for one file (a chat page row): marked only when that very message plays. */
+@Composable
+fun playingMarkOfTrack(track: com.tmplayer.music.library.TrackId): Boolean? {
+    val mark = com.tmplayer.music.player.PlayerConnection.mark.collectAsStateWithLifecycle()
+    val mine = remember(track) {
+        androidx.compose.runtime.derivedStateOf { com.tmplayer.music.player.PlayingMatch.track(mark.value, track) }
     }
     return mine.value
 }
@@ -330,7 +342,7 @@ fun VersionsSheet(song: Song, chatTitles: Map<Long, String>, onDismiss: () -> Un
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(song.title, style = MaterialTheme.typography.titleLarge)
-            Text(song.artist.ifBlank { L.libraryUnknownArtist }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(ArtistDisplay.of(song.artist).ifBlank { L.libraryUnknownArtist }, color = MaterialTheme.colorScheme.onSurfaceVariant)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             val list = versions.orEmpty()
             val reason = TrackVersions.reason(list, emptySet(), null, false)

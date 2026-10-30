@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.ui.common.MusicIcons
 import kotlin.math.abs
@@ -195,7 +196,7 @@ private fun QueueList(items: List<MediaItem>, playing: Int, onChanged: () -> Uni
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        item.mediaMetadata.artist?.toString().orEmpty(),
+                        ArtistDisplay.of(item.mediaMetadata.artist?.toString()),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (current) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

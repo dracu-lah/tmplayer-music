@@ -28,7 +28,9 @@ data class ReadPolicy(
  * Turns the device's state into a [ReadPolicy]. Plain logic, so the Wi-Fi and mobile data rules are
  * tested without a phone:
  *
- * - The user's Pause stops every read.
+ * - The user's Pause stops the background: the documents and the trickle. On-demand reads (the rows
+ *   on screen, the playing track and the next few) go on while paused: they are few, small and
+ *   bounded, and without them a paused library shows initials instead of covers.
  * - On-demand reads (on screen, about to play) are small and run on any connection.
  * - Documents with no known length run on Wi-Fi, and on mobile data up to [METERED_DOCUMENTS] files
  *   per app session unless the user said yes to mobile data.
@@ -42,7 +44,8 @@ object TagPolicy {
     const val METERED_DOCUMENTS = 60
 
     fun policy(net: NetState, mobileAllowed: Boolean, active: Boolean, paused: Boolean): ReadPolicy {
-        if (paused || net == NetState.Offline) return ReadPolicy(onDemand = false, documents = false, trickle = false, documentsCap = 0)
+        if (net == NetState.Offline) return ReadPolicy(onDemand = false, documents = false, trickle = false, documentsCap = 0)
+        if (paused) return ReadPolicy(onDemand = true, documents = false, trickle = false, documentsCap = 0)
         val cheap = net == NetState.Unmetered || mobileAllowed
         return ReadPolicy(
             onDemand = true,
@@ -89,5 +92,36 @@ object TagPriority {
         if (policy.documents && documentsLeft > 0) take(documents, documentsLeft)
         if (policy.trickle) take(rest)
         return out.values.toList()
+    }
+}
+
+/**
+ * How the background reading (the documents and the trickle) is paced, so it stays a gentle
+ * trickle: on a phone it read about one file a second yet held about 40% of a core (TDLib's receive
+ * thread, the index writes, the parsing). After each background batch the reader rests:
+ *
+ * - at least as long as the batch took, so it works at most about half of the time;
+ * - long enough that it averages at most one file per [MS_PER_FILE] (under one a second; per
+ *   [LOW_RAM_MS_PER_FILE] on a low memory device);
+ * - never less than the usual gap between batches, never more than [MAX_REST_MS].
+ *
+ * Reads for the rows on screen and the tracks about to play are not paced: a request for them ends
+ * the rest at once.
+ */
+object TricklePacing {
+    /**
+     * At most 0.8 files a second (1.25 s each). Measured on the POCO M2 Pro (2026-10-30): about 1.07
+     * files a second cost 17 to 21% of a core, nearly all TDLib's sender and receiver threads.
+     */
+    const val MS_PER_FILE = 1_250L
+    const val LOW_RAM_MS_PER_FILE = 2_500L
+    const val MAX_REST_MS = 60_000L
+
+    /** The rest after a background batch of [files] that took [batchMs]. */
+    fun restAfter(batchMs: Long, files: Int, lowRam: Boolean, minGapMs: Long): Long {
+        val took = batchMs.coerceAtLeast(0L)
+        val perFile = if (lowRam) LOW_RAM_MS_PER_FILE else MS_PER_FILE
+        val forRate = files.coerceAtLeast(0) * perFile - took
+        return maxOf(minGapMs, took, forRate).coerceIn(0L, MAX_REST_MS)
     }
 }

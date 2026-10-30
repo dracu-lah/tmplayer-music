@@ -100,16 +100,46 @@ class WaveLogicTest {
     }
 
     @Test
-    fun `the wave steps about 15 times a second, one wavelength a second`() {
+    fun `the wave steps about 16 times a second, one wavelength a second`() {
         val perSecond = 1_000f / WaveLogic.STEP_MS
-        assertTrue("steps a second: $perSecond", perSecond in 12f..17f)
-        assertEquals(0.066f, WaveLogic.nextPhase(0f, WaveLogic.STEP_MS), 0.0001f)
-        assertEquals(0.016f, WaveLogic.nextPhase(0.95f, WaveLogic.STEP_MS), 0.0001f)
-        var phase = 0f
-        repeat(10_000) { phase = WaveLogic.nextPhase(phase, WaveLogic.STEP_MS) }
-        assertTrue(phase in 0f..1f)
-        assertEquals(0.5f, WaveLogic.nextPhase(0.5f, -40), 0.0001f)
-        assertEquals(0f, WaveLogic.nextPhase(Float.NaN, WaveLogic.STEP_MS))
+        // Every step is a full window redraw: about 16 a second keeps it under a quarter of a core.
+        assertTrue("steps a second: $perSecond", perSecond in 14f..25f)
+        // The loop sleeps less than a step, by half a frame, so waiting for the frame does not slow it.
+        assertTrue(WaveLogic.SLEEP_MS in 1 until WaveLogic.STEP_MS)
+        val landed = 1_000f / (WaveLogic.SLEEP_MS + WaveLogic.FRAME_MS / 2)
+        assertTrue("steps landed a second: $landed", landed in 14f..22f)
+        assertEquals(0f, WaveLogic.phaseAt(0))
+        assertEquals(0.25f, WaveLogic.phaseAt(250_000_000L), 0.0001f)
+        // Whole seconds come back to where they started.
+        assertEquals(0.3f, WaveLogic.phaseAt(5_300_000_000L), 0.0001f)
+        // Continues from where it stopped, wrapping at one wavelength.
+        assertEquals(0.05f, WaveLogic.phaseAt(100_000_000L, from = 0.95f), 0.0001f)
+        assertEquals(0.4f, WaveLogic.phaseAt(-40, from = 0.4f), 0.0001f)
+        // Hours of play stay in range.
+        assertTrue(WaveLogic.phaseAt(Long.MAX_VALUE) in 0f..1f)
+        assertEquals(0f, WaveLogic.phaseAt(1_000L, from = Float.NaN), 0.001f)
+        assertTrue(WaveLogic.phaseAt(0, from = -0.25f) in 0f..1f)
+    }
+
+    @Test
+    fun `the cached pattern is drawn only at full height`() {
+        assertEquals(WaveLogic.Draw.Flat, WaveLogic.draw(0f))
+        assertEquals(WaveLogic.Draw.Flat, WaveLogic.draw(Float.NaN))
+        assertEquals(WaveLogic.Draw.Flat, WaveLogic.draw(-1f))
+        assertEquals(WaveLogic.Draw.Path, WaveLogic.draw(0.5f))
+        assertEquals(WaveLogic.Draw.Pattern, WaveLogic.draw(1f))
+        // A spring that overshoots stays on the pattern.
+        assertEquals(WaveLogic.Draw.Pattern, WaveLogic.draw(1.05f))
+    }
+
+    @Test
+    fun `the pattern is a whole number of pixels and bounded`() {
+        assertEquals(110, WaveLogic.patternWidth(110.0f))
+        assertEquals(110, WaveLogic.patternWidth(109.6f))
+        assertEquals(8, WaveLogic.patternWidth(0f))
+        assertEquals(8, WaveLogic.patternWidth(Float.NaN))
+        assertEquals(8, WaveLogic.patternWidth(Float.POSITIVE_INFINITY))
+        assertEquals(4096, WaveLogic.patternWidth(1e9f))
     }
 
     @Test

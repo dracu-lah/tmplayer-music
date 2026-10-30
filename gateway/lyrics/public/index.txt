@@ -1,0 +1,1 @@
+TMPlayer Music lyrics gateway: see /v1/health

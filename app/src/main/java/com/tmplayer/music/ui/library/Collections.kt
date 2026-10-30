@@ -32,6 +32,7 @@ import com.tmplayer.music.data.Library
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.Album
 import com.tmplayer.music.library.Artist
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.library.Song
 import com.tmplayer.music.ui.common.Cover
 import kotlinx.coroutines.CancellationException
@@ -58,7 +59,7 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text(album.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                listOfNotNull(album.artist.ifBlank { null }, album.year.takeIf { it > 0 }?.toString(), L.librarySongs(album.songCount))
+                listOfNotNull(ArtistDisplay.of(album.artist).ifBlank { null }, album.year.takeIf { it > 0 }?.toString(), L.librarySongs(album.songCount))
                     .joinToString("  ·  "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -102,7 +103,7 @@ fun AlbumScreen(album: Album, actions: SongActions) {
     val songs = rememberList(album.key) { Library.index().albumSongs(album.key) }
     DetailList(
         title = album.title,
-        subtitle = listOfNotNull(album.artist.ifBlank { null }, album.year.takeIf { it > 0 }?.toString()).joinToString("  ·  "),
+        subtitle = listOfNotNull(ArtistDisplay.of(album.artist).ifBlank { null }, album.year.takeIf { it > 0 }?.toString()).joinToString("  ·  "),
         cover = { AlbumCover(album, 120.dp) },
         songs = songs,
         actions = actions,

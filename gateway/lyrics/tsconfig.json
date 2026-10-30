@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "isolatedModules": true
   },
-  "include": ["src", "test", "vitest.config.ts"]
+  "include": ["src", "functions", "test", "vitest.config.ts"]
 }

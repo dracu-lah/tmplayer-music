@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.library.Song
 import com.tmplayer.music.library.SongSort
 import com.tmplayer.music.ui.common.Cover
@@ -109,7 +110,7 @@ private fun SongShelf(title: String, songs: List<Song>, actions: SongActions) {
                     Cover(name = song.title, fileId = 0, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), size = 128.dp, track = song.defaultTrack.takeIf { song.thumbFileId != 0 })
                     Text(song.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        song.artist.ifBlank { L.libraryUnknownArtist },
+                        ArtistDisplay.of(song.artist).ifBlank { L.libraryUnknownArtist },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

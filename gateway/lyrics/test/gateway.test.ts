@@ -1,6 +1,18 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import worker, { bucketOf, type Env, resetUpstreamBucket, TokenBucket } from "../src/index";
+import { onRequest } from "../functions/[[route]]";
+import {
+  bucketOf,
+  CLIENT_PER_MINUTE,
+  ClientCounter,
+  type Env,
+  MAX_CLIENT_BUCKETS,
+  resetClientCounter,
+  resetUpstreamBucket,
+  serve,
+  TokenBucket,
+  UPSTREAM_BURST,
+} from "../src/index";
 import { LRCLIB, MAX_GET_BYTES, pickBest, retryAfterOf } from "../src/lrclib";
 import { normalise, parseQuery } from "../src/query";
 
@@ -50,16 +62,34 @@ function song(over: Record<string, string> = {}) {
   return new URLSearchParams({ title: `Sample Song ${unique}`, artist: "Example Band", album: "First Album", duration: "200", ...over });
 }
 
-async function call(path: string, env: Env = {}, headers: Record<string, string> = {}) {
+/** Calls the Pages entry point the way Pages does, with an EventContext around a test ExecutionContext. */
+async function send(request: Request, env: Env = {}) {
   const ctx = createExecutionContext();
-  const res = await worker.fetch(new Request(`${BASE}${path}`, { headers }), env, ctx);
+  const context = {
+    request,
+    env,
+    params: {},
+    data: {},
+    functionPath: "/[[route]]",
+    waitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise),
+    passThroughOnException: () => {},
+    next: async () => new Response("static", { status: 200 }),
+  } as unknown as EventContext<Env, string, Record<string, unknown>>;
+  const res = await onRequest(context);
   await waitOnExecutionContext(ctx);
   return res;
 }
 
+function call(path: string, env: Env = {}, headers: Record<string, string> = {}, method = "GET") {
+  return send(new Request(`${BASE}${path}`, { headers, method }), env);
+}
+
 const lyricsPath = (params: URLSearchParams) => `/v1/lyrics?${params}`;
 
-beforeEach(() => resetUpstreamBucket());
+beforeEach(() => {
+  resetUpstreamBucket();
+  resetClientCounter();
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe("health", () => {
@@ -213,13 +243,32 @@ describe("bad input", () => {
   });
 
   it("serves only GET, and only its two paths", async () => {
-    const ctx = createExecutionContext();
-    const post = await worker.fetch(new Request(`${BASE}/v1/lyrics?${song()}`, { method: "POST" }), {}, ctx);
+    const post = await call(lyricsPath(song()), {}, {}, "POST");
     expect(post.status).toBe(405);
-    const options = await worker.fetch(new Request(`${BASE}/v1/lyrics`, { method: "OPTIONS" }), {}, ctx);
+    expect(post.headers.get("Allow")).toBe("GET");
+    expect((await call("/v1/health", {}, {}, "POST")).status).toBe(405);
+    const options = await call("/v1/lyrics", {}, {}, "OPTIONS");
     expect(options.status).toBe(405);
     expect(options.headers.get("Access-Control-Allow-Origin")).toBeNull();
     expect((await call("/api/get")).status).toBe(404);
+  });
+
+  it("answers every other path, the root and the static files included, with a JSON 404", async () => {
+    for (const path of ["/", "/index.txt", "/_routes.json", "/v1", "/v1/lyrics/extra"]) {
+      const res = await call(path);
+      expect(res.status).toBe(404);
+      expect(((await res.json()) as { error: string }).error).toBe("no_route");
+    }
+  });
+
+  it("never throws out of the entry point, even when the platform does", async () => {
+    upstream({ get: () => jsonResponse(record()) });
+    const res = await serve(new Request(`${BASE}${lyricsPath(song())}`), {}, {
+      waitUntil: () => {
+        throw new Error("platform failure");
+      },
+    });
+    expect(res.status).toBe(502);
   });
 });
 
@@ -347,26 +396,63 @@ describe("edge cache", () => {
 });
 
 describe("rate limits", () => {
-  it("answers 429 when the client's bucket is full, before any upstream call", async () => {
+  const client = { "CF-Connecting-IP": "203.0.113.7" };
+
+  it("answers 429 when the client's bucket is full, before the cache or any upstream call", async () => {
+    let now = 0;
+    resetClientCounter(new ClientCounter(2, 60_000, 100, () => now));
     const calls = upstream({ get: () => jsonResponse(record()) });
-    const keys: string[] = [];
-    const LIMITER = { limit: async ({ key }: { key: string }) => (keys.push(key), { success: false }) } as unknown as RateLimit;
-    const res = await call(lyricsPath(song()), { LIMITER }, { "CF-Connecting-IP": "203.0.113.7" });
-    expect(res.status).toBe(429);
-    expect(res.headers.get("Retry-After")).toBe("60");
-    expect(calls).toHaveLength(0);
-    expect(keys).toEqual([await bucketOf("203.0.113.7")]);
-    expect(keys[0]).not.toContain("203");
+    const params = song();
+    expect((await call(lyricsPath(params), {}, client)).status).toBe(200);
+    expect((await call(lyricsPath(params), {}, client)).status).toBe(200);
+    now += 15_000;
+    const third = await call(lyricsPath(params), {}, client);
+    expect(third.status).toBe(429);
+    expect(third.headers.get("Retry-After")).toBe("45");
+    expect(((await third.json()) as { retryAfter: number }).retryAfter).toBe(45);
+    expect(calls).toHaveLength(1);
+    // Another address is its own bucket (unless it hashes to the same 16 bits, which these do not).
+    expect(await bucketOf("198.51.100.1")).not.toBe(await bucketOf("203.0.113.7"));
+    expect((await call(lyricsPath(params), {}, { "CF-Connecting-IP": "198.51.100.1" })).status).toBe(200);
+    // A new window starts the count again.
+    now += 45_000;
+    expect((await call(lyricsPath(params), {}, client)).status).toBe(200);
   });
 
-  it("keeps serving when the limiter binding fails", async () => {
+  it("allows the configured lookups a minute by default", async () => {
     upstream({ get: () => jsonResponse(record()) });
-    const LIMITER = { limit: async () => { throw new Error("down"); } } as unknown as RateLimit;
-    expect((await call(lyricsPath(song()), { LIMITER })).status).toBe(200);
+    const params = song();
+    for (let i = 0; i < CLIENT_PER_MINUTE; i++) expect((await call(lyricsPath(params), {}, client)).status).toBe(200);
+    expect((await call(lyricsPath(params), {}, client)).status).toBe(429);
+  });
+
+  it("does not count bad requests against the client", async () => {
+    resetClientCounter(new ClientCounter(1, 60_000, 100));
+    upstream({ get: () => jsonResponse(record()) });
+    for (let i = 0; i < 5; i++) expect((await call(lyricsPath(song({ duration: "x" })), {}, client)).status).toBe(400);
+    expect((await call(lyricsPath(song()), {}, client)).status).toBe(200);
+  });
+
+  it("holds a bounded table that is dropped each window, and only coarse hashes in it", async () => {
+    let now = 0;
+    const counter = new ClientCounter(1, 60_000, 3, () => now);
+    for (const bucket of ["b-1", "b-2", "b-3", "b-4", "b-5"]) expect(counter.take(bucket)).toBe(0);
+    expect(counter.size()).toBe(3);
+    expect(counter.take("b-1")).toBeGreaterThan(0);
+    // Past the cap a new bucket is not counted (fail open; the upstream bucket still guards LRCLIB).
+    expect(counter.take("b-5")).toBe(0);
+    now += 60_000;
+    expect(counter.take("b-1")).toBe(0);
+    expect(counter.size()).toBe(1);
+    // A clock that goes backwards starts a new window instead of locking anyone out.
+    now -= 120_000;
+    expect(counter.take("b-1")).toBe(0);
+    expect(MAX_CLIENT_BUCKETS).toBeLessThanOrEqual(65_536);
   });
 
   it("buckets are coarse: 16 bits of a hash", async () => {
     expect(await bucketOf("198.51.100.1")).toMatch(/^b-[0-9a-f]{1,4}$/);
+    expect(await bucketOf("203.0.113.7")).not.toContain("203");
     expect(await bucketOf(null)).toBe("b-none");
   });
 
@@ -378,9 +464,50 @@ describe("rate limits", () => {
     expect((await call(lyricsPath(song()))).status).toBe(200);
     const third = await call(lyricsPath(song()));
     expect(third.status).toBe(429);
+    expect(third.headers.get("Retry-After")).toBe("1");
     expect(calls).toHaveLength(2);
     now += 1000;
     expect((await call(lyricsPath(song()))).status).toBe(200);
+  });
+
+  it("allows only a small burst towards LRCLIB by default", async () => {
+    const calls = upstream({ get: () => jsonResponse(record()) });
+    const statuses: number[] = [];
+    // Different callers, so only the shared upstream bucket can stop them.
+    for (let i = 0; i < UPSTREAM_BURST + 3; i++) {
+      statuses.push((await call(lyricsPath(song()), {}, { "CF-Connecting-IP": `192.0.2.${i}` })).status);
+    }
+    expect(statuses.filter((s) => s === 200).length).toBeLessThanOrEqual(UPSTREAM_BURST + 1);
+    expect(statuses).toContain(429);
+    expect(calls.length).toBeLessThanOrEqual(UPSTREAM_BURST + 1);
+  });
+
+  it("a 429 from LRCLIB empties the burst, so calls resume slowly after the cooldown", async () => {
+    let now = 0;
+    resetUpstreamBucket(new TokenBucket(5, 1, () => now));
+    let answer: () => Response = () => new Response("slow down", { status: 429, headers: { "Retry-After": "10" } });
+    const calls = upstream({ get: () => answer() });
+    expect((await call(lyricsPath(song()))).status).toBe(429);
+    answer = () => jsonResponse(record());
+    now += 9_000;
+    expect((await call(lyricsPath(song()))).status).toBe(429);
+    now += 2_000;
+    expect((await call(lyricsPath(song()))).status).toBe(200);
+    expect((await call(lyricsPath(song()))).status).toBe(429);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("asks LRCLIB once for the same song asked twice at the same time", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const calls = upstream({ get: async () => (await gate, jsonResponse(record())) });
+    const params = song();
+    const both = Promise.all([call(lyricsPath(params)), call(lyricsPath(params))]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    const [a, b] = await both;
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(calls).toHaveLength(1);
   });
 });
 

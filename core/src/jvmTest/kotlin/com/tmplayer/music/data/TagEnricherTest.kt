@@ -107,7 +107,10 @@ class TagEnricherTest {
         assertEquals(1, store.batches.size)
         advanceTimeBy(5_000)
         assertEquals(1, store.batches.size)
-        advanceTimeBy(6_000)
+        // The gap, or longer when the pacing asks it: a batch of 12 rests 15 s (0.8 files a second).
+        advanceTimeBy(9_000)
+        assertEquals(1, store.batches.size)
+        advanceTimeBy(2_000)
         assertEquals(2, store.batches.size)
         advanceUntilIdle()
     }
@@ -176,6 +179,45 @@ class TagEnricherTest {
         advanceUntilIdle()
         assertTrue(store.tracks.values.all { it.tagState == TagState.Read })
         assertFalse(enricher.status.value.paused)
+    }
+
+    @Test
+    fun `while paused the rows on screen are still read, and nothing else`() = runTest {
+        val store = FakeStore(30)
+        val paused = MutableStateFlow(true)
+        val enricher = TagEnricher(store, FakeBytes(), NoCovers, this, paused = paused)
+        enricher.kick()
+        advanceUntilIdle()
+        assertTrue(store.batches.isEmpty())
+        enricher.prefer(listOf(TrackId(1, 5), TrackId(1, 6)))
+        enricher.preferUpcoming(listOf(TrackId(1, 9)))
+        advanceUntilIdle()
+        assertEquals(setOf(5L, 6L, 9L), store.batches.flatten().map { it.id.messageId }.toSet())
+        assertEquals(27, store.tracks.values.count { it.tagState == TagState.TelegramOnly })
+        assertTrue("waits for Resume", enricher.status.value.paused && enricher.status.value.running)
+        assertFalse("on-demand reads stay out of the banner", enricher.status.value.background)
+        paused.value = false
+        advanceUntilIdle()
+        assertTrue(store.tracks.values.all { it.tagState == TagState.Read })
+    }
+
+    @Test
+    fun `the background trickle rests between batches, a request on screen does not wait`() = runTest {
+        val store = FakeStore(40)
+        val enricher = TagEnricher(store, FakeBytes(), NoCovers, this, clock = { testScheduler.currentTime })
+        enricher.kick()
+        runCurrent()
+        // The first batch of 12 is read at once, then it rests about 15 s (0.8 files a second).
+        assertEquals(1, store.batches.size)
+        advanceTimeBy(TagEnricher.BATCH * TricklePacing.MS_PER_FILE - 100)
+        assertEquals(1, store.batches.size)
+        // Rows come on screen during the rest: read now, not after it.
+        enricher.prefer(listOf(TrackId(1, 3)))
+        runCurrent()
+        assertEquals(2, store.batches.size)
+        assertEquals(listOf(3L), store.batches[1].map { it.id.messageId }.take(1))
+        advanceUntilIdle()
+        assertTrue(store.tracks.values.all { it.tagState == TagState.Read })
     }
 
     @Test

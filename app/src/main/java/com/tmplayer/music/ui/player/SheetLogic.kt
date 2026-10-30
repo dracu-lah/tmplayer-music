@@ -90,11 +90,66 @@ object SheetLogic {
 object WaveLogic {
 
     /**
-     * Time between two steps of the travelling crest: about 15 a second. Each step redraws the
-     * window, and at 30 a second the wave cost about 57% of a core on a phone (2026-10-30); a crest
-     * moving a wavelength a second looks the same at 15.
+     * Time between two steps of the travelling crest: about 16 a second. The wave is drawn once as
+     * a repeating pattern and a step only moves that pattern's layer sideways (no recomposition, no
+     * path drawn again), but Compose still redraws the whole window for every frame it asks for
+     * (the dirty region is the full screen, checked with "show dirty regions"), so each step costs
+     * a full frame, about 13 ms of CPU on a POCO M2 Pro. Measured there with Now Playing open
+     * (2026-10-30): about 20 steps a second 34 to 37% of a core, about 16 a second 23 to 24%. When
+     * the path was drawn again on every step, 30 a second cost about 57%.
      */
-    const val STEP_MS = 66L
+    const val STEP_MS = 60L
+
+    /** One frame at 60 Hz, rounded. */
+    const val FRAME_MS = 16L
+
+    /**
+     * How long the step loop sleeps before it waits for the next frame: the step less half a frame
+     * at 60 Hz, since waiting for the frame adds that much on average. So the steps land about
+     * every [STEP_MS] and not every [STEP_MS] plus a frame.
+     */
+    const val SLEEP_MS = STEP_MS - FRAME_MS / 2
+
+    /** How the played part is drawn for a given wave height ([amplitude]). */
+    enum class Draw {
+        /** A straight line: paused, scrubbing or no length. */
+        Flat,
+
+        /** A path drawn on each frame, only while the height springs between flat and full. */
+        Path,
+
+        /** The cached repeating pattern moved by its layer: the steady state while playing. */
+        Pattern,
+    }
+
+    /** Heights below this draw flat, above [PATTERN_FROM] the cached pattern. */
+    const val FLAT_BELOW = 0.08f
+    const val PATTERN_FROM = 0.995f
+
+    fun draw(amplitude: Float): Draw = when {
+        amplitude.isNaN() || amplitude < FLAT_BELOW -> Draw.Flat
+        amplitude >= PATTERN_FROM -> Draw.Pattern
+        else -> Draw.Path
+    }
+
+    /**
+     * The pattern's width in whole pixels (one wavelength), so copies laid side by side meet
+     * without a seam; at least 8 for a nonsense density.
+     */
+    fun patternWidth(wavelengthPx: Float): Int =
+        if (!wavelengthPx.isFinite()) 8 else kotlin.math.round(wavelengthPx).toInt().coerceIn(8, 4096)
+
+    /**
+     * The crest's phase (0 to 1, one wavelength) [elapsedNanos] after the wave started travelling:
+     * one wavelength a second. Read from the frame clock, so a late step catches up instead of
+     * slowing the wave down.
+     */
+    fun phaseAt(elapsedNanos: Long, from: Float = 0f): Float {
+        val start = if (from.isFinite()) ((from % 1f) + 1f) % 1f else 0f
+        if (elapsedNanos <= 0L) return start
+        val next = (start + (elapsedNanos % 1_000_000_000L) / 1_000_000_000f) % 1f
+        return if (next.isFinite() && next >= 0f) next else 0f
+    }
 
     /** The wave's crest travels along the bar (a timed step runs every [STEP_MS]). */
     fun travels(
@@ -108,12 +163,6 @@ object WaveLogic {
 
     /** A phone that should not keep the wave moving: low on memory, or saving battery. */
     fun stillDevice(lowRam: Boolean, powerSave: Boolean): Boolean = lowRam || powerSave
-
-    /** The crest's phase (0 to 1, one wavelength) after [elapsedMs]: one wavelength a second. */
-    fun nextPhase(phase: Float, elapsedMs: Long): Float {
-        val next = (phase + elapsedMs.coerceAtLeast(0) / 1_000f) % 1f
-        return if (next.isFinite() && next >= 0f) next else 0f
-    }
 
     /** The wave's height, 0 (flat) to 1. Drawn wavy while playing even when it may not travel. */
     fun amplitude(playing: Boolean, lengthKnown: Boolean, seeking: Boolean): Float =

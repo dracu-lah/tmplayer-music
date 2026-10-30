@@ -38,6 +38,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.Dp
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.ui.theme.MorphButton
 import com.tmplayer.music.ui.theme.MusicMotion
 import androidx.compose.material3.MaterialTheme
@@ -446,7 +447,8 @@ internal fun MiniPlayer(
     onDismiss: () -> Unit,
 ) {
     val error by PlaybackErrors.last.collectAsStateWithLifecycle()
-    val position = rememberPosition(state)
+    // Read only by the progress line while it draws: a tick redraws the line, not the card.
+    val position = rememberPositionState(state)
     val title = state.metadata.title?.toString().orEmpty()
     val threshold = with(LocalDensity.current) { 72.dp.toPx() }
     var drag by remember { mutableFloatStateOf(0f) }
@@ -489,7 +491,7 @@ internal fun MiniPlayer(
                 Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val line = error
                 Text(
-                    line ?: state.metadata.artist?.toString().orEmpty(),
+                    line ?: ArtistDisplay.of(state.metadata.artist?.toString()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (line != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -503,7 +505,7 @@ internal fun MiniPlayer(
         }
         if (state.durationMs > 0) {
             LinearProgressIndicator(
-                progress = { WaveLogic.fraction(position, state.durationMs) },
+                progress = { WaveLogic.fraction(position.value, state.durationMs) },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).fillMaxWidth().height(3.dp).clip(Pill),
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 gapSize = 0.dp,

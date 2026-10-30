@@ -250,7 +250,7 @@
     "pause": "Pause",
     "paused": "Paused",
     "paused_progress": "Paused, track details read for {done} of {total}",
-    "paused_sub": "Tap Resume to carry on.",
+    "paused_sub": "Background reading is paused; what is on screen still loads. Tap Resume to carry on.",
     "reading": "Reading track details: {done} of {total}",
     "resume": "Resume",
     "running": "Scanning {current} of {total} chats, {found, plural, one {# track so far} other {# tracks so far}}",

@@ -29,6 +29,7 @@ import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.Storage
 import com.tmplayer.music.data.TagEnricher
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.platform.JobFailures
@@ -284,7 +285,7 @@ class PlaybackService : MediaSessionService() {
                 ?: track.thumbFileId.takeIf { it != 0 }?.let { tdFileUri(it, track = track.id, thumb = true) }
             val metadata = MediaMetadata.Builder()
                 .setTitle(track.title)
-                .setArtist(track.artist.ifBlank { L.libraryUnknownArtist })
+                .setArtist(ArtistDisplay.of(track.artist).ifBlank { L.libraryUnknownArtist })
                 .setAlbumTitle(track.album.ifBlank { null })
                 .setAlbumArtist(track.albumArtist.ifBlank { null })
                 .setTrackNumber(track.trackNumber.takeIf { it > 0 })

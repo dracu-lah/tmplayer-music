@@ -41,8 +41,10 @@ class TagPolicyTest {
         val metered = TagPolicy.policy(NetState.Metered, mobileAllowed = false, active = true, paused = false)
         val plan = TagPriority.plan(listOf(t(1)), listOf(t(2)), listOf(t(3, 0), t(4, 0)), listOf(t(5)), metered, batch = 12, documentsLeft = 1)
         assertEquals("no trickle on mobile data; documents within the cap", listOf(1L, 2L, 3L), plan.map { it.messageId })
-        val none = TagPriority.plan(listOf(t(1)), listOf(t(2)), listOf(t(3, 0)), listOf(t(5)), TagPolicy.policy(NetState.Metered, false, true, paused = true), 12)
-        assertTrue(none.isEmpty())
+        val paused = TagPriority.plan(listOf(t(1)), listOf(t(2)), listOf(t(3, 0)), listOf(t(5)), TagPolicy.policy(NetState.Metered, false, true, paused = true), 12)
+        assertEquals("paused: on screen and about to play only", listOf(1L, 2L), paused.map { it.messageId })
+        val offline = TagPriority.plan(listOf(t(1)), listOf(t(2)), listOf(t(3, 0)), listOf(t(5)), TagPolicy.policy(NetState.Offline, false, true, paused = false), 12)
+        assertTrue(offline.isEmpty())
     }
 
     @Test
@@ -68,7 +70,16 @@ class TagPolicyTest {
         assertFalse(offline.onDemand || offline.documents || offline.trickle)
 
         val paused = TagPolicy.policy(NetState.Unmetered, mobileAllowed = true, active = true, paused = true)
-        assertFalse(paused.onDemand || paused.documents || paused.trickle)
+        assertTrue("Pause stops the background only", paused.onDemand)
+        assertFalse(paused.documents || paused.trickle)
+        assertEquals(0, paused.documentsCap)
+
+        val pausedOnMobile = TagPolicy.policy(NetState.Metered, mobileAllowed = false, active = true, paused = true)
+        assertTrue(pausedOnMobile.onDemand)
+        assertFalse(pausedOnMobile.documents || pausedOnMobile.trickle)
+
+        val pausedOffline = TagPolicy.policy(NetState.Offline, mobileAllowed = true, active = true, paused = true)
+        assertFalse(pausedOffline.onDemand || pausedOffline.documents || pausedOffline.trickle)
     }
 
     @Test
@@ -166,5 +177,37 @@ class TagPolicyTest {
         assertEquals(LibraryPhase.WaitingWifi, view.phase)
         assertFalse(view.showBanner)
         advanceUntilIdle()
+    }
+
+    @Test
+    fun theTrickleRestsAtLeastAsLongAsItWorked() {
+        // A batch of 12 that took 20 s rests 20 s: busy at most half of the time.
+        assertEquals(20_000L, TricklePacing.restAfter(batchMs = 20_000, files = 12, lowRam = false, minGapMs = 1_000))
+        // A quick batch of 12 (3 s) rests until 15 s have passed: 0.8 files a second at most.
+        assertEquals(12_000L, TricklePacing.restAfter(batchMs = 3_000, files = 12, lowRam = false, minGapMs = 1_000))
+        // Slower on a low memory phone: one file per 2.5 s.
+        assertEquals(12_000L, TricklePacing.restAfter(batchMs = 3_000, files = 6, lowRam = true, minGapMs = 1_000))
+        // Never less than the usual gap, never more than the cap, and garbage in stays bounded.
+        assertEquals(1_000L, TricklePacing.restAfter(batchMs = 0, files = 0, lowRam = false, minGapMs = 1_000))
+        assertEquals(TricklePacing.MAX_REST_MS, TricklePacing.restAfter(batchMs = 600_000, files = 12, lowRam = false, minGapMs = 1_000))
+        assertEquals(1_000L, TricklePacing.restAfter(batchMs = -5, files = -3, lowRam = false, minGapMs = 1_000))
+    }
+
+    @Test
+    fun theTrickleAveragesAtMostOneFileASecondAndHalfTheTime() {
+        // A fake clock: batches of 12 taking 1 s to 30 s, each followed by its rest.
+        for (took in listOf(1_000L, 5_000L, 12_000L, 30_000L)) {
+            var now = 0L
+            var files = 0
+            var busy = 0L
+            repeat(10) {
+                now += took
+                busy += took
+                files += 12
+                now += TricklePacing.restAfter(took, 12, lowRam = false, minGapMs = 1_000)
+            }
+            assertTrue("rate for a ${took}ms batch: $files files in $now ms", files * 1_000L <= now)
+            assertTrue("duty for a ${took}ms batch: $busy of $now", busy * 2 <= now)
+        }
     }
 }

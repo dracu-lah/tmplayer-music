@@ -1,6 +1,8 @@
 package com.tmplayer.music.data
 
 import com.tmplayer.music.library.ArtistCredits
+import com.tmplayer.music.library.ArtistDisplay
+import com.tmplayer.music.library.TextFold
 import com.tmplayer.music.library.baseOfSongKey
 import com.tmplayer.music.library.likeEscape
 import com.tmplayer.music.library.playlistName
@@ -180,6 +182,8 @@ class GarbageInputTest {
                 assertTrue(artist.name.none { it.isISOControl() })
             }
             assertEquals(split.size, split.map { it.key }.toSet().size)
+            val shown = ArtistDisplay.of(input)
+            assertTrue(shown.length <= TextFold.MAX_FIELD && shown.none { it == '|' || it == '\u0000' })
         }
         // Wrong typed: a number or a date stored where a credit belongs is one artist named by it.
         assertEquals(listOf("1999"), ArtistCredits.split("1999").map { it.name })

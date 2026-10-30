@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.player.PlayerState
 import com.tmplayer.music.ui.common.Format
@@ -76,7 +77,7 @@ internal fun ContinueCardContent(
     modifier: Modifier = Modifier,
 ) {
     val title = state.metadata.title?.toString().orEmpty()
-    val artist = state.metadata.artist?.toString()?.takeIf { it.isNotBlank() } ?: L.libraryUnknownArtist
+    val artist = ArtistDisplay.of(state.metadata.artist?.toString()).takeIf { it.isNotBlank() } ?: L.libraryUnknownArtist
     val fraction = WaveLogic.fraction(positionMs, state.durationMs)
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(L.listeningContinue, style = MaterialTheme.typography.titleMedium)

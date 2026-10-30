@@ -9,7 +9,9 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.library.Song
+import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.platform.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,11 +35,30 @@ data class PlayerState(
 }
 
 /**
- * Which song the lists mark as playing: its key and whether it plays or is paused. It changes only
- * when the song or play and pause do, never with the position, so a list that watches it is not
- * redrawn while a track plays.
+ * Which file the lists mark as playing: the message it is ([track]), the song it was played as
+ * ([songKey], empty when it was played as that chat's own file from a chat page) and whether it plays
+ * or is paused. It changes only when the file or play and pause do, never with the position, so a
+ * list that watches it is not redrawn while a track plays. [PlayingMatch] decides which rows it marks.
  */
-data class PlayingMark(val songKey: String, val playing: Boolean)
+data class PlayingMark(val songKey: String, val track: TrackId, val playing: Boolean)
+
+/**
+ * Which rows show the playing mark. A song row (Songs, albums, playlists, Home) is marked when it is
+ * the song that plays; a file played from a chat page has no song key, so then the song row whose
+ * default file is that same message is marked. A chat page row is one file, so it is marked only when
+ * that very message plays: another version of the same song in the chat stays unmarked.
+ */
+object PlayingMatch {
+    /** true playing, false paused, null when [songKey] (default file [defaultTrack]) is not what plays. */
+    fun song(mark: PlayingMark?, songKey: String, defaultTrack: TrackId?): Boolean? {
+        mark ?: return null
+        val hit = if (mark.songKey.isNotEmpty()) mark.songKey == songKey else defaultTrack == mark.track
+        return if (hit) mark.playing else null
+    }
+
+    /** true playing, false paused, null when the file [track] is not the one that plays. */
+    fun track(mark: PlayingMark?, track: TrackId): Boolean? = mark?.takeIf { it.track == track }?.playing
+}
 
 /**
  * The app's one connection to [PlaybackService]. The screens send commands through it and read
@@ -98,15 +119,20 @@ object PlayerConnection {
         )
         // StateFlow drops an equal value, so only a new song or play and pause reach the lists.
         _mark.value = p.currentMediaItem?.mediaId
-            ?.let { MediaIds.item(it)?.songKey }
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { PlayingMark(it, p.isPlaying || (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING)) }
+            ?.let { MediaIds.item(it) }
+            ?.let {
+                PlayingMark(
+                    songKey = it.songKey,
+                    track = TrackId(it.chatId, it.messageId),
+                    playing = p.isPlaying || (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING),
+                )
+            }
     }
 
     /** An item the service resolves by id from the index (see [PlaybackService]). */
     private fun itemOf(song: Song): MediaItem = MediaItem.Builder()
         .setMediaId(MediaIds.of(song.defaultTrack, song.groupKey))
-        .setMediaMetadata(MediaMetadata.Builder().setTitle(song.title).setArtist(song.artist).build())
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(song.title).setArtist(ArtistDisplay.of(song.artist)).build())
         .build()
 
     /**

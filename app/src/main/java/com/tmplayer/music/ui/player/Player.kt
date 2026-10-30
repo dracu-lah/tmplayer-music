@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,13 +52,20 @@ import kotlinx.coroutines.launch
 
 /** The playing position, read from the player twice a second while it plays and not at all otherwise. */
 @Composable
-fun rememberPosition(state: PlayerState): Long {
-    var position by remember { mutableLongStateOf(PlayerConnection.position()) }
+fun rememberPosition(state: PlayerState): Long = rememberPositionState(state).value
+
+/**
+ * The same position as a [State], for callers that read it only where it is shown (a time Text, a
+ * progress line drawn from a lambda), so a tick recomposes or redraws that alone, never its parent.
+ */
+@Composable
+fun rememberPositionState(state: PlayerState): State<Long> {
+    val position = remember { mutableLongStateOf(PlayerConnection.position()) }
     LaunchedEffect(state.isPlaying, state.item?.mediaId, state.index) {
-        position = PlayerConnection.position()
+        position.longValue = PlayerConnection.position()
         while (state.isPlaying) {
             delay(500)
-            position = PlayerConnection.position()
+            position.longValue = PlayerConnection.position()
         }
     }
     return position

@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.player.PlaybackErrors
 import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.player.PlayerState
@@ -212,11 +214,12 @@ private fun TopBar(
 @Composable
 private fun Controls(state: PlayerState, open: Boolean, fade: Modifier, compact: Boolean = false) {
     val error by PlaybackErrors.last.collectAsStateWithLifecycle()
-    val position = rememberPosition(state)
-    var scrub by remember { mutableStateOf<Float?>(null) }
+    // Read only by the bar (while drawing) and by [Times]: a tick of the position never recomposes these controls.
+    val position = rememberPositionState(state)
+    val scrub = remember { mutableStateOf<Float?>(null) }
     val title = state.metadata.title?.toString().orEmpty()
     val subtitle = listOfNotNull(
-        state.metadata.artist?.toString()?.takeIf { it.isNotBlank() },
+        ArtistDisplay.of(state.metadata.artist?.toString()).takeIf { it.isNotBlank() },
         state.metadata.albumTitle?.toString()?.takeIf { it.isNotBlank() },
     ).joinToString("  ·  ")
     Column(fade.fillMaxWidth()) {
@@ -241,20 +244,14 @@ private fun Controls(state: PlayerState, open: Boolean, fade: Modifier, compact:
         Spacer(Modifier.height(if (compact) 0.dp else 8.dp))
         if (state.durationMs > 0) {
             WavySeekBar(
-                fraction = { WaveLogic.fraction(position, state.durationMs) },
+                fraction = { WaveLogic.fraction(position.value, state.durationMs) },
                 durationMs = state.durationMs,
                 playing = state.isPlaying,
                 visible = open,
                 onSeek = PlayerConnection::seekTo,
-                onScrub = { scrub = it },
+                onScrub = { scrub.value = it },
             )
-            val shown = scrub?.let { (it * state.durationMs).toLong() } ?: position
-            val times = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
-            Row(Modifier.fillMaxWidth()) {
-                Text(Format.duration(shown.coerceAtLeast(0)), style = times, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.weight(1f))
-                Text(Format.duration(state.durationMs), style = times, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Times(position, scrub, state.durationMs)
         } else {
             // No length to seek in: a still line and a plain sentence, nothing animated.
             WavySeekBar(fraction = { 0f }, durationMs = 0, playing = false, visible = false, onSeek = {})
@@ -273,6 +270,21 @@ private fun Controls(state: PlayerState, open: Boolean, fade: Modifier, compact:
             ShuffleToggle(state.shuffle)
             RepeatToggle(state.repeat)
         }
+    }
+}
+
+/**
+ * The elapsed and total times under the bar. The only part of Now Playing that recomposes while a
+ * track plays: twice a second with the position, and on each move while scrubbing.
+ */
+@Composable
+private fun Times(position: State<Long>, scrub: State<Float?>, durationMs: Long) {
+    val shown = scrub.value?.let { (it * durationMs).toLong() } ?: position.value
+    val times = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+    Row(Modifier.fillMaxWidth()) {
+        Text(Format.duration(shown.coerceAtLeast(0)), style = times, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.weight(1f))
+        Text(Format.duration(durationMs), style = times, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

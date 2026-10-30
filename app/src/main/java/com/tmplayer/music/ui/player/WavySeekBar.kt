@@ -4,9 +4,9 @@ import android.app.ActivityManager
 import android.content.Context
 import android.os.PowerManager
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
@@ -18,13 +18,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -34,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.createBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
@@ -43,6 +55,7 @@ import com.tmplayer.music.ui.theme.LocalReducedMotion
 import com.tmplayer.music.ui.theme.MusicMotion
 import kotlinx.coroutines.delay
 import kotlin.math.PI
+import kotlin.math.ceil
 import kotlin.math.sin
 
 /** The wave's shape: one crest every 40 dp, 3 dp high, travelling one wavelength a second in steps. */
@@ -50,6 +63,8 @@ private val Wavelength = 40.dp
 private val Amplitude = 3.dp
 private val StrokeWidth = 4.dp
 private val Gap = 6.dp
+private val ThumbWidth = 6.dp
+private val ThumbHeight = 28.dp
 
 /**
  * The seek bar, in the Material 3 Expressive style: the played part is a wavy line, the rest a flat
@@ -57,10 +72,16 @@ private val Gap = 6.dp
  * needs minSdk 24, so it is drawn here.)
  *
  * When it moves ([WaveLogic]): the crest travels only while the track plays, Now Playing is open
- * ([visible]) and the app is in the foreground, about 15 steps a second; motion off ("Remove
+ * ([visible]) and the app is in the foreground, about 16 steps a second; motion off ("Remove
  * animations"), a low memory phone and Battery Saver keep it still (still wavy while playing).
- * Paused, scrubbing or with no known length the wave springs flat and the frame loop stops, so
+ * Paused, scrubbing or with no known length the wave springs flat and the step loop stops, so
  * nothing runs while idle.
+ *
+ * What a step costs: the wave is drawn once into a bitmap one wavelength wide, laid side by side in
+ * its own layer, and a step only moves that layer sideways ([WaveLogic.Draw.Pattern]). Nothing
+ * recomposes and nothing is drawn again; the played length clips it and changes only with the
+ * position (twice a second). The bar is its own layer too, so its redraws never repaint the sheet.
+ * [fraction] is read only while drawing.
  *
  * Touch: press anywhere to jump the thumb there, drag to scrub, lift to seek. Every pointer change
  * is consumed, so holding or dragging the bar never moves the player sheet. TalkBack reads it as a
@@ -86,36 +107,42 @@ fun WavySeekBar(
     // Battery Saver is read again each time the app comes back to the front.
     val powerSave = remember(context, resumed) { (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true }
     val still = WaveLogic.stillDevice(lowRam, powerSave)
-    val travels = WaveLogic.travels(playing, resumed, visible, reduced, known, still) && seeking == null
-    val amplitude by animateFloatAsState(
-        WaveLogic.amplitude(playing, known, seeking != null),
+    val scrubbing = seeking != null
+    val travels = WaveLogic.travels(playing, resumed, visible, reduced, known, still) && !scrubbing
+    val amplitude = animateFloatAsState(
+        WaveLogic.amplitude(playing, known, scrubbing),
         MusicMotion.current.defaultEffects(),
         label = "amplitude",
     )
-    // The crest's phase, moved on by a timed step (WaveLogic.STEP_MS, about 15 a second) that runs
-    // only while the wave travels. Each step redraws the window, so it is a step, not every frame.
-    var phase by remember { mutableFloatStateOf(0f) }
+    // The crest's phase, moved on by a timed step (WaveLogic.STEP_MS) that runs only while the wave
+    // travels. It is read only by the pattern layer's translation, so a step moves that layer alone.
+    val phase = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(travels) {
         if (!travels) return@LaunchedEffect
+        val from = phase.floatValue
+        val start = withFrameNanos { it }
         while (true) {
-            // Sleeps between steps, so no frame is asked for in between.
-            delay(WaveLogic.STEP_MS)
-            phase = WaveLogic.nextPhase(phase, WaveLogic.STEP_MS)
+            // Sleeps between steps, so no frame is asked for in between; then waits for the next
+            // frame so the step lands on it, timed by the frame clock.
+            delay(WaveLogic.SLEEP_MS)
+            withFrameNanos { now -> phase.floatValue = WaveLogic.phaseAt(now - start, from) }
         }
     }
     val currentSeek by rememberUpdatedState(onSeek)
     val currentScrub by rememberUpdatedState(onScrub)
     val duration by rememberUpdatedState(durationMs)
-    val shown = { seeking ?: fraction() }
+    val currentFraction by rememberUpdatedState(fraction)
+    val shown = { seeking ?: currentFraction() }
     val active = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.secondaryContainer
-    val positionText = Format.duration((shown() * durationMs).toLong().coerceAtLeast(0))
     val path = remember { Path() }
 
-    Canvas(
+    Box(
         modifier
             .fillMaxWidth()
             .height(48.dp)
+            // Its own layer: a redraw of the bar (position, thumb) never repaints the rest of the sheet.
+            .graphicsLayer()
             .pointerInput(known) {
                 if (!known) return@pointerInput
                 fun at(x: Float) = (x / size.width).coerceIn(0f, 1f)
@@ -143,55 +170,138 @@ fun WavySeekBar(
             .semantics {
                 contentDescription = L.playerSeek
                 if (known) {
-                    progressBarRangeInfo = ProgressBarRangeInfo(shown(), 0f..1f)
-                    stateDescription = positionText
+                    val now = shown()
+                    progressBarRangeInfo = ProgressBarRangeInfo(now, 0f..1f)
+                    stateDescription = Format.duration((now * durationMs).toLong().coerceAtLeast(0))
                     setProgress { target ->
                         currentSeek((target.coerceIn(0f, 1f) * duration).toLong())
                         true
                     }
                 }
+            }
+            .drawBehind {
+                val bar = BarGeometry(this, known, shown())
+                // The rest of the track: flat, after the thumb and its gap.
+                if (bar.trackFrom < bar.end) {
+                    drawLine(track, Offset(bar.trackFrom, bar.mid), Offset(bar.end, bar.mid), strokeWidth = bar.stroke, cap = StrokeCap.Round)
+                }
+                if (!known) return@drawBehind
+                if (bar.playedTo > bar.start) {
+                    val amp = amplitude.value
+                    when (WaveLogic.draw(amp)) {
+                        WaveLogic.Draw.Flat ->
+                            drawLine(active, Offset(bar.start, bar.mid), Offset(bar.playedTo, bar.mid), strokeWidth = bar.stroke, cap = StrokeCap.Round)
+                        // Only while the height springs (a few hundred ms after play or pause).
+                        WaveLogic.Draw.Path -> drawWavePath(path, bar, Amplitude.toPx() * amp, phase.floatValue, active)
+                        // Drawn by the pattern layer below.
+                        WaveLogic.Draw.Pattern -> Unit
+                    }
+                }
+                // The thumb: a tall pill.
+                val thumbW = ThumbWidth.toPx()
+                val thumbH = ThumbHeight.toPx()
+                drawRoundRect(
+                    active,
+                    topLeft = Offset(bar.x - thumbW / 2, bar.mid - thumbH / 2),
+                    size = Size(thumbW, thumbH),
+                    cornerRadius = CornerRadius(thumbW / 2),
+                )
             },
     ) {
-        val stroke = StrokeWidth.toPx()
-        val gap = Gap.toPx()
-        val thumbW = 6.dp.toPx()
-        val thumbH = 28.dp.toPx()
-        val mid = size.height / 2
-        val start = stroke / 2
-        val end = size.width - stroke / 2
-        val x = if (known) start + (end - start) * shown() else start
-        // The rest of the track: flat, after the thumb and its gap.
-        val trackFrom = if (known) x + thumbW / 2 + gap else start
-        if (trackFrom < end) {
-            drawLine(track, Offset(trackFrom, mid), Offset(end, mid), strokeWidth = stroke, cap = StrokeCap.Round)
-        }
-        if (!known) return@Canvas
-        // The played part: a sine whose height follows [amplitude] and whose crest moves with [phase].
-        val playedTo = x - thumbW / 2 - gap
-        if (playedTo > start) {
-            val amp = Amplitude.toPx() * amplitude
-            if (amp < 0.25f) {
-                drawLine(active, Offset(start, mid), Offset(playedTo, mid), strokeWidth = stroke, cap = StrokeCap.Round)
-            } else {
-                val wave = Wavelength.toPx()
-                val shift = phase * wave
-                path.reset()
-                var px = start
-                path.moveTo(px, mid + amp * sin(((px - shift) / wave) * 2f * PI.toFloat()))
-                val step = 2.dp.toPx()
-                while (px < playedTo) {
-                    px = (px + step).coerceAtMost(playedTo)
-                    path.lineTo(px, mid + amp * sin(((px - shift) / wave) * 2f * PI.toFloat()))
-                }
-                drawPath(path, active, style = Stroke(width = stroke, cap = StrokeCap.Round))
+        if (known) {
+            // The played part's window: clipped to the played length, which moves with the position only.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = if (WaveLogic.draw(amplitude.value) == WaveLogic.Draw.Pattern) 1f else 0f }
+                    .drawWithContent {
+                        val bar = BarGeometry(this, true, shown())
+                        if (bar.playedTo > 0f) clipRect(right = bar.playedTo) { this@drawWithContent.drawContent() }
+                    },
+            ) {
+                // The pattern, recorded once per size and colour; a step only changes translationX.
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer { translationX = phase.floatValue * WaveLogic.patternWidth(Wavelength.toPx()) }
+                        .drawWithCache {
+                            val tile = wavePattern(
+                                width = WaveLogic.patternWidth(Wavelength.toPx()),
+                                amplitude = Amplitude.toPx(),
+                                stroke = StrokeWidth.toPx(),
+                                color = active,
+                            )
+                            onDrawBehind {
+                                val w = tile.width.toFloat()
+                                val top = size.height / 2 - tile.height / 2f
+                                // From one wavelength before the start, so a shift of up to one still covers it.
+                                var x = -w
+                                while (x < size.width) {
+                                    drawImage(tile, Offset(x, top))
+                                    x += w
+                                }
+                            }
+                        },
+                )
             }
         }
-        // The thumb: a tall pill.
-        drawRoundRect(
-            active,
-            topLeft = Offset(x - thumbW / 2, mid - thumbH / 2),
-            size = Size(thumbW, thumbH),
-            cornerRadius = CornerRadius(thumbW / 2),
-        )
     }
+}
+
+/** Where the bar's parts are for the shown fraction. */
+private class BarGeometry(scope: DrawScope, known: Boolean, fraction: Float) {
+    val stroke = with(scope) { StrokeWidth.toPx() }
+    val mid = scope.size.height / 2
+    val start = stroke / 2
+    val end = scope.size.width - stroke / 2
+    val x = if (known) start + (end - start) * fraction.coerceIn(0f, 1f) else start
+    private val gap = with(scope) { Gap.toPx() }
+    private val thumbW = with(scope) { ThumbWidth.toPx() }
+    val trackFrom = if (known) x + thumbW / 2 + gap else start
+    val playedTo = x - thumbW / 2 - gap
+}
+
+/** The played part as a path, for the short spring between flat and full height. */
+private fun DrawScope.drawWavePath(path: Path, bar: BarGeometry, amp: Float, phase: Float, color: Color) {
+    val wave = WaveLogic.patternWidth(Wavelength.toPx()).toFloat()
+    val shift = phase * wave
+    val twoPi = 2f * PI.toFloat()
+    path.reset()
+    var px = bar.start
+    path.moveTo(px, bar.mid + amp * sin(((px - shift) / wave) * twoPi))
+    val step = 2.dp.toPx()
+    while (px < bar.playedTo) {
+        px = (px + step).coerceAtMost(bar.playedTo)
+        path.lineTo(px, bar.mid + amp * sin(((px - shift) / wave) * twoPi))
+    }
+    drawPath(path, color, style = Stroke(width = bar.stroke, cap = StrokeCap.Round))
+}
+
+/**
+ * One wavelength of the wave, drawn once into a small bitmap (about 110 by 25 pixels): a sine that
+ * starts and ends at the same height and slope, so copies side by side join without a seam.
+ */
+private fun wavePattern(width: Int, amplitude: Float, stroke: Float, color: Color): ImageBitmap {
+    val height = ceil(2 * amplitude + stroke + 2f).toInt().coerceIn(1, 512)
+    val bitmap = createBitmap(width, height)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = stroke
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+        this.color = color.toArgb()
+    }
+    val mid = height / 2f
+    val twoPi = 2f * PI.toFloat()
+    val path = android.graphics.Path()
+    // A wavelength either side as well, so the stroke's edges at the seams are those of a longer line.
+    var x = -width.toFloat()
+    path.moveTo(x, mid + amplitude * sin((x / width) * twoPi))
+    while (x < 2 * width) {
+        x += 1f
+        path.lineTo(x, mid + amplitude * sin((x / width) * twoPi))
+    }
+    canvas.drawPath(path, paint)
+    return bitmap.asImageBitmap()
 }

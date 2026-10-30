@@ -360,6 +360,7 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onLongClick: () -> Unit)
     val title = track.title.ifBlank { track.fileName }
     val artist = track.artist.ifBlank { L.libraryUnknownArtist }
     val length = Format.duration(track.durationMs)
+    val mark = playingMarkOfTrack(track.id)
     Row(
         Modifier
             .fillMaxWidth()
@@ -378,7 +379,16 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onLongClick: () -> Unit)
             track = track.id.takeIf { track.thumbFileId != 0 },
         )
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (mark != null) PlayingGlyph(playing = mark, modifier = Modifier.padding(end = 6.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (mark != null) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
                 listOf(artist, length).filter { it.isNotBlank() }.joinToString("  ·  "),
                 style = MaterialTheme.typography.bodyMedium,

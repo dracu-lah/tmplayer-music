@@ -36,6 +36,7 @@ import com.tmplayer.music.data.Library
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.Album
 import com.tmplayer.music.library.Artist
+import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.library.SearchResults
 import com.tmplayer.music.ui.common.Cover
 import kotlinx.coroutines.delay
@@ -113,7 +114,7 @@ fun SearchScreen(actions: SongActions, onAlbum: (Album) -> Unit, onArtist: (Arti
                 if (found.albums.isNotEmpty()) {
                     item(key = "albumsHead") { Section(L.tabAlbums) }
                     items(found.albums, key = { "a:${it.key}" }) { album ->
-                        Line(album.title, album.artist, album = album) {
+                        Line(album.title, ArtistDisplay.of(album.artist), album = album) {
                             remember()
                             onAlbum(album)
                         }

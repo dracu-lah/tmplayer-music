@@ -1,29 +1,20 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tmplayer-music-lyrics",
-  "main": "src/index.ts",
+  // A Cloudflare Pages project (static public/ plus the Functions in functions/), not a Worker:
+  // tmplayer.org's DNS is not on Cloudflare, and a Pages custom domain works with a plain CNAME at
+  // any DNS provider. The custom domain meta.tmplayer.org is added in the dashboard, not here.
+  "name": "tmplayer-music-lyrics-gateway",
+  "pages_build_output_dir": "public",
   "compatibility_date": "2026-10-01",
 
-  // FILL IN before the first deploy: your Cloudflare account id (dashboard, Workers and Pages,
-  // right column). Left out, wrangler uses the account you are logged in to, and asks if there are several.
-  // "account_id": "FILL_IN_ACCOUNT_ID",
-
-  // FILL IN: the host the app will call. A custom domain makes the DNS record by itself; the zone
-  // (tmplayer.org here) must already be on the same Cloudflare account. Change it if you pick another name.
-  "routes": [{ "pattern": "lyrics.tmplayer.org", "custom_domain": true }],
-  // No second public address on workers.dev: the app only knows the custom domain.
-  "workers_dev": false,
-  "preview_urls": false,
-
-  // Privacy: no Workers Logs, no traces, no Logpush. Nothing about a request is kept.
-  "observability": { "enabled": false },
+  // Privacy: Pages Functions have no Workers Logs setting to turn on, and we add none: no console
+  // calls, no Logpush, no analytics bindings. Do not run `wrangler pages deployment tail` against it
+  // for anything but a broken deploy; it would show request URLs.
 
   "vars": {
     "USER_AGENT": "TMPlayerMusic-gateway/1.0 (https://tmplayer.org)"
-  },
+  }
 
-  // Per-client limit: 30 lookups a minute per coarse bucket (16 bits of a hash of the address,
-  // see bucketOf in src/index.ts). Counted by Cloudflare in each location, never stored by us.
-  // namespace_id is any number unique among your account's rate limiters.
-  "ratelimits": [{ "name": "LIMITER", "namespace_id": "4101", "simple": { "limit": 30, "period": 60 } }]
+  // No rate limiting binding: Pages Functions do not support `ratelimits` (a Workers only binding).
+  // The per-client and upstream limits are counters in each isolate's memory, see src/index.ts.
 }

@@ -123,6 +123,7 @@ object Library {
             policy = policy,
             onBytes = { n -> choices.addTagBytes(n) },
             batchSize = if (lowRam) TagEnricher.SMALL_BATCH else TagEnricher.BATCH,
+            lowRam = lowRam,
         )
         scope.launch {
             Td.auth.map { it is AuthState.Ready }.distinctUntilChanged().collect { signedIn ->
@@ -266,7 +267,10 @@ object Library {
         scanner.scan(index().pickedChats().map { it.chatId })
     }
 
-    /** Pauses the scan and the tag reader, until Resume, across restarts. */
+    /**
+     * Pauses the scan and the tag reader's background reading, until Resume, across restarts. The
+     * rows on screen and the tracks about to play still get their details ([TagPolicy]).
+     */
     fun pause() {
         choices.setPaused(true)
         scanner.pause()

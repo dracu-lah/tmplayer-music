@@ -17,12 +17,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.sync.Mutex
@@ -107,7 +109,9 @@ data class EnrichStatus(
  * playing. Every byte fetched is reported to [onBytes], for the data used line in Settings.
  *
  * It stops by itself once nothing allowed is pending (a change of policy or a [prefer] starts it
- * again), and waits while [paused] (the scan's Pause). A file
+ * again). While [paused] (the scan's Pause) only the background stops: the rows on screen and the
+ * tracks about to play are still read, and with none of those it waits for Resume or a new
+ * request. After a background batch it rests as [TricklePacing] says. A file
  * whose tags cannot be parsed keeps Telegram's fields and is marked failed, so it is not tried for
  * ever. A file whose bytes cannot be had is different: when a whole batch gets none, the connection
  * may be the cause, so the reader waits ([backoffMs], doubling) and stops after [MAX_BACKOFFS] rounds
@@ -134,6 +138,10 @@ class TagEnricher(
     private val onBytes: (Long) -> Unit = {},
     /** Files per batch; smaller on a low memory device. */
     private val batchSize: Int = BATCH,
+    /** A low memory device: the background reading is paced slower ([TricklePacing]). */
+    private val lowRam: Boolean = false,
+    /** Milliseconds from any fixed point, for timing a batch; the tests pass the virtual clock. */
+    private val clock: () -> Long = MONOTONIC_MS,
 ) {
     private val _status = MutableStateFlow(EnrichStatus())
     val status: StateFlow<EnrichStatus> = _status.asStateFlow()
@@ -156,6 +164,9 @@ class TagEnricher(
     @Volatile
     private var cappedDocumentsRead = 0
 
+    /** Moves on with each request for rows on screen or tracks about to play: ends a rest or a paused wait. */
+    private val wake = MutableStateFlow(0)
+
     /** Starts reading if it is not already; cheap to call after every scanned page. */
     fun kick() {
         scope.launch {
@@ -170,7 +181,10 @@ class TagEnricher(
     /** Reads [ids] (the rows on screen) next, if they still wait. Only the last call counts. */
     fun prefer(ids: List<TrackId>) {
         preferred = ids.take(batchSize)
-        if (ids.isNotEmpty()) kick()
+        if (ids.isNotEmpty()) {
+            wake.update { it + 1 }
+            kick()
+        }
     }
 
     /** Reads [ids] (the playing track first, then the next few) before the rest, if they still wait. */
@@ -178,7 +192,10 @@ class TagEnricher(
         val next = ids.take(UPCOMING)
         if (next == upcoming) return
         upcoming = next
-        if (next.isNotEmpty()) kick()
+        if (next.isNotEmpty()) {
+            wake.update { it + 1 }
+            kick()
+        }
     }
 
     /** Refreshes the counts from the index without starting anything, for a screen that opens. */
@@ -192,13 +209,16 @@ class TagEnricher(
         try {
             refreshCounts()
             while (true) {
-                waitWhilePaused()
                 if (!online.value) {
                     _status.update { it.copy(waiting = true) }
                     online.first { it }
                     _status.update { it.copy(waiting = false) }
                 }
-                val allowed = policy.value
+                // Read before the requests below, so one that comes while this round runs is not missed.
+                val seen = wake.value
+                val held = paused.value
+                // The Pause stops the background only; what is on screen or about to play is still read.
+                val allowed = policy.value.let { if (held) it.copy(documents = false, trickle = false) else it }
                 val wanted = preferred
                 preferred = emptyList()
                 val next = upcoming
@@ -209,8 +229,16 @@ class TagEnricher(
                 val documents = if (room <= 0 || !allowed.documents || documentsLeft <= 0) emptyList() else store.pendingDocuments(batchSize)
                 val rest = if (room <= 0 || !allowed.trickle) emptyList() else store.pendingTags(batchSize)
                 val batch = TagPriority.plan(onScreen, soon, documents, rest, allowed, batchSize, documentsLeft)
-                if (batch.isEmpty()) break
+                if (batch.isEmpty()) {
+                    if (!held) break
+                    // Paused with nothing on screen to read: wait for Resume or the next request.
+                    _status.update { it.copy(paused = true) }
+                    combine(paused, wake) { p, w -> !p || w != seen }.first { it }
+                    _status.update { it.copy(paused = false) }
+                    continue
+                }
                 val asked = (onScreen + soon).mapTo(HashSet()) { it.id }
+                val startedAt = clock()
                 if (documentsLeft != Int.MAX_VALUE) {
                     val docIds = documents.mapTo(HashSet()) { it.id }
                     cappedDocumentsRead += batch.count { it.id in docIds && it.id !in asked }
@@ -219,13 +247,16 @@ class TagEnricher(
                 val outcomes = coroutineScope {
                     batch.chunked((batch.size + PARALLEL - 1) / PARALLEL).map { part ->
                         async {
-                            part.map { track ->
-                                waitWhilePaused()
-                                track to enrich(track)
+                            part.mapNotNull { track ->
+                                // Paused part way: the background files of this batch wait for later.
+                                if (paused.value && track.id !in asked) null else track to enrich(track)
                             }
                         }
                     }.awaitAll().flatten()
                 }
+                // Paused before any of it ran: plan again (on-screen reads only, or wait for Resume).
+                if (outcomes.isEmpty()) continue
+                val background = outcomes.count { it.first.id !in asked }
                 val got = outcomes.count { it.second != null }
                 // Without a connection a missing file proves nothing, so only tries made online count.
                 val counts = online.value
@@ -262,7 +293,9 @@ class TagEnricher(
                 store.applyTags(results)
                 results.forEach { attempts.remove(it.id) }
                 refreshCounts()
-                delay(gapMs)
+                val restMs = if (background == 0) gapMs else TricklePacing.restAfter(clock() - startedAt, background, lowRam, gapMs)
+                // A request for what is on screen or about to play ends the rest at once.
+                withTimeoutOrNull(restMs) { wake.first { it != seen } }
             }
         } finally {
             withContext(NonCancellable) {
@@ -272,13 +305,6 @@ class TagEnricher(
                 }
             }
         }
-    }
-
-    private suspend fun waitWhilePaused() {
-        if (!paused.value) return
-        _status.update { it.copy(paused = true) }
-        paused.first { !it }
-        _status.update { it.copy(paused = false) }
     }
 
     /**
@@ -358,6 +384,10 @@ class TagEnricher(
 
     companion object {
         private const val TAG = "TagEnricher"
+        private val ORIGIN = kotlin.time.TimeSource.Monotonic.markNow()
+
+        /** Milliseconds on a monotonic clock, for timing batches. */
+        val MONOTONIC_MS: () -> Long = { ORIGIN.elapsedNow().inWholeMilliseconds }
         const val BATCH = 12
 
         /** The batch on a low memory device. */
