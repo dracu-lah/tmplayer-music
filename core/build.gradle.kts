@@ -191,6 +191,9 @@ kotlin {
             resources.srcDir("src/commonMain/resources")
             dependencies {
                 api(libs.tdl.coroutines)
+                // The library index: SQLite with its own native build on Android and the JVM, so one
+                // schema and one set of queries serve both and the tests run the real engine.
+                api(libs.androidx.sqlite.bundled)
             }
         }
         jvmTest.dependencies {
