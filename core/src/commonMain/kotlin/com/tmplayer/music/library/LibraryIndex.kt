@@ -16,14 +16,20 @@ import kotlin.concurrent.withLock
 data class ChatPick(val chatId: Long, val title: String)
 
 /**
+ * How far one pass of a chat's scan got. Telegram pages newest first, so [fromMessageId] is where
+ * the next page starts (0 is the newest end), [done] says the oldest end was reached, and
+ * [newestMessageId] is the newest message the pass has seen, where a later top-up stops.
+ */
+data class ScanCursor(val fromMessageId: Long = 0, val done: Boolean = false, val newestMessageId: Long = 0)
+
+/**
  * How far the scan of one chat got, so a restart resumes instead of reading the chat again
- * (`plan/RESEARCH.md` 6.3). Message ids are Telegram's; 0 means not scanned yet.
+ * (`plan/RESEARCH.md` 6.3). Audio messages and documents are two searches with their own cursors:
+ * sharing one would let a top-up of one skip what is new in the other.
  */
 data class ScanState(
-    val newestMessageId: Long = 0,
-    val oldestMessageId: Long = 0,
-    val audioDone: Boolean = false,
-    val documentsDone: Boolean = false,
+    val audio: ScanCursor = ScanCursor(),
+    val documents: ScanCursor = ScanCursor(),
     /** When this chat was last scanned, Unix seconds. */
     val lastScanAt: Long = 0,
 )
@@ -141,10 +147,11 @@ class LibraryIndex private constructor(
     suspend fun saveScanState(chatId: Long, state: ScanState) = io {
         exec(
             """
-            UPDATE chats SET newest_message_id = ?, oldest_message_id = ?, audio_done = ?,
-                documents_done = ?, last_scan_at = ? WHERE chat_id = ? AND picked = 1
+            UPDATE chats SET audio_from = ?, audio_newest = ?, audio_done = ?, documents_from = ?,
+                documents_newest = ?, documents_done = ?, last_scan_at = ? WHERE chat_id = ? AND picked = 1
             """,
-            state.newestMessageId, state.oldestMessageId, state.audioDone, state.documentsDone,
+            state.audio.fromMessageId, state.audio.newestMessageId, state.audio.done,
+            state.documents.fromMessageId, state.documents.newestMessageId, state.documents.done,
             state.lastScanAt, chatId,
         )
     }
@@ -353,6 +360,58 @@ class LibraryIndex private constructor(
             .firstOrNull()
     }
 
+    /** Up to [limit] files whose tags have not been read yet, newest post first. */
+    suspend fun pendingTags(limit: Int): List<Track> = io {
+        query(
+            "SELECT $TRACK_COLUMNS FROM tracks WHERE tag_state = ? ORDER BY date_sec DESC LIMIT ?",
+            TagState.TelegramOnly.name, pageSize(limit), map = ::readTrack,
+        )
+    }
+
+    /**
+     * What the tag reader found in [id]'s file. The file's own tags win over Telegram's fields
+     * where they say something; what they leave blank keeps what the track had. The title and
+     * artist can move the track to another song, so the group key is computed again and the
+     * songs, albums and artists it touches are rebuilt. Null [tags] marks the file failed, so it is
+     * not read again, and changes nothing else.
+     */
+    suspend fun applyTags(id: TrackId, tags: Tags?, coverKey: String) {
+        val track = track(id) ?: return
+        if (tags == null) {
+            io {
+                exec(
+                    "UPDATE tracks SET tag_state = ? WHERE chat_id = ? AND message_id = ?",
+                    TagState.Failed.name, id.chatId, id.messageId,
+                )
+            }
+            return
+        }
+        val (artist, title) = TitleFallback.display(tags.title, tags.artist, track.title, track.artist, track.fileName)
+        val duration = tags.durationMs.takeIf { it > 0 } ?: track.durationMs
+        upsert(
+            listOf(
+                track.copy(
+                    title = title,
+                    artist = artist,
+                    album = tags.album.ifBlank { track.album },
+                    albumArtist = tags.albumArtist.ifBlank { track.albumArtist },
+                    year = tags.year.takeIf { it > 0 } ?: track.year,
+                    trackNumber = tags.trackNumber.takeIf { it > 0 } ?: track.trackNumber,
+                    discNumber = tags.discNumber.takeIf { it > 0 } ?: track.discNumber,
+                    durationMs = duration,
+                    format = tags.format.takeIf { it != AudioFormat.OTHER } ?: track.format,
+                    bitrateKbps = tags.bitrateKbps.takeIf { it > 0 } ?: track.bitrateKbps,
+                    sampleRate = tags.sampleRate.takeIf { it > 0 } ?: track.sampleRate,
+                    bitDepth = tags.bitDepth.takeIf { it > 0 } ?: track.bitDepth,
+                    tagState = TagState.Read,
+                    coverKey = coverKey.ifBlank { track.coverKey },
+                    groupKey = GroupKey.of(title, artist, duration),
+                    variant = GroupKey.variantOf(title),
+                ),
+            ),
+        )
+    }
+
     /**
      * The A to Z bar for [sort]: each first letter with the position of its first row. Digits and
      * symbols share '#', non-Latin letters stand for themselves, and rows with no name (sorted last)
@@ -538,8 +597,8 @@ class LibraryIndex private constructor(
         if (keepRow) {
             exec(
                 """
-                UPDATE chats SET picked = 0, newest_message_id = 0, oldest_message_id = 0, audio_done = 0,
-                    documents_done = 0, last_scan_at = 0, track_count = 0 WHERE chat_id = ?
+                UPDATE chats SET picked = 0, audio_from = 0, audio_newest = 0, audio_done = 0, documents_from = 0,
+                    documents_newest = 0, documents_done = 0, last_scan_at = 0, track_count = 0 WHERE chat_id = ?
                 """,
                 chatId,
             )
@@ -639,8 +698,8 @@ class LibraryIndex private constructor(
         private const val ALBUM_COLUMNS = "album_key, title, artist, year, song_count, thumb_file_id, cover_key"
         private const val ARTIST_COLUMNS = "artist_key, name, song_count, album_count"
         private const val CHAT_COLUMNS =
-            "chat_id, title, picked, added_at, newest_message_id, oldest_message_id, audio_done, documents_done, " +
-                "last_scan_at, track_count"
+            "chat_id, title, picked, added_at, audio_from, audio_newest, audio_done, documents_from, " +
+                "documents_newest, documents_done, last_scan_at, track_count"
 
         /**
          * Opens the index at [path] (":memory:" for a throwaway one), creating or migrating it.
@@ -650,8 +709,8 @@ class LibraryIndex private constructor(
          */
         fun open(
             path: String,
-            pick: (List<Track>) -> Track? = ::defaultPick,
-            clusters: (List<Long>, Boolean) -> List<Int> = ::defaultClusters,
+            pick: (List<Track>) -> Track? = { TrackVersions.pick(it) },
+            clusters: (List<Long>, Boolean) -> List<Int> = GroupKey::clusters,
         ): LibraryIndex {
             val db = try {
                 connect(path)
@@ -810,13 +869,11 @@ class LibraryIndex private constructor(
             picked = s.getLong(2) == 1L,
             addedAt = s.getLong(3),
             scan = ScanState(
-                newestMessageId = s.getLong(4),
-                oldestMessageId = s.getLong(5),
-                audioDone = s.getLong(6) == 1L,
-                documentsDone = s.getLong(7) == 1L,
-                lastScanAt = s.getLong(8),
+                audio = ScanCursor(s.getLong(4), s.getLong(6) == 1L, s.getLong(5)),
+                documents = ScanCursor(s.getLong(7), s.getLong(9) == 1L, s.getLong(8)),
+                lastScanAt = s.getLong(10),
             ),
-            trackCount = s.getLong(9).toInt(),
+            trackCount = s.getLong(11).toInt(),
         )
     }
 }

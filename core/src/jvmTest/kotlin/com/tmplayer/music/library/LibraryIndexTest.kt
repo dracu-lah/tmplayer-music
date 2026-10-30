@@ -156,7 +156,7 @@ class LibraryIndexTest {
         val index = open()
         index.pick(1, 2)
         index.upsert(listOf(track(1, 10), track(2, 20, title = "Other Tide")))
-        index.saveScanState(1, ScanState(newestMessageId = 10, audioDone = true))
+        index.saveScanState(1, ScanState(audio = ScanCursor(newestMessageId = 10, done = true)))
         index.pick(2)
         assertEquals(1, index.fileCount())
         assertEquals(ScanState(), index.scanState(1))
@@ -178,7 +178,7 @@ class LibraryIndexTest {
     fun scanStateRoundTrips() = runBlocking {
         val index = open()
         index.pick(5)
-        val state = ScanState(newestMessageId = 900, oldestMessageId = 10, audioDone = true, documentsDone = false, lastScanAt = 123)
+        val state = ScanState(audio = ScanCursor(10, true, 900), documents = ScanCursor(40, false, 800), lastScanAt = 123)
         index.saveScanState(5, state)
         assertEquals(state, index.scanState(5))
         assertNull(index.scanState(6))
@@ -274,14 +274,14 @@ class LibraryIndexTest {
         val index = open(path)
         index.pick(1, 2)
         index.upsert(listOf(track(1, 10), track(2, 20), track(1, 11, title = "Fen Hollow")))
-        index.saveScanState(1, ScanState(newestMessageId = 11, audioDone = true))
+        index.saveScanState(1, ScanState(audio = ScanCursor(newestMessageId = 11, done = true)))
         val songs = index.songs(SongSort.Title, null, 10)
         index.close()
 
         val again = open(path)
         assertEquals(songs, again.songs(SongSort.Title, null, 10))
         assertEquals(3, again.fileCount())
-        assertEquals(ScanState(newestMessageId = 11, audioDone = true), again.scanState(1))
+        assertEquals(ScanState(audio = ScanCursor(newestMessageId = 11, done = true)), again.scanState(1))
         assertEquals(listOf(1L, 2L), again.pickedChats().map { it.chatId })
     }
 

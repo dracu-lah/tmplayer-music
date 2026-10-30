@@ -30,9 +30,11 @@ internal object IndexSchema {
                 title TEXT NOT NULL DEFAULT '',
                 picked INTEGER NOT NULL DEFAULT 1,
                 added_at INTEGER NOT NULL DEFAULT 0,
-                newest_message_id INTEGER NOT NULL DEFAULT 0,
-                oldest_message_id INTEGER NOT NULL DEFAULT 0,
+                audio_from INTEGER NOT NULL DEFAULT 0,
+                audio_newest INTEGER NOT NULL DEFAULT 0,
                 audio_done INTEGER NOT NULL DEFAULT 0,
+                documents_from INTEGER NOT NULL DEFAULT 0,
+                documents_newest INTEGER NOT NULL DEFAULT 0,
                 documents_done INTEGER NOT NULL DEFAULT 0,
                 last_scan_at INTEGER NOT NULL DEFAULT 0,
                 track_count INTEGER NOT NULL DEFAULT 0
@@ -75,6 +77,7 @@ internal object IndexSchema {
             """,
         )
         db.execSQL("CREATE INDEX tracks_group ON tracks(group_key)")
+        db.execSQL("CREATE INDEX tracks_tags ON tracks(tag_state, date_sec)")
         db.execSQL("CREATE INDEX tracks_song ON tracks(song_key)")
         db.execSQL("CREATE INDEX tracks_album ON tracks(album_key, song_key)")
         db.execSQL("CREATE INDEX tracks_artist ON tracks(artist_key, song_key, album_key)")

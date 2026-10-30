@@ -5,6 +5,7 @@
   },
   "common": {
     "back": "Back",
+    "cancel": "Cancel",
     "continue": "Continue",
     "retry": "Try again",
     "start_over": "Start over"
@@ -55,6 +56,24 @@
     "resend": "Send the code again",
     "stalled": "This is taking longer than usual. Check the connection, then try again."
   },
+  "picker": {
+    "archived": "Archived chats",
+    "body": "Tick the chats that hold your music. You can add or remove chats later in Manage chats.",
+    "confirm_all_body": "Scanning many chats takes longer and uses more data. You can remove chats later.",
+    "confirm_all_title": "{count, plural, one {Add # chat?} other {Add # chats?}}",
+    "confirm_all_yes": "Add them",
+    "count": "{count, plural, one {# audio file} other {# audio files}}",
+    "empty": "No chats yet. Chats you join in Telegram show up here.",
+    "later": "Add chats later",
+    "no_audio": "No audio messages. Files sent as documents are found by the scan.",
+    "saved_messages": "Saved Messages",
+    "search": "Search chats",
+    "select_all": "Select all",
+    "select_none": "Clear selection",
+    "title": "Pick the chats with music",
+    "total": "{chats, plural, one {# chat} other {# chats}}, {files, plural, =0 {counting files} one {about # file} other {about # files}}",
+    "untitled": "Untitled chat"
+  },
   "shell": {
     "log_out": "Log out",
     "next_step": "Picking the chats with your music comes next.",
@@ -65,5 +84,8 @@
     "hours": "{count, plural, one {# hour} other {# hours}}",
     "minutes": "{count, plural, one {# minute} other {# minutes}}",
     "seconds": "{count, plural, one {# second} other {# seconds}}"
+  },
+  "welcome": {
+    "body": "A player for the audio files already in your own Telegram chats. You choose which chats it reads; nothing else is touched."
   }
 }

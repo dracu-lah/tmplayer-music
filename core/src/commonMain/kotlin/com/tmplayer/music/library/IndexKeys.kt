@@ -48,19 +48,14 @@ internal fun albumOrder(album: String, title: String): String =
     sortOrLast(album) + KEY_SEPARATOR + sortOrLast(title)
 
 /**
- * The album a track belongs to: album artist (or the artist when the file has none) plus album
- * plus year, so two albums that share a name stay apart. A track with no album has no album key
- * and is in no album. Kept as one function so the real `AlbumKey` can take its place.
+ * The album a track belongs to: [AlbumKey], album artist (or the primary artist) plus album plus
+ * year, with compilations kept together. A track with no album is in no album.
  */
-internal fun indexAlbumKey(track: Track): String {
-    val album = sortText(track.album)
-    if (album.isEmpty()) return ""
-    val artist = sortText(track.albumArtist.ifBlank { track.artist })
-    return artist + KEY_SEPARATOR + album + KEY_SEPARATOR + track.year
-}
+internal fun indexAlbumKey(track: Track): String =
+    AlbumKey.of(track.albumArtist, track.artist, track.album, track.year)
 
-/** The artist a track is listed under; blank when the file names nobody. */
-internal fun indexArtistKey(track: Track): String = sortText(track.artist)
+/** The artist a track is listed under, by its primary artist; blank when the file names nobody. */
+internal fun indexArtistKey(track: Track): String = AlbumKey.artistKey(track.artist)
 
 /**
  * The base key a track folds by. A scanner that has not computed one yet still gets a row of its
