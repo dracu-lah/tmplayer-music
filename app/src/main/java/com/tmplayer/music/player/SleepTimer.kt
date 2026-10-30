@@ -1,7 +1,9 @@
 package com.tmplayer.music.player
 
 import android.os.SystemClock
+import androidx.annotation.OptIn
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -48,7 +50,11 @@ object SleepTimer {
     /** Milliseconds left, or 0 when not set by minutes. */
     fun remainingMs(): Long = (setting.value as? SleepSetting.At)?.let { (it.endsAt - SystemClock.elapsedRealtime()).coerceAtLeast(0) } ?: 0
 
-    /** Runs the timer against [player] for the life of [scope] (the service's). */
+    /**
+     * Runs the timer against [player] for the life of [scope] (the service's). Opted in for
+     * `pauseAtEndOfMediaItems`, which Media3 still marks unstable.
+     */
+    @OptIn(UnstableApi::class)
     fun attach(player: ExoPlayer, scope: CoroutineScope) {
         var job: Job? = null
         player.addListener(object : Player.Listener {

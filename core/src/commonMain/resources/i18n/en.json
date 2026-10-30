@@ -1,4 +1,13 @@
 {
+  "about": {
+    "feedback": "Send feedback or report a problem",
+    "feedback_detail": "Opens the issues page of the project on GitHub. Nothing from your library is added.",
+    "licence": "Free software under the GNU GPL 3.0, with an exception that allows linking with OpenSSL.",
+    "licence_open": "Read the licence",
+    "openssl_open": "Read the OpenSSL exception",
+    "version": "Version {version}",
+    "what": "A player for the audio files already in your own Telegram chats."
+  },
   "app": {
     "name": "TMPlayer Music",
     "unofficial": "Unofficial, not affiliated with Telegram."
@@ -81,6 +90,16 @@
     "resend": "Send the code again",
     "stalled": "This is taking longer than usual. Check the connection, then try again."
   },
+  "logs": {
+    "crash_body": "Send the logs, so the problem can be fixed? You pick the app they go to. Chat names, numbers and file names are taken out first, and nothing is sent unless you choose to.",
+    "crash_title": "{app} closed unexpectedly",
+    "failed": "The logs could not be prepared. Try again in a moment.",
+    "no_app": "No app on this phone can take the logs.",
+    "not_now": "Not now",
+    "send": "Send logs",
+    "send_detail": "Recent app logs in a text file, for a bug report. Chat names, numbers, file names and secrets are taken out first. You pick the app they go to; nothing is sent by itself.",
+    "send_title": "Send {app} logs"
+  },
   "lyrics": {
     "none": "No lyrics for this track. A .lrc file with the same name in the same chat, or lyrics in the file's tags, show here.",
     "title": "Lyrics"
@@ -105,8 +124,23 @@
     "file_details": "File details",
     "go_to_album": "Go to album",
     "go_to_artist": "Go to artist",
+    "go_to_artist_named": "Go to {artist}",
     "play_next": "Play next",
     "unfavourite": "Remove from favourites"
+  },
+  "nowplaying": {
+    "clear_queue_body": "{count, plural, one {# track leaves the queue.} other {# tracks leave the queue.}} Your library and playlists are not touched.",
+    "clear_queue_confirm": "Clear",
+    "clear_queue_title": "Clear the queue?",
+    "collapse": "Back to the library",
+    "dismiss": "Stop and close the player",
+    "expand": "Open Now Playing",
+    "lyrics_hide": "Hide lyrics",
+    "lyrics_show": "Show lyrics",
+    "queue_count": "{count, plural, one {# track} other {# tracks}}",
+    "repeat": "Repeat",
+    "repeat_one": "Repeat one",
+    "shuffle": "Shuffle"
   },
   "picker": {
     "archived": "Archived chats",

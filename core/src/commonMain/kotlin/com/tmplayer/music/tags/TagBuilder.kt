@@ -77,8 +77,22 @@ internal class TagBuilder {
         val current = cover
         if (current != null && (coverType == 3 || type != 3)) return
         val mime = imageMime(declaredMime, arr, off)
+        // A JPEG cut short in the file still decodes, as a strip of picture over a blank square: skip it.
+        if (arr.u8(off) == 0xFF && arr.u8(off + 1) == 0xD8 && !jpegEnds(arr, off, len.toInt())) return
         cover = Picture(mime, arr.copyOfRange(off, off + len.toInt()))
         coverType = type
+    }
+
+    /** The JPEG at [off] has its end marker (FF D9) in its last 4 KB (padding after it is allowed). */
+    private fun jpegEnds(arr: ByteArray, off: Int, len: Int): Boolean {
+        val end = off + len
+        var i = end - 2
+        val stop = maxOf(off, end - 4096)
+        while (i >= stop) {
+            if (arr[i] == 0xFF.toByte() && arr[i + 1] == 0xD9.toByte()) return true
+            i--
+        }
+        return false
     }
 
     fun build(): Tags =

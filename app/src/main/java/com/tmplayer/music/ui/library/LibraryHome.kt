@@ -12,9 +12,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.tmplayer.music.data.Prefs
 import com.tmplayer.music.player.PlayerConnection
-import com.tmplayer.music.ui.player.MiniPlayer
-import com.tmplayer.music.ui.player.NowPlaying
-import com.tmplayer.music.ui.player.QueueScreen
+import com.tmplayer.music.ui.player.HidePlayerSheet
+import com.tmplayer.music.ui.player.PlayerSheetSpacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +28,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -98,8 +98,6 @@ fun LibraryHome(onLogOut: () -> Unit) {
 
     var menuFor by remember { mutableStateOf<Song?>(null) }
     var playlistFor by remember { mutableStateOf<Song?>(null) }
-    var playerOpen by rememberSaveable { mutableStateOf(false) }
-    var queueOpen by rememberSaveable { mutableStateOf(false) }
     val askNotifications = rememberNotificationAsk()
     val actions = remember {
         SongActions(
@@ -115,18 +113,8 @@ fun LibraryHome(onLogOut: () -> Unit) {
         )
     }
 
-    if (queueOpen) {
-        BackHandler { queueOpen = false }
-        QueueScreen(onClose = { queueOpen = false })
-        return
-    }
-    if (playerOpen) {
-        BackHandler { playerOpen = false }
-        NowPlaying(onClose = { playerOpen = false }, onQueue = { queueOpen = true })
-        return
-    }
-
     if (page == Page.Picker) {
+        HidePlayerSheet()
         ChatPicker(
             directory = Library.directory,
             already = chatTitles.keys,
@@ -140,7 +128,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
     }
 
     Scaffold(
-        bottomBar = { MiniPlayer(onOpen = { playerOpen = true }) },
+        bottomBar = { PlayerSheetSpacer() },
         topBar = {
             TopAppBar(
                 title = {
@@ -176,7 +164,17 @@ fun LibraryHome(onLogOut: () -> Unit) {
             if (page != Page.Settings) ScanBar(onOpen = { stack += Page.Settings })
             when (page) {
                 null -> {
-                    PrimaryScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 8.dp) {
+                    PrimaryScrollableTabRow(
+                        selectedTabIndex = tab.ordinal,
+                        edgePadding = 8.dp,
+                        indicator = {
+                            TabRowDefaults.PrimaryIndicator(
+                                Modifier.tabIndicatorOffset(tab.ordinal, matchContentSize = true),
+                                width = androidx.compose.ui.unit.Dp.Unspecified,
+                                shape = com.tmplayer.music.ui.theme.Pill,
+                            )
+                        },
+                    ) {
                         LibraryTab.entries.forEach { t ->
                             Tab(selected = tab == t, onClick = { tab = t }, text = {
                                 Text(
@@ -294,13 +292,14 @@ private fun SongMenu(
     val context = LocalContext.current
     var favourite by remember { mutableStateOf<Boolean?>(null) }
     var album by remember { mutableStateOf<Album?>(null) }
-    var artist by remember { mutableStateOf<Artist?>(null) }
+    var artists by remember { mutableStateOf<List<Artist>>(emptyList()) }
     LaunchedEffect(song.groupKey) {
         runCatching {
             val index = Library.index()
             favourite = song.groupKey in index.favouriteKeys()
             album = song.albumKey.takeIf { it.isNotBlank() }?.let { index.album(it) }
-            artist = song.artistKey.takeIf { it.isNotBlank() }?.let { index.artist(it) }
+            // A credit naming several artists ("A, B feat. C") offers each one; the song keeps the whole credit.
+            artists = index.songArtists(song)
         }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -332,7 +331,12 @@ private fun SongMenu(
             }
             MenuLine(L.menuAddToPlaylist, onAddToPlaylist)
             album?.let { MenuLine(L.menuGoToAlbum) { onAlbum(it) } }
-            artist?.let { MenuLine(L.menuGoToArtist) { onArtist(it) } }
+            val only = artists.singleOrNull()
+            if (only != null) {
+                MenuLine(L.menuGoToArtist) { onArtist(only) }
+            } else {
+                for (artist in artists) MenuLine(L.menuGoToArtistNamed(artist.name.ifBlank { L.libraryUnknownArtist })) { onArtist(artist) }
+            }
             MenuLine(if (song.versionCount > 1) L.libraryVersions(song.versionCount) else L.menuFileDetails, onVersions)
         }
     }

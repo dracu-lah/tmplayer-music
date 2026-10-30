@@ -1,6 +1,7 @@
 package com.tmplayer.music
 
 import android.app.Application
+import com.tmplayer.music.diagnostics.Diagnostics
 import com.tmplayer.music.data.AndroidLogSink
 import com.tmplayer.music.data.AndroidPaths
 import com.tmplayer.music.data.Library
@@ -22,6 +23,8 @@ class MusicApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Logger.sink = AndroidLogSink
+        // The bounded log file and the crash record for Send logs; first, so later lines are kept.
+        Diagnostics.install(this)
         Td.start(this)
         Library.start(File(filesDir, "library"))
         Storage.cacheDir = AndroidPaths(this).filesDir

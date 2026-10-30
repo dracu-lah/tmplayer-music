@@ -6,6 +6,10 @@ kotlin = "2.4.21"
 coreKtx = "1.19.1"
 activityCompose = "1.13.0"
 composeBom = "2026.09.00"
+# The BOM maps material3 to 1.4.0, whose Expressive components (wavy progress, button groups,
+# toggle buttons, MaterialExpressiveTheme) are internal. 1.5.0 makes them public but raises
+# minSdk to 24 (material3-ripple), below our Android 6 floor, so it is not used: the app draws its
+# own versions (app/.../ui/theme and ui/player). See plan/EXPRESSIVE-BRIEF.md.
 lifecycle = "2.11.0"
 coroutines = "1.11.0"
 tdl = "15.0.0"
@@ -30,6 +34,8 @@ androidx-activity-compose = { group = "androidx.activity", name = "activity-comp
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }

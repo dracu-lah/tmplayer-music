@@ -26,6 +26,7 @@ import com.tmplayer.music.ui.auth.SignInScreen
 import com.tmplayer.music.ui.library.LibraryHome
 import com.tmplayer.music.ui.onboarding.ChatPicker
 import com.tmplayer.music.ui.onboarding.Welcome
+import com.tmplayer.music.ui.player.PlayerSheetHost
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -75,7 +76,7 @@ fun AppRoot() {
                 }
             },
         )
-        else -> LibraryHome(
+        else -> PlayerSheetHost { LibraryHome(
             onLogOut = {
                 scope.launch {
                     PlayerConnection.clear()
@@ -87,7 +88,7 @@ fun AppRoot() {
                     runCatching { Td.logOut() }
                 }
             },
-        )
+        ) }
     }
 }
 

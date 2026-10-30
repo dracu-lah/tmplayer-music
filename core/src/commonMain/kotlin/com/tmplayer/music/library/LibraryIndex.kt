@@ -181,18 +181,28 @@ class LibraryIndex private constructor(
                         .firstOrNull() == true
                 }
                 if (!picked) continue
-                touchOld(track.id, touched)
+                val existed = touchOld(track.id, touched)
                 val base = indexBaseKey(track)
                 val album = indexAlbumKey(track)
-                val artist = indexArtistKey(track)
+                val artists = ArtistCredits.split(track.artist)
                 exec(
                     "INSERT OR REPLACE INTO tracks($TRACK_COLUMNS, album_key, artist_key) " +
                         "VALUES(${List(TRACK_COLUMN_COUNT + 2) { "?" }.joinToString()})",
-                    *trackValues(track, base), album, artist,
+                    *trackValues(track, base), album, artists.firstOrNull()?.key.orEmpty(),
                 )
+                // A file seen for the first time has no artist rows yet, so a first scan skips this.
+                if (existed) exec("DELETE FROM track_artists WHERE chat_id = ? AND message_id = ?", track.chatId, track.messageId)
+                artists.forEachIndexed { position, artist ->
+                    exec(
+                        // The song key is filled in by rebuildBase below, as it is for the track.
+                        "INSERT OR REPLACE INTO track_artists(chat_id, message_id, position, artist_key, name, song_key, album_key) " +
+                            "VALUES(?, ?, ?, ?, ?, '', ?)",
+                        track.chatId, track.messageId, position, artist.key, artist.name, album,
+                    )
+                    touched.artists += artist.key
+                }
                 touched.bases += base
                 touched.albums += album
-                touched.artists += artist
                 touched.chats += track.chatId
                 stored++
             }
@@ -209,6 +219,7 @@ class LibraryIndex private constructor(
             for (id in ids.toSet()) {
                 touchOld(id, touched)
                 exec("DELETE FROM tracks WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
+                exec("DELETE FROM track_artists WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
                 exec("DELETE FROM lyrics_files WHERE chat_id = ? AND message_id = ?", id.chatId, id.messageId)
                 touched.chats += id.chatId
             }
@@ -325,10 +336,10 @@ class LibraryIndex private constructor(
         }
     }
 
-    /** The songs of one artist by title. */
+    /** The songs of one artist by title: every song with a version whose credit names the artist. */
     suspend fun artistSongs(artistKey: String, limit: Int = MAX_LIST): List<Song> = io {
         query(
-            "SELECT $SONG_COLUMNS FROM songs WHERE song_key IN (SELECT song_key FROM tracks WHERE artist_key = ?) " +
+            "SELECT $SONG_COLUMNS FROM songs WHERE song_key IN (SELECT song_key FROM track_artists WHERE artist_key = ?) " +
                 "ORDER BY title_sort, song_key LIMIT ?",
             artistKey, listSize(limit), map = ::readSong,
         )
@@ -338,9 +349,24 @@ class LibraryIndex private constructor(
     suspend fun artistAlbums(artistKey: String, limit: Int = MAX_LIST): List<Album> = io {
         query(
             "SELECT $ALBUM_COLUMNS FROM albums WHERE album_key IN " +
-                "(SELECT album_key FROM tracks WHERE artist_key = ? AND album_key <> '') " +
+                "(SELECT album_key FROM track_artists WHERE artist_key = ? AND album_key <> '') " +
                 "ORDER BY year, title_sort, album_key LIMIT ?",
             artistKey, listSize(limit), map = ::readAlbum,
+        )
+    }
+
+    /**
+     * The artists [song]'s credit names, in the order written, for "Go to artist": one for a song
+     * by one artist, several for "A, B feat. C", none when the file names nobody. Read from the
+     * song's default version as the index has it now.
+     */
+    suspend fun songArtists(song: Song): List<Artist> = io {
+        val file = currentDefault(song)
+        query(
+            "SELECT ${ARTIST_COLUMNS.split(", ").joinToString { "r.$it" }} FROM track_artists a " +
+                "JOIN artists r ON r.artist_key = a.artist_key WHERE a.chat_id = ? AND a.message_id = ? " +
+                "ORDER BY a.position LIMIT ${ArtistCredits.MAX_ARTISTS}",
+            file.chatId, file.messageId, map = ::readArtist,
         )
     }
 
@@ -813,16 +839,22 @@ class LibraryIndex private constructor(
     }
 
     /** Adds the keys the stored row for [id] had, so whatever it leaves behind is rebuilt too. */
-    private fun touchOld(id: TrackId, touched: Touched) {
-        query(
-            "SELECT group_key, album_key, artist_key FROM tracks WHERE chat_id = ? AND message_id = ? LIMIT 1",
+    private fun touchOld(id: TrackId, touched: Touched): Boolean {
+        val (base, album) = query(
+            "SELECT group_key, album_key FROM tracks WHERE chat_id = ? AND message_id = ? LIMIT 1",
             id.chatId, id.messageId,
-        ) { Triple(text(it, 0), text(it, 1), text(it, 2)) }.firstOrNull()?.let { (base, album, artist) ->
-            touched.bases += base
-            touched.albums += album
-            touched.artists += artist
-        }
+        ) { text(it, 0) to text(it, 1) }.firstOrNull() ?: return false
+        touched.bases += base
+        touched.albums += album
+        touched.artists += artistKeysOf(id.chatId, id.messageId)
+        return true
     }
+
+    /** The keys of the artists stored for one file. */
+    private fun artistKeysOf(chatId: Long, messageId: Long): List<String> = query(
+        "SELECT artist_key FROM track_artists WHERE chat_id = ? AND message_id = ? LIMIT ${ArtistCredits.MAX_ARTISTS}",
+        chatId, messageId,
+    ) { text(it, 0) }
 
     private fun rebuild(touched: Touched) {
         for (base in touched.bases) rebuildBase(base, touched)
@@ -840,9 +872,9 @@ class LibraryIndex private constructor(
      */
     private fun rebuildBase(base: String, touched: Touched) {
         val members = query(
-            "SELECT $TRACK_COLUMNS, song_key, album_key, artist_key FROM tracks WHERE group_key = ? LIMIT $MAX_GROUP",
+            "SELECT $TRACK_COLUMNS, song_key, album_key FROM tracks WHERE group_key = ? LIMIT $MAX_GROUP",
             base,
-        ) { Member(readTrack(it), text(it, TRACK_COLUMN_COUNT), text(it, TRACK_COLUMN_COUNT + 1), text(it, TRACK_COLUMN_COUNT + 2)) }
+        ) { Member(readTrack(it), text(it, TRACK_COLUMN_COUNT), text(it, TRACK_COLUMN_COUNT + 1)) }
         exec("DELETE FROM songs WHERE base_key = ?", base)
         if (members.isEmpty()) return
         val artistKnown = base.substringBefore(KEY_SEPARATOR).isNotBlank()
@@ -862,6 +894,10 @@ class LibraryIndex private constructor(
                     "UPDATE tracks SET song_key = ? WHERE chat_id = ? AND message_id = ?",
                     songKey, member.track.chatId, member.track.messageId,
                 )
+                exec(
+                    "UPDATE track_artists SET song_key = ? WHERE chat_id = ? AND message_id = ?",
+                    songKey, member.track.chatId, member.track.messageId,
+                )
                 // A file that moved from one song to another carries what the user kept about it
                 // along, so a later fallback by base key looks for the song it is in now.
                 if (member.songKey.isNotEmpty()) {
@@ -873,7 +909,7 @@ class LibraryIndex private constructor(
                     }
                 }
                 touched.albums += member.albumKey
-                touched.artists += member.artistKey
+                touched.artists += artistKeysOf(member.track.chatId, member.track.messageId)
             }
             writeSong(base, songKey, group.map { it.track })
         }
@@ -938,15 +974,24 @@ class LibraryIndex private constructor(
         )
     }
 
+    /**
+     * Counts one split artist again from `track_artists`: songs and albums with a file whose credit
+     * names it, shown with the first spelling stored (lowest chat and message id), as the version 2
+     * migration does for every artist at once.
+     */
     private fun rebuildArtist(key: String) {
         if (key.isEmpty()) return
-        val songs = count("SELECT COUNT(DISTINCT song_key) FROM tracks WHERE artist_key = ?", key)
-        if (songs == 0) {
+        // One statement per artist: the scan touches hundreds of artists per batch.
+        val (songs, albums, name) = query(
+            "SELECT COUNT(DISTINCT song_key), COUNT(DISTINCT NULLIF(album_key, '')), " +
+                "(SELECT name FROM track_artists WHERE artist_key = ?1 ORDER BY chat_id, message_id LIMIT 1) " +
+                "FROM track_artists WHERE artist_key = ?1",
+            key,
+        ) { Triple(it.getLong(0).toInt(), it.getLong(1).toInt(), text(it, 2)) }.firstOrNull() ?: Triple(0, 0, "")
+        if (songs == 0 || name.isEmpty()) {
             exec("DELETE FROM artists WHERE artist_key = ?", key)
             return
         }
-        val albums = count("SELECT COUNT(DISTINCT album_key) FROM tracks WHERE artist_key = ? AND album_key <> ''", key)
-        val name = query("SELECT artist FROM tracks WHERE artist_key = ? LIMIT 1", key) { text(it, 0) }.firstOrNull() ?: return
         exec(
             "INSERT OR REPLACE INTO artists(artist_key, name, song_count, album_count, name_sort) VALUES(?, ?, ?, ?, ?)",
             key, name, songs, albums, sortOrLast(name),
@@ -956,14 +1001,16 @@ class LibraryIndex private constructor(
     /** Deletes a chat's files and lyrics and rebuilds what they were in; the caller holds the transaction. */
     private fun purgeChat(chatId: Long, keepRow: Boolean) {
         val touched = Touched()
-        query("SELECT group_key, album_key, artist_key FROM tracks WHERE chat_id = ? LIMIT $MAX_ROWS", chatId) {
-            Triple(text(it, 0), text(it, 1), text(it, 2))
-        }.forEach { (base, album, artist) ->
+        query("SELECT group_key, album_key FROM tracks WHERE chat_id = ? LIMIT $MAX_ROWS", chatId) {
+            text(it, 0) to text(it, 1)
+        }.forEach { (base, album) ->
             touched.bases += base
             touched.albums += album
-            touched.artists += artist
         }
+        query("SELECT DISTINCT artist_key FROM track_artists WHERE chat_id = ? LIMIT $MAX_ROWS", chatId) { text(it, 0) }
+            .forEach { touched.artists += it }
         exec("DELETE FROM tracks WHERE chat_id = ?", chatId)
+        exec("DELETE FROM track_artists WHERE chat_id = ?", chatId)
         exec("DELETE FROM lyrics_files WHERE chat_id = ?", chatId)
         // Listening history of a chat the user left goes with it; favourites and playlist entries
         // stay and fall back to another version, or hide until the chat is added again.
@@ -982,7 +1029,7 @@ class LibraryIndex private constructor(
         }
     }
 
-    private class Member(val track: Track, val songKey: String, val albumKey: String, val artistKey: String)
+    private class Member(val track: Track, val songKey: String, val albumKey: String)
 
     // What the user keeps, resolved to songs
 
@@ -1185,24 +1232,15 @@ class LibraryIndex private constructor(
                 db.execSQL("PRAGMA foreign_keys = OFF")
                 val version = db.prepare("PRAGMA user_version").use { if (it.step()) it.getLong(0).toInt() else 0 }
                 check(version <= IndexSchema.VERSION) { "index schema $version is newer than ${IndexSchema.VERSION}" }
-                if (version < IndexSchema.VERSION) {
-                    db.execSQL("BEGIN IMMEDIATE")
-                    try {
-                        for (from in version until IndexSchema.VERSION) {
-                            val step = IndexSchema.MIGRATIONS[from] ?: error("no migration from index schema $from")
-                            step(db)
-                        }
-                        db.execSQL("PRAGMA user_version = ${IndexSchema.VERSION}")
-                        db.execSQL("COMMIT")
-                    } catch (e: Throwable) {
-                        runCatching { db.execSQL("ROLLBACK") }
-                        throw e
-                    }
+                // Each step commits its own work and moves user_version on by one (see MIGRATIONS).
+                for (from in version until IndexSchema.VERSION) {
+                    val step = IndexSchema.MIGRATIONS[from] ?: error("no migration from index schema $from")
+                    step(db)
                 }
                 // Reads one row of each table, so a file whose header is fine but whose tables are
                 // not fails here, at open, instead of on the first screen.
                 for (table in listOf(
-                        "chats", "tracks", "songs", "albums", "artists", "lyrics_files",
+                        "chats", "tracks", "track_artists", "songs", "albums", "artists", "lyrics_files",
                         "favourites", "plays", "playlists", "playlist_items", "recent_searches",
                     )) {
                     db.prepare("SELECT * FROM $table LIMIT 1").use { it.step() }

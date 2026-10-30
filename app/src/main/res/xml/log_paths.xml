@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!--
+      Only the file Send logs writes for the share sheet, one at a time: chat names, numbers and
+      file names are already taken out of it (see LogReport). Nothing else of the app's is served.
+    -->
+    <cache-path
+        name="logs"
+        path="logs-share/" />
+</paths>

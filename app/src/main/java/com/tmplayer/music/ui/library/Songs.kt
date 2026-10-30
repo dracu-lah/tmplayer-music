@@ -244,7 +244,7 @@ fun SongRow(
         if (song.variant.isNotBlank()) Badge(song.variant)
         if (song.bestFormat.lossless) Badge(song.bestFormat.label)
         if (song.versionCount > 1) {
-            AssistChip(onClick = onLongClick, label = { Text(L.libraryVersions(song.versionCount)) })
+            AssistChip(onClick = onLongClick, label = { Text(L.libraryVersions(song.versionCount)) }, shape = com.tmplayer.music.ui.theme.Pill)
         }
         trailing?.invoke()
     }

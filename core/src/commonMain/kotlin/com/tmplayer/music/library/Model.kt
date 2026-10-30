@@ -154,7 +154,10 @@ data class Song(
     val addedSec: Long,
     /** The album the default version is on (or the first version that has one), for "Go to album"; blank when none. */
     val albumKey: String = "",
-    /** The artist the default version is listed under, for "Go to artist"; blank when the file names nobody. */
+    /**
+     * The first artist the default version's credit names; blank when the file names nobody. [artist]
+     * stays the whole credit for display; `LibraryIndex.songArtists` lists every artist of it.
+     */
     val artistKey: String = "",
 )
 

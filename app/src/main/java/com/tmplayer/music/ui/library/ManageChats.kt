@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.data.Failures
+import com.tmplayer.music.diagnostics.SendLogsButton
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.ChatRow
@@ -70,7 +71,15 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
                 }
             }
         }
-        error?.let { item(key = "error") { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) } }
+        // A list that could not be read, or a chat whose scan failed: Send logs once, above the rows.
+        if (error != null || status.failed.isNotEmpty()) {
+            item(key = "error") {
+                Column(Modifier.fillMaxWidth()) {
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+                    SendLogsButton(Modifier.padding(horizontal = 8.dp))
+                }
+            }
+        }
         val list = chats.orEmpty()
         if (chats != null && list.isEmpty()) {
             item(key = "empty") { Text(L.manageEmpty, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }

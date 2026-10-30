@@ -199,6 +199,21 @@ class TagReaderTest {
     }
 
     @Test
+    fun jpegCoverCutShortIsDropped() {
+        val cut = Samples.jpeg.copyOfRange(0, Samples.jpeg.size - 2) + ByteArray(64)
+        val tag = Samples.id3Tag(
+            3,
+            out {
+                bytes(Samples.id3Frame23("TIT2", Samples.latin1Text("Cut")))
+                bytes(Samples.id3Frame23("APIC", Samples.apic("image/jpeg", 3, cut)))
+            },
+        )
+        val t = TagReader.read(tag)
+        assertEquals("Cut", t.title)
+        assertNull(t.cover)
+    }
+
+    @Test
     fun oversizedCoverIsDropped() {
         val big = ByteArray(TagReader.MAX_COVER_BYTES + 1).also { it[0] = 0xFF.toByte(); it[1] = 0xD8.toByte() }
         val tag = Samples.id3Tag(

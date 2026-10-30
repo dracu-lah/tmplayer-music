@@ -1,7 +1,7 @@
 package com.tmplayer.music.ui.library
 
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,8 +32,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.tmplayer.music.BuildConfig
 import android.text.format.DateUtils
+import android.widget.Toast
+import com.tmplayer.music.diagnostics.Diagnostics
+import com.tmplayer.music.diagnostics.rememberSendLogs
+import com.tmplayer.music.platform.About
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.data.CachePolicy
@@ -101,16 +104,7 @@ fun SettingsScreen() {
         message?.let { Line(it) }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Section(L.settingsAbout)
-        Line("${L.appName} ${BuildConfig.VERSION_NAME}")
-        Line(L.appUnofficial)
-        Text(
-            L.settingsLegal,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.fillMaxWidth().clickable {
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LEGAL_URL))) }
-            }.padding(16.dp),
-        )
+        AboutSection()
     }
 
     if (confirm) {
@@ -242,6 +236,48 @@ private fun LibrarySection() {
     }
 }
 
+/**
+ * About: the app, its version (name, code and build type), that it is unofficial, the legal page,
+ * the licence, feedback on GitHub and Send logs. Links open in the browser bare: nothing from the
+ * library goes into them, and a phone with no browser just does nothing.
+ */
+@Composable
+private fun AboutSection() {
+    val context = LocalContext.current
+    val sendLogs = rememberSendLogs()
+    val open: (String) -> Unit = { url ->
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { Toast.makeText(context, url, Toast.LENGTH_LONG).show() }
+    }
+    Section(L.settingsAbout)
+    Text(L.appName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+    Hint(L.aboutVersion(Diagnostics.version()))
+    Hint(L.aboutWhat)
+    Hint(L.appUnofficial)
+    Link(L.settingsLegal) { open(About.LEGAL_URL) }
+    Link(L.aboutFeedback, L.aboutFeedbackDetail) { open(About.FEEDBACK_URL) }
+    Link(L.logsSend, L.logsSendDetail, sendLogs)
+    Text(
+        L.aboutLicence,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+    )
+    Link(L.aboutLicenceOpen) { open(About.LICENCE_URL) }
+    Link(L.aboutOpensslOpen) { open(About.OPENSSL_EXCEPTION_URL) }
+}
+
+/** A row that does one thing on a tap, with an optional line under it saying what. */
+@Composable
+private fun Link(title: String, detail: String? = null, onClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(title, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
+        detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
 @Composable
 private fun Hint(text: String) {
     Text(
@@ -263,5 +299,3 @@ private fun Line(text: String) {
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }
-
-private const val LEGAL_URL = "https://tmplayer.org/legal"

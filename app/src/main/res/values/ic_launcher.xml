@@ -2,4 +2,11 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Before Android 8 the launcher icon is the flat vector; mipmap-anydpi-v26 overrides it. -->
     <item name="ic_launcher" type="mipmap" tools:ignore="ReferenceType">@drawable/ic_launcher_legacy</item>
+    <!--
+      The icon's tile, a touch lighter than TMPlayer's #1E1E28 so its edge still shows on a dark
+      wallpaper, and the progress fill's warm coral, which keeps the two icons apart at a glance
+      and stays far from TMPlayer's (and Telegram's) blue.
+    -->
+    <color name="ic_launcher_tile">#22222D</color>
+    <color name="ic_launcher_accent">#FF6B57</color>
 </resources>

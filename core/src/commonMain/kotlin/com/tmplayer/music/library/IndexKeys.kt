@@ -54,8 +54,11 @@ internal fun albumOrder(album: String, title: String): String =
 internal fun indexAlbumKey(track: Track): String =
     AlbumKey.of(track.albumArtist, track.artist, track.album, track.year)
 
-/** The artist a track is listed under, by its primary artist; blank when the file names nobody. */
-internal fun indexArtistKey(track: Track): String = AlbumKey.artistKey(track.artist)
+/**
+ * The first artist of a track's credit ([ArtistCredits]), which "Go to artist" opens when the credit
+ * names only one; blank when the file names nobody. Every artist of the credit is in `track_artists`.
+ */
+internal fun indexArtistKey(track: Track): String = ArtistCredits.primaryKey(track.artist)
 
 /**
  * The base key a track folds by. A scanner that has not computed one yet still gets a row of its

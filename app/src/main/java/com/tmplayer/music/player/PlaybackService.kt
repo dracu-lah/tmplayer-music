@@ -93,7 +93,8 @@ class PlaybackService : MediaSessionService() {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, player)
+        // The system sees the cover as bytes, not as the app's own URIs it cannot open (SessionArtwork.kt).
+        session = MediaSession.Builder(this, SessionArtworkPlayer(player, scope))
             .setSessionActivity(open)
             .setCallback(Callback())
             .setBitmapLoader(CacheBitmapLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(sources).build()))
@@ -213,7 +214,8 @@ class PlaybackService : MediaSessionService() {
 
         override fun onPlayerError(error: PlaybackException) {
             val title = player.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty()
-            Logger.w(TAG, "could not play $title: ${error.errorCodeName}", error)
+            // No title in the log: Send logs shares these lines, and a title is the user's own.
+            Logger.w(TAG, "could not play the current item: ${error.errorCodeName}", error)
             PlaybackErrors.report(L.playerSkipped(title, Failures.humanise(error.cause ?: error)))
             failuresInARow++
             if (failuresInARow < MAX_SKIPS && player.hasNextMediaItem()) {

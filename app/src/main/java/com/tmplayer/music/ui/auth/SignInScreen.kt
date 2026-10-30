@@ -51,6 +51,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.zxing.BarcodeFormat
+import com.tmplayer.music.diagnostics.SendLogsButton
 import com.google.zxing.EncodeHintType
 import com.google.zxing.common.BitMatrix
 import com.google.zxing.qrcode.QRCodeWriter
@@ -133,6 +134,7 @@ private fun ConnectingStep() {
             Button(onClick = { SignInRunner.fire { Td.retryConnecting() } }, modifier = Modifier.fillMaxWidth()) {
                 Text(L.commonRetry)
             }
+            SendLogsButton(Modifier.fillMaxWidth())
         }
     }
 }
@@ -400,6 +402,7 @@ private fun FailedStep(auth: AuthState.Failed, onStartOver: () -> Unit) {
             }
             else -> Button(onClick = onStartOver, modifier = Modifier.fillMaxWidth()) { Text(L.commonRetry) }
         }
+        SendLogsButton(Modifier.fillMaxWidth())
     }
 }
 

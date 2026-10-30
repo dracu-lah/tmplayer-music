@@ -29,8 +29,9 @@ object AlbumKey {
     }
 
     /**
-     * An artist's key for the Artists list: the whole name folded (case, accents, punctuation), not split,
-     * so a duo credited as one name is one artist. Blank for no artist or a placeholder like `Unknown`.
+     * A whole name folded (case, accents, punctuation), not split, as album keys compare album artists.
+     * Blank for no artist or a placeholder like `Unknown`. The Artists list splits credits instead, see
+     * [ArtistCredits].
      */
     fun artistKey(name: String): String {
         val folded = TextFold.fold(name)

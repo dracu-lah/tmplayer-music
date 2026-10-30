@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.tmplayer.music.data.ChatDirectory
 import com.tmplayer.music.data.ChatEntry
 import com.tmplayer.music.data.Failures
+import com.tmplayer.music.diagnostics.SendLogsButton
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.ui.common.Cover
 import kotlinx.coroutines.CancellationException
@@ -102,6 +103,7 @@ fun ChatPicker(
             when {
                 failure != null -> Message(failure.orEmpty()) {
                     TextButton(onClick = { attempt++ }) { Text(L.commonRetry) }
+                    SendLogsButton()
                 }
                 all == null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 all.isEmpty() -> Message(L.pickerEmpty) {}

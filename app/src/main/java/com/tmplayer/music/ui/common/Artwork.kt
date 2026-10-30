@@ -105,7 +105,9 @@ object Artwork {
             val path = withTimeoutOrNull(20_000) {
                 val td = Td.awaitAuthorizedSession().client
                 td.downloadFile(fileId, 8, 0, 0, true)
-            }?.let { (it as? dev.g000sha256.tdl.TdlResult.Success)?.result?.local?.path }
+            }?.let { (it as? dev.g000sha256.tdl.TdlResult.Success)?.result?.local }
+                // Only a finished download: a file still being written decodes as a strip of picture over a blank square.
+                ?.takeIf { it.isDownloadingCompleted }?.path
             path?.takeIf { it.isNotEmpty() }?.let { decode(key, File(it), sizePx) }
         }
     }
@@ -121,6 +123,10 @@ object Artwork {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(file.path, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+            if (!ImageCheck.isWhole(file)) {
+                Logger.w(TAG, "cut short, not shown: ${file.name}")
+                return@withContext null
+            }
             var sample = 1
             while (bounds.outWidth / (sample * 2) >= sizePx && bounds.outHeight / (sample * 2) >= sizePx) sample *= 2
             val bitmap = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
@@ -133,6 +139,38 @@ object Artwork {
             Logger.w(TAG, "could not decode ${file.name}", e)
             null
         }
+    }
+}
+
+/**
+ * Whether a picture file is whole. A JPEG cut short (a cover cut off in the file's tags, or a
+ * thumbnail read before it was all written) still decodes, as the top of the picture over a blank
+ * area, so it is checked for its end marker (FF D9) near the end of the file. Other formats pass.
+ */
+object ImageCheck {
+    private const val TAIL = 4096
+
+    fun isWhole(file: File): Boolean = runCatching {
+        java.io.RandomAccessFile(file, "r").use { raf ->
+            val length = raf.length()
+            if (length < 4) return@use false
+            val head = ByteArray(2)
+            raf.readFully(head)
+            if (head[0] != 0xFF.toByte() || head[1] != 0xD8.toByte()) return@use true
+            val n = minOf(TAIL.toLong(), length).toInt()
+            val tail = ByteArray(n)
+            raf.seek(length - n)
+            raf.readFully(tail)
+            hasJpegEnd(tail)
+        }
+    }.getOrDefault(false)
+
+    /** True when [tail], the last bytes of a JPEG, holds its end marker (trailing padding after it is allowed). */
+    fun hasJpegEnd(tail: ByteArray): Boolean {
+        for (i in tail.size - 2 downTo 0) {
+            if (tail[i] == 0xFF.toByte() && tail[i + 1] == 0xD9.toByte()) return true
+        }
+        return false
     }
 }
 
@@ -161,7 +199,9 @@ fun Cover(
     LaunchedEffect(key) {
         if (image != null) return@LaunchedEffect
         image = try {
-            if (coverPath.isNotEmpty()) Artwork.file(File(coverPath), px) else Artwork.thumbnail(fileId, px, track)
+            // A cover from the tags that cannot be shown (cut short in the file) falls back to Telegram's thumbnail.
+            (if (coverPath.isNotEmpty()) Artwork.file(File(coverPath), px) else null)
+                ?: Artwork.thumbnail(fileId, px, track)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

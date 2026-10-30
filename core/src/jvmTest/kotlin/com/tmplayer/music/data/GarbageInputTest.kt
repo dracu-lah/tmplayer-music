@@ -1,5 +1,6 @@
 package com.tmplayer.music.data
 
+import com.tmplayer.music.library.ArtistCredits
 import com.tmplayer.music.library.baseOfSongKey
 import com.tmplayer.music.library.likeEscape
 import com.tmplayer.music.library.playlistName
@@ -154,6 +155,38 @@ class GarbageInputTest {
     }
 
     @Test
+    fun `artist credits that are garbage split into a bounded list, never a crash`() {
+        val random = Random(17)
+        val alphabet = "ab ,|&/;()[]\u0000\t\n\u0007.ftandeuFEATé🎵"
+        val inputs = ArrayList<String>()
+        inputs += listOf("", " ", ",", "|||", ", & ,", "feat.", " feat. ", "(", ")", "\u0000\u0000", "\uD83C", "\uDFB5x")
+        inputs += "a, ".repeat(100_000)
+        inputs += "x".repeat(1_000_000)
+        inputs += " feat. ".repeat(50_000)
+        inputs += "Ana, Brio & Cato".substring(0, 9)
+        repeat(2_000) {
+            inputs += String(CharArray(random.nextInt(0, 80)) { alphabet[random.nextInt(alphabet.length)] })
+        }
+        for (input in inputs) {
+            val split = try {
+                ArtistCredits.split(input)
+            } catch (t: Throwable) {
+                throw AssertionError("ArtistCredits threw on ${input.take(40)}", t)
+            }
+            assertTrue(split.size <= ArtistCredits.MAX_ARTISTS)
+            for (artist in split) {
+                assertTrue(artist.name.isNotBlank() && artist.name.length <= ArtistCredits.MAX_NAME)
+                assertTrue(artist.key.isNotEmpty())
+                assertTrue(artist.name.none { it.isISOControl() })
+            }
+            assertEquals(split.size, split.map { it.key }.toSet().size)
+        }
+        // Wrong typed: a number or a date stored where a credit belongs is one artist named by it.
+        assertEquals(listOf("1999"), ArtistCredits.split("1999").map { it.name })
+        assertEquals(listOf("2024-01-01"), ArtistCredits.split("2024-01-01").map { it.name })
+    }
+
+    @Test
     fun `search queries, playlist names and stored keys that are garbage never crash`() {
         val random = Random(13)
         val odd = listOf("", " ", "%", "_", "\\", "%%__\\", "\u0000", "\uD800", "\u0001\u0001", "x".repeat(100_000))
@@ -203,6 +236,21 @@ class GarbageInputTest {
             assertTrue("code $code", code.length <= 64 && code.all { c -> c in '0'..'9' })
             CodeInput.clean(text, digits = false, length = 0)
             PhoneCountries.fromRows(listOf(CountryRow(text, text, listOf(text, ""), hidden = false)))
+        }
+    }
+
+    @Test
+    fun `crash records and log lines that are garbage never crash`() {
+        val random = Random(19)
+        val odd = listOf(
+            "", "time=", "time=\n", "time=99999999999999999999999\n", "time=1", "\u0000time=5", "time=5\u0000\n",
+            "x".repeat(200_000), "time=1\n" + "\n".repeat(10_000), "\uD800", "JSON input:", "token=", "+",
+        )
+        val redactor = com.tmplayer.music.platform.LogRedactor(odd)
+        repeat(1_000) {
+            val text = if (it < odd.size) odd[it] else String(CharArray(random.nextInt(0, 2_000)) { random.nextInt(0, 0xFFFF).toChar() })
+            com.tmplayer.music.platform.CrashJournal.parse(text)
+            redactor.redact(text)
         }
     }
 }
