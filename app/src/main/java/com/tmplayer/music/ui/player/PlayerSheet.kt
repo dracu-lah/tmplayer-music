@@ -120,6 +120,20 @@ internal fun miniHeight(): Dp = NavLayout.miniHeight(LocalDensity.current.fontSc
 internal val MiniCoverInset = 12.dp
 internal val MiniCoverSize = 48.dp
 
+/** The progress line along the mini-player's bottom edge, while the track's length is known. */
+internal val MiniLineHeight = 2.dp
+
+/**
+ * The room the row keeps clear at its bottom: the progress line, so the cover, text and buttons are
+ * centred in the part above it, plus a small lift, since space equal on paper still reads as less
+ * at the bottom, next to the line. At 64 dp this leaves 6 dp above a 48 dp cover and 8 dp under it.
+ */
+internal val MiniBottomPadding = MiniLineHeight + 2.dp
+
+/** The cover's top inside the mini-player, for the cover's grow-into-Now-Playing motion. */
+@Composable
+internal fun miniCoverTop(): Dp = (miniHeight() - MiniBottomPadding - MiniCoverSize) / 2
+
 /** Shared between [PlayerSheetHost], [PlayerSheetSpacer] and [HidePlayerSheet]. */
 @Stable
 class PlayerSheetController internal constructor() {
@@ -541,7 +555,7 @@ internal fun MiniPlayer(
                 // A sideways window keeps the row clear of a camera cutout or the side navigation buttons.
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                 .graphicsLayer { translationX = drag / 3 }
-                .padding(start = MiniCoverInset, end = 4.dp),
+                .padding(start = MiniCoverInset, end = 4.dp, bottom = MiniBottomPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -578,7 +592,7 @@ internal fun MiniPlayer(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(if (known) 2.dp else 1.dp)
+                .height(if (known) MiniLineHeight else 1.dp)
                 .drawBehind {
                     drawRect(track)
                     if (known) {

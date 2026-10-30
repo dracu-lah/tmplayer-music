@@ -97,7 +97,7 @@ internal fun NowPlayingContent(
     val sideInset = androidx.compose.foundation.layout.WindowInsets.safeDrawing
         .getLeft(density, androidx.compose.ui.platform.LocalLayoutDirection.current)
     val miniX = with(density) { MiniCoverInset.toPx() } + sideInset
-    val miniY = with(density) { ((miniHeight() - MiniCoverSize) / 2).toPx() }
+    val miniY = with(density) { miniCoverTop().toPx() }
     val miniSize = with(density) { MiniCoverSize.toPx() }
     val fade = Modifier.graphicsLayer { alpha = ((progress() - 0.35f) / 0.65f).coerceIn(0f, 1f) }
 
