@@ -1,5 +1,12 @@
 package com.tmplayer.music.data
 
+import com.tmplayer.music.library.baseOfSongKey
+import com.tmplayer.music.library.likeEscape
+import com.tmplayer.music.library.playlistName
+import com.tmplayer.music.library.recentSearchKey
+import com.tmplayer.music.library.searchText
+import com.tmplayer.music.library.searchWords
+import com.tmplayer.music.lyrics.LyricsParser
 import com.tmplayer.music.player.SavedQueue
 import com.tmplayer.music.tags.Samples
 import com.tmplayer.music.tags.TagReader
@@ -128,5 +135,36 @@ class GarbageInputTest {
         assertEquals(0L, queue?.positionMs)
         assertEquals(0, queue?.repeat)
         assertEquals(1, queue?.items?.size)
+    }
+
+    @Test
+    fun `lyrics that are garbage parse to something or nothing, never a crash`() {
+        val random = Random(11)
+        val cases = listOf(
+            "[", "]", "[[[[", "[00:", "[00:00", "[99999:99.999]x", "[-1:00]x", "[offset:abc]", "[offset:99999999999999999999]",
+            "[00:01]".repeat(50_000), "<00:01>".repeat(10_000), "\u0000\u0001[00:01]\u0002",
+        )
+        for (case in cases) LyricsParser.parse(case)
+        LyricsParser.parse(ByteArray(LyricsParser.MAX_BYTES + 1))
+        repeat(2000) {
+            LyricsParser.parse(random.nextBytes(random.nextInt(0, 4096)))
+            val alphabet = "[]:.0123456789<>ab\n"
+            LyricsParser.parse(String(CharArray(random.nextInt(0, 400)) { alphabet[random.nextInt(alphabet.length)] }))
+        }
+    }
+
+    @Test
+    fun `search queries, playlist names and stored keys that are garbage never crash`() {
+        val random = Random(13)
+        val odd = listOf("", " ", "%", "_", "\\", "%%__\\", "\u0000", "\uD800", "\u0001\u0001", "x".repeat(100_000))
+        repeat(3000) {
+            val text = if (it < odd.size) odd[it] else String(CharArray(random.nextInt(0, 300)) { random.nextInt(0, 0xFFFF).toChar() })
+            searchWords(text)
+            searchText(text, text)
+            likeEscape(text)
+            baseOfSongKey(text)
+            playlistName(text)
+            recentSearchKey(text)
+        }
     }
 }

@@ -28,7 +28,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -55,7 +57,9 @@ import com.tmplayer.music.library.Album
 import com.tmplayer.music.library.Artist
 import com.tmplayer.music.library.ChatPick
 import com.tmplayer.music.library.ChatRow
+import com.tmplayer.music.library.Playlist
 import com.tmplayer.music.library.Song
+import com.tmplayer.music.ui.common.MusicIcons
 import com.tmplayer.music.library.SongCursor
 import com.tmplayer.music.library.SongSort
 import com.tmplayer.music.ui.onboarding.ChatPicker
@@ -66,17 +70,20 @@ private sealed interface Page {
     data class AlbumPage(val album: Album) : Page
     data class ArtistPage(val artist: Artist) : Page
     data class ChatPage(val chat: ChatRow) : Page
+    data class PlaylistPage(val playlist: Playlist) : Page
     data object Manage : Page
     data object Picker : Page
+    data object Search : Page
+    data object Settings : Page
 }
 
-private enum class LibraryTab { Songs, Albums, Artists }
+private enum class LibraryTab { Home, Songs, Albums, Artists, Playlists }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryHome(onLogOut: () -> Unit) {
     val stack = remember { mutableStateListOf<Page>() }
-    var tab by rememberSaveable { mutableStateOf(LibraryTab.Songs) }
+    var tab by rememberSaveable { mutableStateOf(LibraryTab.Home) }
     var sort by rememberSaveable { mutableStateOf(SongSort.Title) }
     var versionsOf by remember { mutableStateOf<Song?>(null) }
     var chatTitles by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
@@ -90,6 +97,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
     BackHandler(enabled = page != null) { stack.removeAt(stack.lastIndex) }
 
     var menuFor by remember { mutableStateOf<Song?>(null) }
+    var playlistFor by remember { mutableStateOf<Song?>(null) }
     var playerOpen by rememberSaveable { mutableStateOf(false) }
     var queueOpen by rememberSaveable { mutableStateOf(false) }
     val askNotifications = rememberNotificationAsk()
@@ -98,6 +106,10 @@ fun LibraryHome(onLogOut: () -> Unit) {
             play = { songs, index ->
                 askNotifications()
                 PlayerConnection.play(songs, index)
+            },
+            shuffle = { songs ->
+                askNotifications()
+                PlayerConnection.play(songs, songs.indices.random(), shuffle = true)
             },
             menu = { menuFor = it },
         )
@@ -138,8 +150,11 @@ fun LibraryHome(onLogOut: () -> Unit) {
                             is Page.AlbumPage -> page.album.title
                             is Page.ArtistPage -> page.artist.name.ifBlank { L.libraryUnknownArtist }
                             is Page.ChatPage -> page.chat.title
+                            is Page.PlaylistPage -> page.playlist.name
                             Page.Manage -> L.manageTitle
                             Page.Picker -> ""
+                            Page.Search -> L.searchTitle
+                            Page.Settings -> L.settingsTitle
                         },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -148,7 +163,12 @@ fun LibraryHome(onLogOut: () -> Unit) {
                 navigationIcon = {
                     if (page != null) TextButton(onClick = { stack.removeAt(stack.lastIndex) }) { Text(L.commonBack) }
                 },
-                actions = { if (page == null) Overflow(onManage = { stack += Page.Manage }, onLogOut = onLogOut) },
+                actions = {
+                    if (page == null) {
+                        IconButton(onClick = { stack += Page.Search }) { Icon(MusicIcons.Search, contentDescription = L.searchTitle) }
+                        Overflow(onManage = { stack += Page.Manage }, onSettings = { stack += Page.Settings }, onLogOut = onLogOut)
+                    }
+                },
             )
         },
     ) { padding ->
@@ -156,11 +176,13 @@ fun LibraryHome(onLogOut: () -> Unit) {
             ScanBar()
             when (page) {
                 null -> {
-                    PrimaryTabRow(selectedTabIndex = tab.ordinal) {
+                    PrimaryScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 8.dp) {
                         LibraryTab.entries.forEach { t ->
                             Tab(selected = tab == t, onClick = { tab = t }, text = {
                                 Text(
                                     when (t) {
+                                        LibraryTab.Home -> L.tabHome
+                                        LibraryTab.Playlists -> L.tabPlaylists
                                         LibraryTab.Songs -> L.tabSongs
                                         LibraryTab.Albums -> L.tabAlbums
                                         LibraryTab.Artists -> L.tabArtists
@@ -170,7 +192,14 @@ fun LibraryHome(onLogOut: () -> Unit) {
                         }
                     }
                     when (tab) {
-                        LibraryTab.Songs -> SongsTab(sort, actions) { SongsHeader(sort) { sort = it } }
+                        LibraryTab.Home -> HomeTab(actions, onShuffleAll = { scope.launch { runCatching { actions.shuffle(allSongs()) } } })
+                        LibraryTab.Playlists -> PlaylistsTab(onPlaylist = { stack += Page.PlaylistPage(it) })
+                        LibraryTab.Songs -> SongsTab(sort, actions) {
+                            Column {
+                                SongsHeader(sort) { sort = it }
+                                PlayButtons({ allSongs() }) { list, shuffle -> if (shuffle) actions.shuffle(list) else actions.play(list, 0) }
+                            }
+                        }
                         LibraryTab.Albums -> AlbumsTab(onAlbum = { stack += Page.AlbumPage(it) }) {}
                         LibraryTab.Artists -> ArtistsTab(onArtist = { stack += Page.ArtistPage(it) }) {}
                     }
@@ -188,6 +217,9 @@ fun LibraryHome(onLogOut: () -> Unit) {
                     )
                     SongList(pager, state, actions)
                 }
+                is Page.PlaylistPage -> PlaylistScreen(page.playlist, actions, onDeleted = { stack.removeAt(stack.lastIndex) })
+                Page.Settings -> SettingsScreen()
+                Page.Search -> SearchScreen(actions, onAlbum = { stack += Page.AlbumPage(it) }, onArtist = { stack += Page.ArtistPage(it) })
                 Page.Manage -> ManageChats(onAddChats = { stack += Page.Picker }, onChat = { stack += Page.ChatPage(it) })
                 Page.Picker -> Unit
             }
@@ -203,14 +235,47 @@ fun LibraryHome(onLogOut: () -> Unit) {
                 menuFor = null
                 versionsOf = song
             },
+            onAddToPlaylist = {
+                menuFor = null
+                playlistFor = song
+            },
+            onAlbum = { album ->
+                menuFor = null
+                stack += Page.AlbumPage(album)
+            },
+            onArtist = { artist ->
+                menuFor = null
+                stack += Page.ArtistPage(artist)
+            },
         )
     }
+    playlistFor?.let { song -> AddToPlaylistSheet(song, onDismiss = { playlistFor = null }) }
 }
 
 /** What can be done with one song: play it next, add it to the queue, see its versions. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SongMenu(song: Song, onDismiss: () -> Unit, onVersions: () -> Unit) {
+private fun SongMenu(
+    song: Song,
+    onDismiss: () -> Unit,
+    onVersions: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onAlbum: (Album) -> Unit,
+    onArtist: (Artist) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var favourite by remember { mutableStateOf<Boolean?>(null) }
+    var album by remember { mutableStateOf<Album?>(null) }
+    var artist by remember { mutableStateOf<Artist?>(null) }
+    LaunchedEffect(song.groupKey) {
+        runCatching {
+            val index = Library.index()
+            favourite = song.groupKey in index.favouriteKeys()
+            album = song.albumKey.takeIf { it.isNotBlank() }?.let { index.album(it) }
+            artist = song.artistKey.takeIf { it.isNotBlank() }?.let { index.artist(it) }
+        }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(bottom = 24.dp)) {
             Text(
@@ -228,6 +293,19 @@ private fun SongMenu(song: Song, onDismiss: () -> Unit, onVersions: () -> Unit) 
                 PlayerConnection.addToQueue(song)
                 onDismiss()
             }
+            favourite?.let { on ->
+                MenuLine(if (on) L.menuUnfavourite else L.menuFavourite) {
+                    scope.launch {
+                        val done = runCatching { Library.index().setFavourite(song, !on) }.getOrDefault(true)
+                        if (!done) android.widget.Toast.makeText(context, L.menuFavouritesFull, android.widget.Toast.LENGTH_LONG).show()
+                        Library.notifyChanged()
+                    }
+                    onDismiss()
+                }
+            }
+            MenuLine(L.menuAddToPlaylist, onAddToPlaylist)
+            album?.let { MenuLine(L.menuGoToAlbum) { onAlbum(it) } }
+            artist?.let { MenuLine(L.menuGoToArtist) { onArtist(it) } }
             MenuLine(if (song.versionCount > 1) L.libraryVersions(song.versionCount) else L.menuFileDetails, onVersions)
         }
     }
@@ -264,7 +342,7 @@ private fun rememberNotificationAsk(): () -> Unit {
 }
 
 @Composable
-private fun Overflow(onManage: () -> Unit, onLogOut: () -> Unit) {
+private fun Overflow(onManage: () -> Unit, onSettings: () -> Unit, onLogOut: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { open = true }) { Text(L.libraryMenu) }
@@ -272,6 +350,10 @@ private fun Overflow(onManage: () -> Unit, onLogOut: () -> Unit) {
             DropdownMenuItem(text = { Text(L.manageTitle) }, onClick = {
                 open = false
                 onManage()
+            })
+            DropdownMenuItem(text = { Text(L.settingsTitle) }, onClick = {
+                open = false
+                onSettings()
             })
             DropdownMenuItem(text = { Text(L.shellLogOut) }, onClick = {
                 open = false

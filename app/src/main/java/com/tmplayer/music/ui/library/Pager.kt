@@ -58,6 +58,15 @@ class Pager<C, T>(
         }
     }
 
+    /** Loads pages until row [position] is in [items] or the list ends, for the A to Z bar. */
+    suspend fun ensure(position: Int) {
+        while (items.size <= position && !end && error == null) {
+            val before = items.size
+            more()
+            if (items.size == before) break
+        }
+    }
+
     private suspend fun guarded(block: suspend () -> Unit) = lock.withLock {
         try {
             block()

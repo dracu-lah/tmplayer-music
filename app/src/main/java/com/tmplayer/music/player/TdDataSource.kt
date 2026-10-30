@@ -11,6 +11,7 @@ import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import android.content.Context
+import com.tmplayer.music.data.Storage
 import com.tmplayer.music.data.Td
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
@@ -73,7 +74,12 @@ class TdDataSource : BaseDataSource(true) {
         val size = blocking(OPEN_TIMEOUT_MS) { window.lookUp() }
         if (position > size) throw DataSourceException(C.RESULT_END_OF_INPUT)
         bytesRemaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) size - position else minOf(dataSpec.length, size - position)
-        if (!window.completed) blocking(OPEN_TIMEOUT_MS) { window.requestUnlessOnDisk(position) }
+        if (!window.completed) {
+            // A file not on the device yet: room is made (the cache trimmed) or the reason it
+            // cannot play is given, before a single byte is written (AGENTS.md: space and size).
+            blocking(OPEN_TIMEOUT_MS) { Storage.makeRoom(size - position) }?.let { throw IOException(it) }
+            blocking(OPEN_TIMEOUT_MS) { window.requestUnlessOnDisk(position) }
+        }
         opened = true
         transferStarted(dataSpec)
         val took = SystemClock.elapsedRealtime() - startedAt

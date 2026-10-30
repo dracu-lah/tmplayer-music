@@ -2,6 +2,7 @@ package com.tmplayer.music.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.tmplayer.music.data.CachePolicy
 
 /** The few flags the app keeps outside the library: has the user seen Welcome, picked chats once. */
 class Prefs(context: Context) {
@@ -21,7 +22,13 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(NOTIFICATIONS_ASKED, false)
         set(value) = prefs.edit().putBoolean(NOTIFICATIONS_ASKED, value).apply()
 
+    /** The cache ceiling the user chose, in bytes; the device's default until they choose. */
+    fun cacheCeiling(weakDevice: Boolean): Long = prefs.getLong(CACHE_CEILING, CachePolicy.defaultCeiling(weakDevice))
+
+    fun setCacheCeiling(bytes: Long) = prefs.edit().putLong(CACHE_CEILING, bytes).apply()
+
     private companion object {
+        const val CACHE_CEILING = "cache_ceiling"
         const val NOTIFICATIONS_ASKED = "notifications_asked"
         const val WELCOMED = "welcomed"
         const val PICKER_DONE = "picker_done"

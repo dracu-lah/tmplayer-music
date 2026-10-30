@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -72,6 +73,7 @@ import com.tmplayer.music.ui.common.Cover
 import com.tmplayer.music.ui.common.Format
 import com.tmplayer.music.ui.common.MusicIcons
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** The playing position, read from the player twice a second while it plays and not at all otherwise. */
@@ -187,6 +189,7 @@ fun NowPlaying(onClose: () -> Unit, onQueue: () -> Unit) {
     var seeking by remember { mutableStateOf<Float?>(null) }
     val title = state.metadata.title?.toString().orEmpty()
     var sleepOpen by remember { mutableStateOf(false) }
+    var showLyrics by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     val tint = rememberCoverTint(state.item)
     LaunchedEffect(state.count) { if (state.count == 0) onClose() }
     val background = MaterialTheme.colorScheme.background
@@ -201,12 +204,16 @@ fun NowPlaying(onClose: () -> Unit, onQueue: () -> Unit) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(MusicIcons.Down, contentDescription = L.playerClose) }
                 Spacer(Modifier.weight(1f))
+                TextButton(onClick = { showLyrics = !showLyrics }) {
+                    Text(L.lyricsTitle, color = if (showLyrics) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                FavouriteButton(state.item)
                 SleepButton { sleepOpen = true }
                 IconButton(onClick = onQueue) { Icon(MusicIcons.Queue, contentDescription = L.playerQueue) }
             }
             Spacer(Modifier.weight(0.5f))
             Box(Modifier.widthIn(max = 420.dp).fillMaxWidth().aspectRatio(1f)) {
-                ItemCover(state.item, 420.dp, title)
+                if (showLyrics) LyricsPanel(state) else ItemCover(state.item, 420.dp, title)
             }
             Spacer(Modifier.height(24.dp))
             Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
@@ -271,6 +278,108 @@ fun NowPlaying(onClose: () -> Unit, onQueue: () -> Unit) {
         }
     }
     if (sleepOpen) SleepSheet(onDismiss = { sleepOpen = false })
+}
+
+/**
+ * The playing track's lyrics in place of the cover. Synced lyrics follow the track (read four
+ * times a second while it plays and this is on screen) and scroll by themselves; tap a line to
+ * seek there. Plain lyrics scroll. No lyrics is a quiet line, and the panel stays for the next track.
+ */
+@Composable
+private fun LyricsPanel(state: PlayerState) {
+    val id = state.item?.mediaId?.let { com.tmplayer.music.player.MediaIds.item(it)?.id }
+    var lyrics by remember(id) { mutableStateOf<com.tmplayer.music.lyrics.Lyrics?>(null) }
+    var looked by remember(id) { mutableStateOf(false) }
+    LaunchedEffect(id) {
+        if (id == null) return@LaunchedEffect
+        lyrics = runCatching {
+            com.tmplayer.music.data.Library.index().track(id)?.let { com.tmplayer.music.data.Library.lyricsFor(it) }
+        }.getOrNull()
+        looked = true
+    }
+    val shown = lyrics
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        when {
+            shown == null -> Text(
+                if (looked) L.lyricsNone else "",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            shown.synced -> SyncedLyrics(shown, state)
+            else -> Text(
+                shown.plain,
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncedLyrics(lyrics: com.tmplayer.music.lyrics.Lyrics, state: PlayerState) {
+    var position by remember { mutableLongStateOf(PlayerConnection.position()) }
+    LaunchedEffect(state.isPlaying, state.index) {
+        position = PlayerConnection.position()
+        while (state.isPlaying) {
+            delay(250)
+            position = PlayerConnection.position()
+        }
+    }
+    val current = lyrics.lineAt(position, LATENCY_MS)
+    val list = rememberLazyListState()
+    LaunchedEffect(current) {
+        if (current >= 0) runCatching { list.animateScrollToItem((current - 2).coerceAtLeast(0)) }
+    }
+    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 24.dp)) {
+        itemsIndexed(lyrics.lines) { i, line ->
+            Text(
+                line.text.ifBlank { "♪" },
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = if (i == current) FontWeight.Bold else FontWeight.Normal,
+                color = if (i == current) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().clickable { PlayerConnection.seekTo(line.timeMs) }.padding(vertical = 6.dp, horizontal = 8.dp),
+            )
+        }
+    }
+}
+
+/** How far ahead the highlight runs of the player's clock, for the audio path's own delay. */
+private const val LATENCY_MS = 150L
+
+/** The heart for the playing song: filled when it is a favourite; tap to change. */
+@Composable
+private fun FavouriteButton(item: MediaItem?) {
+    val key = item?.mediaId?.let { com.tmplayer.music.player.MediaIds.item(it)?.songKey }.orEmpty()
+    val changes by com.tmplayer.music.data.Library.changes.collectAsStateWithLifecycle()
+    var on by remember(key) { mutableStateOf<Boolean?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    LaunchedEffect(key, changes) {
+        if (key.isBlank()) return@LaunchedEffect
+        on = runCatching { key in com.tmplayer.music.data.Library.index().favouriteKeys() }.getOrNull()
+    }
+    val now = on ?: return
+    IconButton(onClick = {
+        scope.launch {
+            runCatching {
+                val index = com.tmplayer.music.data.Library.index()
+                val song = index.song(key) ?: return@runCatching
+                if (index.setFavourite(song, !now)) {
+                    on = !now
+                } else {
+                    PlaybackErrors.report(L.menuFavouritesFull)
+                }
+                com.tmplayer.music.data.Library.notifyChanged()
+            }
+        }
+    }) {
+        Icon(
+            if (now) MusicIcons.Heart else MusicIcons.HeartOutline,
+            contentDescription = if (now) L.menuUnfavourite else L.menuFavourite,
+            tint = if (now) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 /** The tint of the playing track's cover, once its picture is in the memory cache. */

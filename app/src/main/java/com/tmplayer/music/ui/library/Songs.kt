@@ -1,6 +1,7 @@
 package com.tmplayer.music.ui.library
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +26,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -56,11 +60,51 @@ fun SongsTab(sort: SongSort, actions: SongActions, header: @Composable () -> Uni
         load = { after, limit -> Library.index().songs(sort, after, limit) },
         cursorOf = { SongCursor.of(it, sort) },
     )
-    SongList(pager, state, actions, header)
+    Box(Modifier.fillMaxSize()) {
+        SongList(pager, state, actions, header)
+        if (sort != SongSort.Added) LetterBar(sort, pager, state, Modifier.align(Alignment.CenterEnd))
+    }
 }
 
-/** What a tap and a hold on a song do, from any list. */
-class SongActions(val play: (List<Song>, Int) -> Unit, val menu: (Song) -> Unit)
+/**
+ * The A to Z bar at the edge of Songs: each first letter in the list, tap one to go there. The
+ * rows up to that letter are read first (keyset pages), so a jump to the end of a long list waits
+ * for them; the bar hides itself when the list has fewer than [LETTER_BAR_MIN] rows.
+ */
+@Composable
+private fun LetterBar(sort: SongSort, pager: Pager<SongCursor, Song>, state: LazyListState, modifier: Modifier) {
+    val changes by Library.changes.collectAsStateWithLifecycle()
+    var letters by remember { mutableStateOf<List<Pair<Char, Int>>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(sort, changes) {
+        letters = runCatching { Library.index().letterIndex(sort) }.getOrDefault(letters)
+    }
+    val total = letters.lastOrNull()?.second ?: 0
+    if (letters.size < 2 || total < LETTER_BAR_MIN) return
+    Column(modifier.padding(end = 2.dp), verticalArrangement = Arrangement.Center) {
+        for ((letter, position) in letters) {
+            Text(
+                letter.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clickable {
+                        scope.launch {
+                            pager.ensure(position)
+                            // +1 for the header row above the songs.
+                            state.scrollToItem((position + 1).coerceAtMost(pager.items.size))
+                        }
+                    }
+                    .padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
+    }
+}
+
+private const val LETTER_BAR_MIN = 40
+
+/** What a tap and a hold on a song do, from any list, and Shuffle all. */
+class SongActions(val play: (List<Song>, Int) -> Unit, val shuffle: (List<Song>) -> Unit, val menu: (Song) -> Unit)
 
 @Composable
 fun SongList(
@@ -84,7 +128,13 @@ fun SongList(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SongRow(song: Song, onClick: () -> Unit, onLongClick: () -> Unit = onClick, leading: (@Composable () -> Unit)? = null) {
+fun SongRow(
+    song: Song,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = onClick,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
     val subtitle = listOf(song.artist.ifBlank { L.libraryUnknownArtist }, Format.duration(song.durationMs)).joinToString("  ·  ")
     Row(
         Modifier
@@ -114,6 +164,7 @@ fun SongRow(song: Song, onClick: () -> Unit, onLongClick: () -> Unit = onClick, 
         if (song.versionCount > 1) {
             AssistChip(onClick = onLongClick, label = { Text(L.libraryVersions(song.versionCount)) })
         }
+        trailing?.invoke()
     }
 }
 

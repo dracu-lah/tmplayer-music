@@ -42,7 +42,7 @@ interface FileBytes {
     suspend fun forget(fileId: Int)
 }
 
-/** Where covers read from tags are kept, by key. */
+/** Where covers (and lyrics) read from tags are kept, by key. */
 interface CoverStore {
     /** Saves [data] under [key] and returns the key, or blank when it could not be saved. */
     suspend fun save(key: String, data: ByteArray): String
@@ -65,6 +65,8 @@ class TagEnricher(
     private val bytes: FileBytes,
     private val covers: CoverStore,
     private val scope: CoroutineScope,
+    /** Unsynced or LRC lyrics found in a tag, by the file's unique id; null keeps none. */
+    private val lyrics: CoverStore? = null,
     private val paused: StateFlow<Boolean> = MutableStateFlow(false),
 ) {
     private val _status = MutableStateFlow(EnrichStatus())
@@ -116,6 +118,9 @@ class TagEnricher(
         val coverKey = tags?.cover?.let { picture ->
             runCatching { covers.save(track.uniqueId, picture.data) }.getOrDefault("")
         }.orEmpty()
+        tags?.lyrics?.takeIf { it.isNotBlank() }?.let { text ->
+            runCatching { lyrics?.save(track.uniqueId, text.toByteArray(Charsets.UTF_8)) }
+        }
         store.applyTags(track.id, tags, coverKey)
         _status.update { if (tags == null) it.copy(failed = it.failed + 1) else it.copy(done = it.done + 1) }
     }

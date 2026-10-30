@@ -26,6 +26,7 @@ import com.tmplayer.music.MainActivity
 import com.tmplayer.music.R
 import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.Library
+import com.tmplayer.music.data.Storage
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
@@ -61,6 +62,12 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var failuresInARow = 0
     private var saveJob: Job? = null
+
+    /** When the cache was last trimmed to its ceiling, so a run of skips does not trim each time. */
+    private var trimmedAt = 0L
+
+    /** The item a play was last recorded for, so a pause and resume does not count twice. */
+    private var recorded: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -158,8 +165,34 @@ class PlaybackService : MediaSessionService() {
 
     private fun queueFile() = File(filesDir, "queue.json")
 
+    /** Keeps the cache under its ceiling as tracks go by; at most every [TRIM_GAP_MS]. */
+    private fun trimSoon() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - trimmedAt < TRIM_GAP_MS) return
+        trimmedAt = now
+        scope.launch(Dispatchers.IO) { runCatching { Storage.trim() } }
+    }
+
+    /** Counts a play for Recently played, once per start of an item. */
+    private fun recordPlay(item: MediaItem?) {
+        val mediaId = item?.mediaId ?: return
+        if (recorded == mediaId) return
+        recorded = mediaId
+        val queued = MediaIds.item(mediaId) ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching { Library.index().recordPlay(queued.id, queued.songKey, System.currentTimeMillis() / 1000) }
+            Library.notifyChanged()
+        }
+    }
+
     private inner class Watcher(private val player: Player) : Player.Listener {
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = saveSoon()
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // A new item, or the same one again with repeat one: its next start is a new play.
+            recorded = null
+            if (player.isPlaying) recordPlay(player.currentMediaItem)
+            saveSoon()
+            trimSoon()
+        }
 
         override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) = saveSoon()
 
@@ -168,7 +201,7 @@ class PlaybackService : MediaSessionService() {
         override fun onRepeatModeChanged(repeatMode: Int) = saveSoon()
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (!isPlaying) saveSoon()
+            if (isPlaying) recordPlay(player.currentMediaItem) else saveSoon()
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -217,6 +250,7 @@ class PlaybackService : MediaSessionService() {
         private const val TAG = "PlaybackService"
         private const val MAX_SKIPS = 3
         private const val SAVE_DELAY_MS = 500L
+        private const val TRIM_GAP_MS = 5 * 60_000L
 
         /** A queue item as a playable MediaItem, from the index: the version, or the song's default. */
         suspend fun resolve(item: SavedQueue.Item): MediaItem? {

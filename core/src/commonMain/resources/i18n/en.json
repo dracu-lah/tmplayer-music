@@ -38,6 +38,13 @@
     "sample_rate": "{khz} kHz",
     "unknown_duration": "--:--"
   },
+  "home": {
+    "favourites": "Favourites",
+    "play_all": "Play all",
+    "recently_added": "Recently added",
+    "recently_played": "Recently played",
+    "shuffle_all": "Shuffle all"
+  },
   "library": {
     "albums": "{count, plural, one {# album} other {# albums}}",
     "counts": "{songs, plural, one {# song} other {# songs}} ({files, plural, one {# file} other {# files}})",
@@ -74,6 +81,10 @@
     "resend": "Send the code again",
     "stalled": "This is taking longer than usual. Check the connection, then try again."
   },
+  "lyrics": {
+    "none": "No lyrics for this track. A .lrc file with the same name in the same chat, or lyrics in the file's tags, show here.",
+    "title": "Lyrics"
+  },
   "manage": {
     "add": "Add chats",
     "body": "These chats are read for audio. Removing one takes its tracks out of the library; your messages in Telegram are not touched.",
@@ -87,9 +98,15 @@
     "tracks": "{count, plural, one {# track} other {# tracks}}"
   },
   "menu": {
+    "add_to_playlist": "Add to playlist",
     "add_to_queue": "Add to queue",
+    "favourite": "Add to favourites",
+    "favourites_full": "You have 20,000 favourites, the most there can be.",
     "file_details": "File details",
-    "play_next": "Play next"
+    "go_to_album": "Go to album",
+    "go_to_artist": "Go to artist",
+    "play_next": "Play next",
+    "unfavourite": "Remove from favourites"
   },
   "picker": {
     "archived": "Archived chats",
@@ -125,6 +142,22 @@
     "skipped": "Couldn't play {title}: {reason}",
     "unknown_length": "The length of this track is not known, so it can't be seeked."
   },
+  "playlist": {
+    "default_name": "Playlist",
+    "delete": "Delete",
+    "delete_body": "The playlist goes; the songs stay in your library.",
+    "delete_title": "Delete {name}?",
+    "empty": "No songs yet. Add songs from their menu: hold a song, then Add to playlist.",
+    "empty_list": "No playlists yet.",
+    "full": "This playlist is full: a playlist holds at most 10,000 songs.",
+    "move_down": "Move down",
+    "move_up": "Move up",
+    "name": "Name",
+    "new": "New playlist",
+    "remove_song": "Remove from this playlist",
+    "rename": "Rename",
+    "too_many": "You have 1,000 playlists, the most there can be. Delete one to make another."
+  },
   "queue": {
     "clear": "Clear",
     "move": "Hold and drag to move",
@@ -137,6 +170,30 @@
     "running": "Scanning {current} of {total} chats, {found, plural, one {# track so far} other {# tracks so far}}",
     "tags": "Reading tags, {count, plural, one {# file done} other {# files done}}",
     "waiting": "Telegram asked us to wait {seconds} s before reading more"
+  },
+  "search": {
+    "clear": "Clear",
+    "hint": "Songs, albums, artists",
+    "nothing": "Nothing in your library matches {query}.",
+    "recent": "Recent searches",
+    "title": "Search"
+  },
+  "settings": {
+    "about": "About",
+    "cache_used": "Cached audio: {size}",
+    "free": "Free on this device: {size}",
+    "free_up": "Free up space",
+    "free_up_body": "Your songs stay in the library and stream again when you play them. Nothing in Telegram is touched.",
+    "free_up_failed": "Couldn't free up space. Try again in a moment.",
+    "free_up_title": "Delete {size} of cached audio?",
+    "freed_up": "Freed {size}.",
+    "legal": "Legal and takedown requests",
+    "limit": "Cache limit",
+    "limit_none": "No limit",
+    "limit_note": "The cache never takes more than a share of this device's storage: at most {size} here.",
+    "nothing": "nothing",
+    "storage": "Storage",
+    "title": "Settings"
   },
   "shell": {
     "log_out": "Log out"
@@ -156,9 +213,16 @@
     "artist": "Artist",
     "title": "Title"
   },
+  "storage": {
+    "gigabytes": "{size} GB",
+    "megabytes": "{size} MB",
+    "not_enough": "Not enough space to play this track: it needs {needed} and {free} is free. Free up space in Settings, or make room on the device."
+  },
   "tab": {
     "albums": "Albums",
     "artists": "Artists",
+    "home": "Home",
+    "playlists": "Playlists",
     "songs": "Songs"
   },
   "unit": {

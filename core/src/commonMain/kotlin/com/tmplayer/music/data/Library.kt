@@ -1,6 +1,9 @@
 package com.tmplayer.music.data
 
+import com.tmplayer.music.library.AudioKinds
 import com.tmplayer.music.library.ChatPick
+import com.tmplayer.music.lyrics.Lyrics
+import com.tmplayer.music.lyrics.LyricsParser
 import com.tmplayer.music.library.LibraryIndex
 import com.tmplayer.music.library.LyricsFile
 import com.tmplayer.music.library.ScanCursor
@@ -70,7 +73,7 @@ object Library {
         dir = folder.apply { mkdirs() }
         index = LibraryIndex.open(File(dir, "library.db").path)
         scanner = LibraryScanner(IndexScanStore(), ::fetchPage, scope)
-        enricher = TagEnricher(IndexTagStore(), TdFileBytes, DiskCovers(File(dir, "covers")), scope, paused)
+        enricher = TagEnricher(IndexTagStore(), TdFileBytes, DiskCovers(File(dir, "covers")), scope, lyrics = DiskCovers(File(dir, "lyrics")), paused = paused)
         scope.launch {
             Td.auth.map { it is AuthState.Ready }.distinctUntilChanged().collect { signedIn ->
                 if (signedIn) onSignedIn() else _ready.value = false
@@ -80,6 +83,11 @@ object Library {
 
     /** The index, once the account check is done. */
     suspend fun index(): LibraryIndex = gate.withLock { index }
+
+    /** Tells open lists the index changed outside the scan (a play, a favourite, a playlist edit). */
+    fun notifyChanged() {
+        _changes.value++
+    }
 
     /** The user's new choice of chats: removed ones are purged, new ones scanned. */
     suspend fun pick(chats: List<ChatPick>) {
@@ -117,12 +125,43 @@ object Library {
     /** Where a cover saved from tags lives, or null. */
     fun coverFile(key: String): File? = if (key.isBlank()) null else File(File(dir, "covers"), key).takeIf { it.isFile }
 
+    private val lyricsCache = LyricsCache()
+
+    /**
+     * The lyrics of [track]: a `.lrc` (or `.txt`) with the same name in the same chat first, then
+     * what its tags held. Null when there are none. The `.lrc` is fetched from Telegram once (small,
+     * capped) and the parsed lyrics are remembered for the session.
+     */
+    suspend fun lyricsFor(track: Track): Lyrics? {
+        val key = "${track.chatId}:${track.messageId}"
+        lyricsCache.get(key)?.let { return it.value }
+        val found = runCatching { lrcInChat(track) }.getOrNull()
+            ?: runCatching {
+                File(File(dir, "lyrics"), track.uniqueId.filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(120))
+                    .takeIf { it.isFile && it.length() <= LyricsParser.MAX_BYTES }
+                    ?.readBytes()
+                    ?.let(LyricsParser::parse)
+            }.getOrNull()
+        lyricsCache.put(key, Cached(found))
+        return found
+    }
+
+    private suspend fun lrcInChat(track: Track): Lyrics? {
+        val file = index().lyricsFor(track.chatId, AudioKinds.baseName(track.fileName)) ?: return null
+        if (file.sizeBytes > LyricsParser.MAX_BYTES) return null
+        val bytes = TdFileBytes.read(file.fileId, 0, file.sizeBytes.coerceAtMost(LyricsParser.MAX_BYTES.toLong()).toInt().coerceAtLeast(1))
+            ?: return null
+        return LyricsParser.parse(bytes)
+    }
+
     /** Wipes the library before a log out, so nothing of this account stays on the device. */
     suspend fun wipe() = gate.withLock {
         Logger.i(TAG, "wiping the library")
         runCatching { index.close() }
         File(dir, "library.db").let { db -> listOf(db, File(db.path + "-wal"), File(db.path + "-shm")).forEach { it.delete() } }
         File(dir, "covers").deleteRecursively()
+        File(dir, "lyrics").deleteRecursively()
+        lyricsCache.evictAll()
         File(dir, ACCOUNT_FILE).delete()
         index = LibraryIndex.open(File(dir, "library.db").path)
         _changes.value++
@@ -205,6 +244,27 @@ object Library {
     private const val ACCOUNT_FILE = "account"
     private const val PAGE_TIMEOUT_MS = 30_000L
     private const val L_NOT_CONNECTED = "NETWORK_ERROR"
+}
+
+/** A held answer, so "no lyrics" is remembered too. */
+private class Cached(val value: Lyrics?)
+
+/** The parsed lyrics of the last tracks asked about; bounded. */
+private class LyricsCache {
+    private val map = object : java.util.LinkedHashMap<String, Cached>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>?): Boolean = size > 64
+    }
+
+    @Synchronized
+    fun get(key: String): Cached? = map[key]
+
+    @Synchronized
+    fun put(key: String, value: Cached) {
+        map[key] = value
+    }
+
+    @Synchronized
+    fun evictAll() = map.clear()
 }
 
 /** A file's bytes through TDLib's partial download. */
