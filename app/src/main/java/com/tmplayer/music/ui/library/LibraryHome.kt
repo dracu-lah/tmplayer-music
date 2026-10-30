@@ -1,59 +1,69 @@
 package com.tmplayer.music.ui.library
 
 import android.Manifest
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import com.tmplayer.music.data.Prefs
-import com.tmplayer.music.player.PlayerConnection
-import com.tmplayer.music.ui.player.HidePlayerSheet
-import com.tmplayer.music.ui.player.PlayerSheetSpacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryScrollableTabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.LibraryStatus
+import com.tmplayer.music.data.Prefs
+import com.tmplayer.music.diagnostics.rememberSendLogs
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.Album
 import com.tmplayer.music.library.Artist
@@ -61,46 +71,138 @@ import com.tmplayer.music.library.ChatPick
 import com.tmplayer.music.library.ChatRow
 import com.tmplayer.music.library.Playlist
 import com.tmplayer.music.library.Song
-import com.tmplayer.music.ui.common.MusicIcons
 import com.tmplayer.music.library.SongSort
+import com.tmplayer.music.player.PlayerConnection
+import com.tmplayer.music.shell.LibraryShelf
+import com.tmplayer.music.shell.MainTab
+import com.tmplayer.music.shell.NavLayout
+import com.tmplayer.music.shell.ShellChoices
 import com.tmplayer.music.ui.onboarding.ChatPicker
+import com.tmplayer.music.ui.player.HidePlayerSheet
+import com.tmplayer.music.ui.player.LocalPlayerSheet
+import com.tmplayer.music.ui.player.PlayerSheetSpacer
+import com.tmplayer.music.ui.theme.MusicMotion
 import kotlinx.coroutines.launch
 
-/** Where the library is: a tab, or a page opened from one. Back pops the page. */
-private sealed interface Page {
+/** A page opened over a tab. Back pops it; a tab tapped again goes back to the tab's top. */
+internal sealed interface Page {
     data class AlbumPage(val album: Album) : Page
     data class ArtistPage(val artist: Artist) : Page
     data class ChatPage(val chat: ChatRow) : Page
     data class PlaylistPage(val playlist: Playlist) : Page
+    data object About : Page
     data object Manage : Page
     data object Picker : Page
     data object Search : Page
     data object Settings : Page
 }
 
-private enum class LibraryTab { Home, Chats, Songs, Albums, Artists, Playlists }
+/**
+ * The open pages, kept by the activity across a rotation (they hold library rows, not saveable
+ * values). Process death drops them and the shell opens on the tab it was on.
+ */
+internal class ShellModel : ViewModel() {
+    val stack = mutableStateListOf<Page>()
+}
+
+private tailrec fun Context.owner(): ViewModelStoreOwner? = when (this) {
+    is ViewModelStoreOwner -> this
+    is ContextWrapper -> baseContext.owner()
+    else -> null
+}
+
+@Composable
+private fun rememberShellModel(): ShellModel {
+    val context = LocalContext.current
+    return remember(context) {
+        val owner = context.owner() ?: return@remember ShellModel()
+        val factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = ShellModel() as T
+        }
+        runCatching { ViewModelProvider(owner, factory)[ShellModel::class.java] }.getOrElse { ShellModel() }
+    }
+}
 
 /**
- * The library: tabs, the pages opened from them, the scan banner, and the one time question about
- * reading track details on mobile data. [startOnChats] opens on the Chats tab, for the first run,
- * where the chats just picked can be played before the scan has filled the other tabs.
+ * The app's shell: Home, Chats and Library in a bottom bar (a rail on the left in a window turned
+ * sideways), the top bar with the app's mark, search and the account menu, the pages opened from
+ * the tabs, the scan banner, and the one time question about reading track details on mobile data.
+ * The top bar, banner and Library chips scroll away with the list and come back on scrolling up.
+ * Each tab and chip keeps its own scroll place (switching, rotation, process death); a tap on the
+ * tab already shown goes back to its top. [startOnChats] opens on the Chats tab, for the first run,
+ * where the chats just picked can be played before the scan has filled the others.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false) {
-    val stack = remember { mutableStateListOf<Page>() }
-    var tab by rememberSaveable { mutableStateOf(if (startOnChats) LibraryTab.Chats else LibraryTab.Home) }
+    val context = LocalContext.current
+    val choices = remember { ShellChoices(Prefs(context)) }
+    val model = rememberShellModel()
+    val stack = model.stack
+    val sheet = LocalPlayerSheet.current
+    var tab by rememberSaveable { mutableStateOf(if (startOnChats) MainTab.Chats else MainTab.Home) }
+    var shelf by rememberSaveable { mutableStateOf(choices.shelf) }
+    var albumsGrid by rememberSaveable { mutableStateOf(choices.albumsGrid) }
+    var artistsGrid by rememberSaveable { mutableStateOf(choices.artistsGrid) }
     var sort by rememberSaveable { mutableStateOf(SongSort.Title) }
+    // Home is not ours to scroll (its list lives in Home.kt): a tap on Home again opens it afresh.
+    var homeRound by rememberSaveable { mutableIntStateOf(0) }
+    var askLogOut by remember { mutableStateOf(false) }
     var versionsOf by remember { mutableStateOf<Song?>(null) }
     var chatTitles by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
     val changes by Library.changes.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val holder = rememberSaveableStateHolder()
+    // The settle animation follows the motion setting: a snap with animations removed.
+    val motion = MusicMotion.current
+    val header = remember(motion) { CollapsingHeader(motion.defaultEffects()) }
+    val signals = remember {
+        ShellSignals(openManage = {
+            header.show()
+            stack += Page.Manage
+        })
+    }
+    val sendLogs = rememberSendLogs()
     val page = stack.lastOrNull()
 
     LaunchedEffect(changes) {
         chatTitles = runCatching { Library.index().pickedChats().associate { it.chatId to it.title } }.getOrDefault(chatTitles)
     }
-    BackHandler(enabled = page != null) { stack.removeAt(stack.lastIndex) }
+    // Composed first and always, so a sheet opened later wins Back; it also steps aside while the
+    // sheet is open, so Back collapses Now Playing before it leaves a page or a tab.
+    BackHandler(enabled = (page != null || tab != MainTab.Home) && sheet?.expanded != true) {
+        header.show()
+        if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) else tab = MainTab.Home
+    }
+    var lastHomeRound by remember { mutableIntStateOf(homeRound) }
+    LaunchedEffect(homeRound) {
+        if (homeRound != lastHomeRound) {
+            holder.removeState("home:$lastHomeRound")
+            lastHomeRound = homeRound
+        }
+    }
+
+    val select: (MainTab) -> Unit = { target ->
+        header.show()
+        when {
+            target != tab -> {
+                stack.clear()
+                tab = target
+            }
+            stack.isNotEmpty() -> stack.clear()
+            target == MainTab.Home -> homeRound++
+            else -> signals.reselect++
+        }
+    }
+    val pickShelf: (LibraryShelf) -> Unit = { target ->
+        header.show()
+        if (target == shelf) {
+            signals.reselect++
+        } else {
+            shelf = target
+            choices.shelf = target
+        }
+    }
 
     var menuFor by remember { mutableStateOf<Song?>(null) }
     var playlistFor by remember { mutableStateOf<Song?>(null) }
@@ -112,11 +214,17 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false) {
                 PlayerConnection.play(songs, index)
             },
             shuffle = { songs ->
-                askNotifications()
-                PlayerConnection.play(songs, songs.indices.random(), shuffle = true)
+                if (songs.isNotEmpty()) {
+                    askNotifications()
+                    PlayerConnection.play(songs, songs.indices.random(), shuffle = true)
+                }
             },
             menu = { menuFor = it },
         )
+    }
+    val open: (Page) -> Unit = {
+        header.show()
+        stack += it
     }
 
     if (page == Page.Picker) {
@@ -133,95 +241,150 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false) {
         return
     }
 
-    Scaffold(
-        bottomBar = { PlayerSheetSpacer() },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        when (page) {
-                            null -> L.appName
-                            is Page.AlbumPage -> page.album.title
-                            is Page.ArtistPage -> page.artist.name.ifBlank { L.libraryUnknownArtist }
-                            is Page.ChatPage -> page.chat.title
-                            is Page.PlaylistPage -> page.playlist.name
-                            Page.Manage -> L.manageTitle
-                            Page.Picker -> ""
-                            Page.Search -> L.searchTitle
-                            Page.Settings -> L.settingsTitle
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                navigationIcon = {
-                    if (page != null) TextButton(onClick = { stack.removeAt(stack.lastIndex) }) { Text(L.commonBack) }
-                },
-                actions = {
-                    if (page == null) {
-                        IconButton(onClick = { stack += Page.Search }) { Icon(MusicIcons.Search, contentDescription = L.searchTitle) }
-                        Overflow(onManage = { stack += Page.Manage }, onSettings = { stack += Page.Settings }, onLogOut = onLogOut)
-                    }
-                },
+    val topBar: @Composable () -> Unit = {
+        ShellTopBar(
+            title = when (page) {
+                null -> null
+                is Page.AlbumPage -> page.album.title
+                is Page.ArtistPage -> page.artist.name.ifBlank { L.libraryUnknownArtist }
+                is Page.ChatPage -> page.chat.title
+                is Page.PlaylistPage -> page.playlist.name
+                Page.About -> L.settingsAbout
+                Page.Manage -> L.manageTitle
+                Page.Picker -> ""
+                Page.Search -> L.searchTitle
+                Page.Settings -> L.settingsTitle
+            },
+            onBack = if (page != null) ({ stack.removeAt(stack.lastIndex) }) else null,
+            onSearch = if (page != Page.Search) ({ open(Page.Search) }) else null,
+        ) {
+            AccountMenu(
+                onSettings = { open(Page.Settings) },
+                onManage = { open(Page.Manage) },
+                onSendLogs = sendLogs,
+                onAbout = { open(Page.About) },
+                onLogOut = { askLogOut = true },
             )
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            if (page != Page.Settings) ScanBar(onOpen = { stack += Page.Settings })
-            when (page) {
-                null -> {
-                    PrimaryScrollableTabRow(
-                        selectedTabIndex = tab.ordinal,
-                        edgePadding = 8.dp,
-                        indicator = {
-                            TabRowDefaults.PrimaryIndicator(
-                                Modifier.tabIndicatorOffset(tab.ordinal, matchContentSize = true),
-                                width = androidx.compose.ui.unit.Dp.Unspecified,
-                                shape = com.tmplayer.music.ui.theme.Pill,
-                            )
-                        },
-                    ) {
-                        LibraryTab.entries.forEach { t ->
-                            Tab(selected = tab == t, onClick = { tab = t }, text = {
-                                Text(
-                                    when (t) {
-                                        LibraryTab.Home -> L.tabHome
-                                        LibraryTab.Chats -> L.chatfirstTabChats
-                                        LibraryTab.Playlists -> L.tabPlaylists
-                                        LibraryTab.Songs -> L.tabSongs
-                                        LibraryTab.Albums -> L.tabAlbums
-                                        LibraryTab.Artists -> L.tabArtists
-                                    },
-                                )
-                            })
-                        }
+        }
+    }
+
+    val body: @Composable () -> Unit = {
+        when (page) {
+            null -> {
+                val key = when (tab) {
+                    MainTab.Home -> "home:$homeRound"
+                    MainTab.Chats -> "chats"
+                    MainTab.Library -> when (shelf) {
+                        LibraryShelf.Albums -> "albums:$albumsGrid"
+                        LibraryShelf.Artists -> "artists:$artistsGrid"
+                        else -> "shelf:${shelf.name}"
                     }
-                    RefreshBox { when (tab) {
-                        LibraryTab.Home -> HomeTab(actions, onShuffleAll = { scope.launch { runCatching { actions.shuffle(allSongs()) } } })
-                        LibraryTab.Chats -> ChatsTab(actions, onChat = { stack += Page.ChatPage(it) }, onAdd = { stack += Page.Picker })
-                        LibraryTab.Playlists -> PlaylistsTab(onPlaylist = { stack += Page.PlaylistPage(it) })
-                        LibraryTab.Songs -> SongsTab(sort, actions) {
-                            Column {
-                                SongsHeader(sort) { sort = it }
-                                PlayButtons({ allSongs() }) { list, shuffle -> if (shuffle) actions.shuffle(list) else actions.play(list, 0) }
+                }
+                // Each tab and chip keeps its own saved state (scroll place included), here and
+                // after a rotation or process death.
+                holder.SaveableStateProvider(key) {
+                    RefreshBox {
+                        when (tab) {
+                            MainTab.Home -> HomeTab(actions, onShuffleAll = { scope.launch { runCatching { actions.shuffle(allSongs()) } } })
+                            MainTab.Chats -> ChatsTab(actions, onChat = { open(Page.ChatPage(it)) }, onAdd = { open(Page.Picker) })
+                            MainTab.Library -> when (shelf) {
+                                LibraryShelf.Songs -> SongsTab(sort, actions) {
+                                    Column {
+                                        SongsHeader(sort) { sort = it }
+                                        PlayButtons({ allSongs() }) { list, shuffle -> if (shuffle) actions.shuffle(list) else actions.play(list, 0) }
+                                    }
+                                }
+                                LibraryShelf.Albums -> AlbumsTab(grid = albumsGrid, onAlbum = { open(Page.AlbumPage(it)) }) {}
+                                LibraryShelf.Artists -> ArtistsTab(grid = artistsGrid, onArtist = { open(Page.ArtistPage(it)) }) {}
+                                LibraryShelf.Playlists -> PlaylistsTab(onPlaylist = { open(Page.PlaylistPage(it)) })
+                                LibraryShelf.Favourites -> FavouritesTab(actions)
                             }
                         }
-                        LibraryTab.Albums -> AlbumsTab(onAlbum = { stack += Page.AlbumPage(it) }) {}
-                        LibraryTab.Artists -> ArtistsTab(onArtist = { stack += Page.ArtistPage(it) }) {}
-                    } }
+                    }
                 }
-                is Page.AlbumPage -> AlbumScreen(page.album, actions)
-                is Page.ArtistPage -> ArtistScreen(page.artist, actions, onAlbum = { stack += Page.AlbumPage(it) })
-                is Page.ChatPage -> ChatScreen(page.chat, actions, onGone = { stack.remove(page) })
-                is Page.PlaylistPage -> PlaylistScreen(page.playlist, actions, onDeleted = { stack.removeAt(stack.lastIndex) })
-                Page.Settings -> SettingsScreen(onManageChats = { stack += Page.Manage })
-                Page.Search -> SearchScreen(actions, onAlbum = { stack += Page.AlbumPage(it) }, onArtist = { stack += Page.ArtistPage(it) })
-                Page.Manage -> ManageChats(onAddChats = { stack += Page.Picker }, onChat = { stack += Page.ChatPage(it) })
-                Page.Picker -> Unit
+            }
+            is Page.AlbumPage -> AlbumScreen(page.album, actions)
+            is Page.ArtistPage -> ArtistScreen(page.artist, actions, onAlbum = { open(Page.AlbumPage(it)) })
+            is Page.ChatPage -> ChatScreen(page.chat, actions, onGone = { stack.remove(page) })
+            is Page.PlaylistPage -> PlaylistScreen(page.playlist, actions, onDeleted = { stack.removeAt(stack.lastIndex) })
+            Page.About -> AboutScreen()
+            Page.Settings -> SettingsScreen(onManageChats = { open(Page.Manage) })
+            Page.Search -> SearchScreen(actions, onAlbum = { open(Page.AlbumPage(it)) }, onArtist = { open(Page.ArtistPage(it)) })
+            Page.Manage -> ManageChats(onAddChats = { open(Page.Picker) }, onChat = { open(Page.ChatPage(it)) })
+            Page.Picker -> Unit
+        }
+    }
+
+    CompositionLocalProvider(LocalShellSignals provides signals) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            val rail = NavLayout.useRail(maxWidth.value, maxHeight.value)
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+                ) {
+                    if (rail) ShellRail(tab, sheet, select)
+                    CollapsingLayout(
+                        state = header,
+                        modifier = Modifier.weight(1f).fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
+                        header = {
+                            Surface(color = MaterialTheme.colorScheme.background) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    topBar()
+                                    if (page != Page.Settings) ScanBar(onOpen = { open(Page.Settings) })
+                                    if (page == null && tab == MainTab.Library) {
+                                        LibraryChips(
+                                            selected = shelf,
+                                            onSelect = pickShelf,
+                                            grid = when (shelf) {
+                                                LibraryShelf.Albums -> albumsGrid
+                                                LibraryShelf.Artists -> artistsGrid
+                                                else -> null
+                                            },
+                                            onGrid = { on ->
+                                                if (shelf == LibraryShelf.Albums) {
+                                                    albumsGrid = on
+                                                    choices.albumsGrid = on
+                                                } else {
+                                                    artistsGrid = on
+                                                    choices.artistsGrid = on
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        body = body,
+                    )
+                }
+                PlayerSheetSpacer(aboveBar = !rail)
+                if (!rail) {
+                    ShellBottomBar(tab, sheet, select)
+                } else if (sheet?.showing != true) {
+                    NavigationInsetSpacer()
+                }
             }
         }
     }
 
+    if (askLogOut) {
+        AlertDialog(
+            onDismissRequest = { askLogOut = false },
+            title = { Text(L.shellLogOutTitle) },
+            text = { Text(L.shellLogOutBody) },
+            confirmButton = {
+                TextButton(onClick = {
+                    askLogOut = false
+                    stack.clear()
+                    onLogOut()
+                }) { Text(L.shellLogOut) }
+            },
+            dismissButton = { TextButton(onClick = { askLogOut = false }) { Text(L.commonCancel) } },
+        )
+    }
     versionsOf?.let { song -> VersionsSheet(song, chatTitles, onDismiss = { versionsOf = null }) }
     menuFor?.let { song ->
         SongMenu(
@@ -237,11 +400,11 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false) {
             },
             onAlbum = { album ->
                 menuFor = null
-                stack += Page.AlbumPage(album)
+                open(Page.AlbumPage(album))
             },
             onArtist = { artist ->
                 menuFor = null
-                stack += Page.ArtistPage(artist)
+                open(Page.ArtistPage(artist))
             },
         )
     }
@@ -321,7 +484,8 @@ private fun SongMenu(
         }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(bottom = 24.dp)) {
+        // Scrolls in a window turned sideways, where the lines do not all fit.
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(
                 song.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -386,28 +550,6 @@ private fun rememberNotificationAsk(): () -> Unit {
                 prefs.notificationsAsked = true
                 runCatching { launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
             }
-        }
-    }
-}
-
-@Composable
-private fun Overflow(onManage: () -> Unit, onSettings: () -> Unit, onLogOut: () -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        TextButton(onClick = { open = true }) { Text(L.libraryMenu) }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text(L.manageTitle) }, onClick = {
-                open = false
-                onManage()
-            })
-            DropdownMenuItem(text = { Text(L.settingsTitle) }, onClick = {
-                open = false
-                onSettings()
-            })
-            DropdownMenuItem(text = { Text(L.shellLogOut) }, onClick = {
-                open = false
-                onLogOut()
-            })
         }
     }
 }

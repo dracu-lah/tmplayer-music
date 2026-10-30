@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -75,6 +76,11 @@ fun SongsTab(sort: SongSort, actions: SongActions, header: @Composable () -> Uni
         loadAt = { offset, limit -> Library.index().songsAt(sort, offset, limit) },
         loadBefore = { before, limit -> Library.index().songsBefore(sort, before, limit) },
     )
+    // Tapped again: back to the very first song, even from a window read far down by a letter jump.
+    OnReselect {
+        pager.jumpTo(0)
+        state.animateScrollToItem(0)
+    }
     // The bar has its own column, so it never covers a row's title or format badge.
     Row(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { SongList(pager, state, actions, header) }
@@ -314,10 +320,21 @@ fun Badge(text: String) {
     }
 }
 
+/** Nothing in the library yet: what to do next, with a way straight to Manage chats in the shell. */
 @Composable
 fun EmptyLibrary() {
-    Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+    val signals = LocalShellSignals.current
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Text(L.libraryEmpty, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (signals != null) {
+            androidx.compose.material3.FilledTonalButton(onClick = signals.openManage, shape = com.tmplayer.music.ui.theme.Pill) {
+                Text(L.manageTitle)
+            }
+        }
     }
 }
 
@@ -340,7 +357,11 @@ fun VersionsSheet(song: Song, chatTitles: Map<Long, String>, onDismiss: () -> Un
         }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            // Scrolls in a window turned sideways, or with many versions.
+            Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Text(song.title, style = MaterialTheme.typography.titleLarge)
             Text(ArtistDisplay.of(song.artist).ifBlank { L.libraryUnknownArtist }, color = MaterialTheme.colorScheme.onSurfaceVariant)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

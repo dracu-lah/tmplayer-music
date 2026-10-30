@@ -1,6 +1,7 @@
 package com.tmplayer.music.ui.library
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -66,7 +67,10 @@ fun PlaylistsTab(onPlaylist: (Playlist) -> Unit) {
     var naming by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(changes, bump) { guarded({ error = it }) { playlists = Library.index().playlists() } }
-    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    RestoreScroll(listState, ready = playlists != null)
+    ScrollToTopOnReselect(listState)
+    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "new") {
             Button(onClick = { naming = true }, modifier = Modifier.padding(16.dp)) { Text(L.playlistNew) }
         }
@@ -196,7 +200,8 @@ fun AddToPlaylistSheet(song: Song, onDismiss: () -> Unit) {
         }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(bottom = 24.dp)) {
+        // Scrolls: many playlists, or a window turned sideways.
+        Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 24.dp)) {
             Text(L.menuAddToPlaylist, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             Text(
                 L.playlistNew,

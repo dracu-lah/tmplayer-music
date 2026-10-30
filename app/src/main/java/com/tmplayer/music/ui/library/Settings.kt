@@ -281,6 +281,14 @@ private fun SwitchLine(title: String, detail: String, on: Boolean, onChange: (Bo
     }
 }
 
+/** About on its own page, from the account menu: the same section as at the end of Settings. */
+@Composable
+fun AboutScreen() {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+        AboutSection()
+    }
+}
+
 /**
  * About: the app, its version (name, code and build type), that it is unofficial, the legal page,
  * the licence, feedback on GitHub and Send logs. Links open in the browser bare: nothing from the

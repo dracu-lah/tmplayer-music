@@ -114,7 +114,10 @@ fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit)
             error = Failures.humanise(e)
         }
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
+    val listState = rememberLazyListState()
+    RestoreScroll(listState, ready = chats != null)
+    ScrollToTopOnReselect(listState)
+    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "add") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 FilledTonalButton(onClick = onAdd, shape = Pill) { Text(L.chatfirstChatsAdd) }

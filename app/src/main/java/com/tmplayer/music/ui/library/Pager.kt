@@ -1,6 +1,9 @@
 package com.tmplayer.music.ui.library
 
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,8 +54,22 @@ class Pager<C, T>(
         private set
     private val lock = Mutex()
 
+    /** Rows the first [reload] reads at least: the window saved before the list was left. */
+    private var restoreCount = 0
+
+    /**
+     * Before the first load: read the window that was shown when the list was left ([from] rows
+     * down, [count] rows), so the saved scroll position lands on the same rows.
+     */
+    fun restore(from: Int, count: Int) {
+        if (loaded) return
+        if (loadAt != null && loadBefore != null) start = from.coerceAtLeast(0)
+        restoreCount = count.coerceIn(0, MAX_RELOAD)
+    }
+
     suspend fun reload() = guarded {
-        val count = items.size.coerceIn(PAGE, MAX_RELOAD)
+        val count = maxOf(items.size, restoreCount).coerceIn(PAGE, MAX_RELOAD)
+        restoreCount = 0
         val at = loadAt
         val rows = if (start > 0 && at != null) at(start, count) else load(null, count)
         // Nothing moved on screen: leave the list alone instead of rebuilding every row.
@@ -172,6 +189,32 @@ object PagerWindow {
     fun windowStart(position: Int, canReadBack: Boolean): Int = if (canReadBack) (position - PAGE / 4).coerceAtLeast(0) else 0
 }
 
+/**
+ * What the pager needs from a lazy list or grid: where it is, and a way back there. Read inside
+ * snapshotFlow only, so following the scroll costs no recomposition.
+ */
+@Stable
+interface PagedScroll {
+    val firstVisible: Int
+    val firstOffset: Int
+    val lastVisible: Int
+    suspend fun scrollTo(index: Int, offset: Int)
+}
+
+private class ListScroll(private val state: LazyListState) : PagedScroll {
+    override val firstVisible get() = state.firstVisibleItemIndex
+    override val firstOffset get() = state.firstVisibleItemScrollOffset
+    override val lastVisible get() = state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+    override suspend fun scrollTo(index: Int, offset: Int) = state.scrollToItem(index, offset)
+}
+
+private class GridScroll(private val state: LazyGridState) : PagedScroll {
+    override val firstVisible get() = state.firstVisibleItemIndex
+    override val firstOffset get() = state.firstVisibleItemScrollOffset
+    override val lastVisible get() = state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+    override suspend fun scrollTo(index: Int, offset: Int) = state.scrollToItem(index, offset)
+}
+
 /** Remembers a [Pager] for [key], loads its first page, follows index changes and the scroll. */
 @Composable
 fun <C, T> rememberPager(
@@ -181,18 +224,70 @@ fun <C, T> rememberPager(
     cursorOf: (T) -> C,
     loadAt: (suspend (offset: Int, limit: Int) -> List<T>)? = null,
     loadBefore: (suspend (before: C, limit: Int) -> List<T>)? = null,
+): Pager<C, T> = rememberPagerFor(key, remember(state) { ListScroll(state) }, load, cursorOf, loadAt, loadBefore)
+
+/** The same for a grid of covers. */
+@Composable
+fun <C, T> rememberGridPager(
+    key: Any,
+    state: LazyGridState,
+    load: suspend (after: C?, limit: Int) -> List<T>,
+    cursorOf: (T) -> C,
+): Pager<C, T> = rememberPagerFor(key, remember(state) { GridScroll(state) }, load, cursorOf, null, null)
+
+/**
+ * The pager's window and the list's place in it are saved (a tab left and come back to, a rotation,
+ * process death): the first load reads the same window again, then the list goes back to the row it
+ * showed. The list's own saved position cannot do it alone, as it is clamped to the header row
+ * before the rows have loaded.
+ */
+@Composable
+private fun <C, T> rememberPagerFor(
+    key: Any,
+    scroll: PagedScroll,
+    load: suspend (after: C?, limit: Int) -> List<T>,
+    cursorOf: (T) -> C,
+    loadAt: (suspend (offset: Int, limit: Int) -> List<T>)?,
+    loadBefore: (suspend (before: C, limit: Int) -> List<T>)?,
 ): Pager<C, T> {
+    val savedStart = rememberSaveable { mutableIntStateOf(0) }
+    val savedCount = rememberSaveable { mutableIntStateOf(0) }
+    // Read in composition, before the first layout clamps the restored position to the header row;
+    // not observed, so a scroll never recomposes the list's parent.
+    val pending = remember {
+        androidx.compose.runtime.snapshots.Snapshot.withoutReadObservation { intArrayOf(scroll.firstVisible, scroll.firstOffset) }
+    }
+    val first = remember { booleanArrayOf(true) }
     val pager = remember(key) { Pager(load, cursorOf, loadAt, loadBefore) }
     LaunchedEffect(pager) {
+        val restoring = first[0]
+        first[0] = false
+        if (restoring) pager.restore(savedStart.intValue, savedCount.intValue)
         pager.reload()
+        if (restoring && pending[0] > 0) {
+            try {
+                scroll.scrollTo(pending[0], pending[1])
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The list stays at its top: nothing lost but the place.
+            }
+        }
         // conflate, not sample: sample keeps a timer ticking while nothing changes.
         Library.changes.drop(1).conflate().collect {
             pager.reload()
             delay(Pager.REFRESH_MS)
         }
     }
-    LaunchedEffect(pager, state) {
-        snapshotFlow { state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+    LaunchedEffect(pager) {
+        // Changes only when a page is read or let go, never per frame.
+        snapshotFlow { pager.start to pager.items.size }.collect { (start, count) ->
+            savedStart.intValue = start
+            savedCount.intValue = count
+        }
+    }
+    LaunchedEffect(pager, scroll) {
+        snapshotFlow { scroll.lastVisible }
             .distinctUntilChanged()
             .filter { it >= pager.items.size - Pager.PAGE / 4 }
             .collect { pager.more() }
@@ -200,8 +295,8 @@ fun <C, T> rememberPager(
     if (loadBefore != null) {
         // A window that starts part way down (after a letter jump) reads the rows above it as the
         // list nears its top; nothing runs while the window starts at row 0.
-        LaunchedEffect(pager, state) {
-            snapshotFlow { state.firstVisibleItemIndex }
+        LaunchedEffect(pager, scroll) {
+            snapshotFlow { scroll.firstVisible }
                 .distinctUntilChanged()
                 .filter { it <= Pager.PAGE / 4 && pager.start > 0 }
                 .collect { pager.less() }

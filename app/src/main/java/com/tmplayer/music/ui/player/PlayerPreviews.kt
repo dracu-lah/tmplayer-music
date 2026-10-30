@@ -10,7 +10,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
@@ -70,8 +69,12 @@ private fun NowPlayingLandscape() = NowPlayingSample(dark = true)
 private fun MiniSample(dark: Boolean, playing: Boolean) {
     MusicTheme(dark = dark, dynamic = false) {
         Surface(color = MaterialTheme.colorScheme.background) {
-            Box(Modifier.padding(vertical = 8.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                MiniPlayer(sample(playing), progress = { 0f }, canDismiss = !playing, onExpand = {}, onDismiss = {})
+            // Flush and full width, directly on the bottom bar, as in the app.
+            Column(Modifier.padding(top = 24.dp)) {
+                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+                    MiniPlayer(sample(playing), progress = { 0f }, canDismiss = !playing, onExpand = {}, onDismiss = {})
+                }
+                com.tmplayer.music.ui.library.ShellBottomBar(com.tmplayer.music.shell.MainTab.Library, sheet = null, onSelect = {})
             }
         }
     }

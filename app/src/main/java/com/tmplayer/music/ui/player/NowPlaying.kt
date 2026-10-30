@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -92,8 +93,11 @@ internal fun NowPlayingContent(
     var showLyrics by rememberSaveable { mutableStateOf(false) }
     val anchor = remember { CoverAnchor() }
     val density = LocalDensity.current
-    val miniX = with(density) { MiniCoverInset.toPx() }
-    val miniY = with(density) { ((MiniHeight - MiniCoverSize) / 2).toPx() }
+    // The mini-player's row keeps clear of a side cutout or side navigation buttons in landscape.
+    val sideInset = androidx.compose.foundation.layout.WindowInsets.safeDrawing
+        .getLeft(density, androidx.compose.ui.platform.LocalLayoutDirection.current)
+    val miniX = with(density) { MiniCoverInset.toPx() } + sideInset
+    val miniY = with(density) { ((miniHeight() - MiniCoverSize) / 2).toPx() }
     val miniSize = with(density) { MiniCoverSize.toPx() }
     val fade = Modifier.graphicsLayer { alpha = ((progress() - 0.35f) / 0.65f).coerceIn(0f, 1f) }
 

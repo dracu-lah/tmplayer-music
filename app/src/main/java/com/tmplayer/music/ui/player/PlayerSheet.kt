@@ -26,6 +26,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +43,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.Dp
 import com.tmplayer.music.library.ArtistDisplay
+import com.tmplayer.music.shell.NavLayout
 import com.tmplayer.music.ui.theme.MorphButton
 import com.tmplayer.music.ui.theme.MusicMotion
 import androidx.compose.material3.MaterialTheme
@@ -104,13 +109,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-/** The mini-player card's height, and its gap to the screen edges and the navigation bar. */
-internal val MiniHeight = 72.dp
-internal val MiniMargin = 8.dp
-private val MiniSideInset = 12.dp
+/**
+ * The mini-player's height: one slim row, a little taller with large text ([NavLayout.miniHeight]).
+ * It runs the full width of the window, flush with the edges and with the navigation bar under it.
+ */
+@Composable
+internal fun miniHeight(): Dp = NavLayout.miniHeight(LocalDensity.current.fontScale).dp
 
 /** Where the mini-player's cover sits inside the sheet, for the cover's grow-into-Now-Playing motion. */
-internal val MiniCoverInset = MiniSideInset + 12.dp
+internal val MiniCoverInset = 12.dp
 internal val MiniCoverSize = 48.dp
 
 /** Shared between [PlayerSheetHost], [PlayerSheetSpacer] and [HidePlayerSheet]. */
@@ -127,6 +134,25 @@ class PlayerSheetController internal constructor() {
      * composited again on every frame of the seek bar's wave for nothing).
      */
     internal var covering by mutableStateOf(false)
+
+    /**
+     * The height in pixels of the navigation bar the mini-player sits on (0 when there is none, as
+     * with the rail in landscape): set by the shell, read by the sheet for its collapsed anchor.
+     */
+    var bottomBarPx by mutableIntStateOf(0)
+
+    /** Now Playing is open or opening: Back belongs to the sheet, not to the page under it. */
+    var expanded by mutableStateOf(false)
+        internal set
+
+    internal var progressSource by mutableStateOf<() -> Float>({ 0f })
+
+    /**
+     * How open the sheet is, 0 (mini-player, or no player) to 1 (Now Playing). Read it only while
+     * drawing or placing (a graphicsLayer or an offset), so following the finger costs no
+     * recomposition.
+     */
+    fun progress(): Float = if (showing) progressSource() else 0f
 
     /** Counts requests to open Now Playing from outside the sheet (the Continue card on Home). */
     internal var expandRequests by mutableIntStateOf(0)
@@ -177,11 +203,17 @@ fun PlayerSheetHost(content: @Composable () -> Unit) {
     if (visible && queueOpen) QueueSheet(onDismiss = { queueOpen = false })
 }
 
-/** Room for the mini-player under a list (a Scaffold's bottom bar). Nothing when there is no player. */
+/**
+ * Room for the mini-player under a list. [aboveBar]: a navigation bar sits under the mini-player and
+ * takes the system bar inset itself; without one the room includes that inset. Nothing when there is
+ * no player.
+ */
 @Composable
-fun PlayerSheetSpacer() {
+fun PlayerSheetSpacer(aboveBar: Boolean = false) {
     val controller = LocalPlayerSheet.current ?: return
-    if (controller.showing) Spacer(Modifier.navigationBarsPadding().height(MiniHeight + MiniMargin * 2))
+    if (controller.showing) {
+        Spacer(if (aboveBar) Modifier.height(miniHeight()) else Modifier.navigationBarsPadding().height(miniHeight()))
+    }
 }
 
 /** While this is on screen (a full screen picker with its own bottom buttons) the player stays out of the way. */
@@ -208,10 +240,12 @@ private fun PlayerSheet(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val height = constraints.maxHeight.toFloat()
         val navBottom = WindowInsets.navigationBars.getBottom(density).toFloat()
-        val miniPx = with(density) { MiniHeight.toPx() }
-        val marginPx = with(density) { MiniMargin.toPx() }
-        val sidePx = with(density) { MiniSideInset.toPx() }
-        val collapsedTop = (height - navBottom - marginPx - miniPx).coerceAtLeast(0f)
+        val miniPx = with(density) { miniHeight().toPx() }
+        // On the navigation bar when there is one; else on the system bar inset, its surface reaching
+        // down to the window's edge behind the gesture handle.
+        val barPx = controller.bottomBarPx.toFloat()
+        val tail = if (barPx > 0f) 0f else navBottom
+        val collapsedTop = (height - (if (barPx > 0f) barPx else navBottom) - miniPx).coerceAtLeast(0f)
         val allowDismiss = SheetLogic.allowDismiss(state.isPlaying, state.buffering, sheet.settledValue)
         val anchors = remember(height, collapsedTop, allowDismiss) {
             val map = SheetLogic.anchors(height, collapsedTop, allowDismiss)
@@ -222,7 +256,9 @@ private fun PlayerSheet(
             sheet.updateAnchors(anchors, target)
         }
 
-        val progress = { SheetLogic.progress(sheet.offset, collapsedTop) }
+        // One lambda per size: handed to the shell (the bar and rail follow it), so a new one on
+        // every recomposition would redraw them for nothing.
+        val progress = remember(sheet, collapsedTop) { { SheetLogic.progress(sheet.offset, collapsedTop) } }
         val showMini by remember(collapsedTop) { derivedStateOf { progress() < 0.5f } }
         val showFull by remember(collapsedTop) { derivedStateOf { progress() > 0f } }
         val fullyOpen by remember(collapsedTop) { derivedStateOf { progress() >= 0.99f } }
@@ -231,6 +267,16 @@ private fun PlayerSheet(
         SideEffect { controller.covering = covering }
         DisposableEffect(controller) { onDispose { controller.covering = false } }
         val expandedOrGoing = sheet.targetValue == SheetValue.Expanded || sheet.settledValue == SheetValue.Expanded
+        SideEffect {
+            controller.expanded = expandedOrGoing
+            controller.progressSource = progress
+        }
+        DisposableEffect(controller) {
+            onDispose {
+                controller.expanded = false
+                controller.progressSource = { 0f }
+            }
+        }
         // A request from outside (the Continue card); the count only moves on a tap, so this is idle.
         var handledExpand by remember { mutableIntStateOf(controller.expandRequests) }
         LaunchedEffect(controller.expandRequests) {
@@ -311,11 +357,10 @@ private fun PlayerSheet(
                     scaleX = scale
                     scaleY = scale
                     transformOrigin = TransformOrigin(0.5f, 0.15f)
-                    val radius = lerp(ShapeRadius.Card.toPx(), 0f, p) + back * ShapeRadius.Sheet.toPx()
-                    shape = CardShape(inset = lerp(sidePx, 0f, p), height = lerp(miniPx, height, p), radius = radius)
+                    // Flush with the window's edges: square corners, rounded only while Back is pulled.
+                    shape = CardShape(height = lerp(miniPx + tail, height, p), radius = back * ShapeRadius.Sheet.toPx())
                     // Fully open and still, the sheet is the whole window: no clip to pay for on every frame.
                     clip = p < 1f || back > 0f
-                    shadowElevation = lerp(3.dp.toPx(), 0f, p)
                 }
                 .nestedScroll(nested)
                 .anchoredDraggable(sheet, reverseDirection = false, orientation = Orientation.Vertical, flingBehavior = fling)
@@ -356,12 +401,12 @@ private fun PlayerSheet(
 }
 
 /**
- * The card's visible part: inset from the sides and as tall as the sheet has grown, so the same
- * surface is a floating card when collapsed and the whole screen when open.
+ * The sheet's visible part: the full width and as tall as the sheet has grown, so the same surface
+ * is the mini-player's row when collapsed and the whole screen when open.
  */
-private class CardShape(private val inset: Float, private val height: Float, private val radius: Float) : Shape {
+private class CardShape(private val height: Float, private val radius: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val rect = Rect(inset, 0f, size.width - inset, height.coerceAtMost(size.height))
+        val rect = Rect(0f, 0f, size.width, height.coerceAtMost(size.height))
         return Outline.Rounded(RoundRect(rect, CornerRadius(radius)))
     }
 }
@@ -433,9 +478,10 @@ private class SheetNestedScroll(
 }
 
 /**
- * The collapsed sheet: a floating card with the cover, title and artist (or the last error), play or
- * pause and next, over a thin progress line that only moves when the position is read (twice a
- * second while playing). Tap or swipe up opens Now Playing; swipe sideways skips; swipe down while
+ * The collapsed sheet: a full width row flush with the window's edges, directly on the navigation
+ * bar, with a thin progress line along its top edge that only moves when the position is read
+ * (twice a second while playing), then the cover, title and artist (or the last error), previous,
+ * play or pause and next. Tap or swipe up opens Now Playing; swipe sideways skips; swipe down while
  * paused stops and closes it (TalkBack has the same as an action).
  */
 @Composable
@@ -447,7 +493,7 @@ internal fun MiniPlayer(
     onDismiss: () -> Unit,
 ) {
     val error by PlaybackErrors.last.collectAsStateWithLifecycle()
-    // Read only by the progress line while it draws: a tick redraws the line, not the card.
+    // Read only by the progress line while it draws: a tick redraws the line, not the row.
     val position = rememberPositionState(state)
     val title = state.metadata.title?.toString().orEmpty()
     val threshold = with(LocalDensity.current) { 72.dp.toPx() }
@@ -456,8 +502,7 @@ internal fun MiniPlayer(
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = MiniSideInset)
-            .height(MiniHeight)
+            .height(miniHeight())
             .graphicsLayer { alpha = (1f - progress() / 0.25f).coerceIn(0f, 1f) }
             .clickable(onClickLabel = L.nowplayingExpand, onClick = onExpand)
             .semantics {
@@ -480,25 +525,33 @@ internal fun MiniPlayer(
             },
     ) {
         Row(
-            Modifier.fillMaxSize().graphicsLayer { translationX = drag / 3 }.padding(start = 12.dp, end = 4.dp),
+            Modifier
+                .fillMaxSize()
+                // A sideways window keeps the row clear of a camera cutout or the side navigation buttons.
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .graphicsLayer { translationX = drag / 3 }
+                .padding(start = MiniCoverInset, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Box(Modifier.size(MiniCoverSize).clip(RoundedCornerShape(ShapeRadius.SmallCover))) {
                 ItemCover(state.item, MiniCoverSize, title)
             }
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val line = error
                 Text(
                     line ?: ArtistDisplay.of(state.metadata.artist?.toString()),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = if (line != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            PlayPauseButton(state, Modifier.size(48.dp), iconSize = 24.dp)
+            IconButton(onClick = PlayerConnection::previous) {
+                Icon(MusicIcons.Previous, contentDescription = L.playerPrevious)
+            }
+            PlayPauseButton(state, Modifier.size(44.dp), iconSize = 22.dp)
             IconButton(onClick = PlayerConnection::next, enabled = state.hasNext) {
                 Icon(MusicIcons.Next, contentDescription = L.playerNext)
             }
@@ -506,7 +559,7 @@ internal fun MiniPlayer(
         if (state.durationMs > 0) {
             LinearProgressIndicator(
                 progress = { WaveLogic.fraction(position.value, state.durationMs) },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).fillMaxWidth().height(3.dp).clip(Pill),
+                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(2.dp),
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 gapSize = 0.dp,
                 drawStopIndicator = {},

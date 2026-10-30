@@ -11,6 +11,7 @@
   },
   "app": {
     "name": "TMPlayer Music",
+    "short_name": "Music",
     "unofficial": "Unofficial, not affiliated with Telegram."
   },
   "chatfirst": {
@@ -103,7 +104,11 @@
     "albums": "{count, plural, one {# album} other {# albums}}",
     "counts": "{songs, plural, one {# song} other {# songs}} ({files, plural, one {# file} other {# files}})",
     "empty": "No songs yet. Add chats with music in Manage chats, or wait for the scan to find them.",
+    "favourites_capped": "{count, plural, one {Showing the latest # favourite.} other {Showing the latest # favourites.}}",
+    "favourites_empty": "No favourites yet. Hold a song, then Add to favourites.",
     "menu": "More",
+    "show_grid": "Show as a grid",
+    "show_list": "Show as a list",
     "songs": "{count, plural, one {# song} other {# songs}}",
     "unknown_artist": "Unknown artist",
     "versions": "{count, plural, one {# version} other {# versions}}"
@@ -307,7 +312,10 @@
     "title": "Settings"
   },
   "shell": {
-    "log_out": "Log out"
+    "account_menu": "Account and settings",
+    "log_out": "Log out",
+    "log_out_body": "The library on this phone is cleared, playlists and favourites included. Nothing in your Telegram chats changes.",
+    "log_out_title": "Log out?"
   },
   "signin": {
     "choose_country": "Choose a country",
@@ -382,7 +390,10 @@
   "tab": {
     "albums": "Albums",
     "artists": "Artists",
+    "chats": "Chats",
+    "favourites": "Favourites",
     "home": "Home",
+    "library": "Library",
     "playlists": "Playlists",
     "songs": "Songs"
   },

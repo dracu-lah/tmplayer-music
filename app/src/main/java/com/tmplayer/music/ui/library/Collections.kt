@@ -14,6 +14,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.items
+import com.tmplayer.music.shell.NavLayout
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,14 +44,91 @@ import com.tmplayer.music.library.Song
 import com.tmplayer.music.ui.common.Cover
 import kotlinx.coroutines.CancellationException
 
+/**
+ * Albums, A to Z (the only order the index keeps for albums), as rows or as a grid of covers whose
+ * columns follow the width ([NavLayout.gridColumns]: two on a phone held upright, more sideways).
+ */
 @Composable
-fun AlbumsTab(onAlbum: (Album) -> Unit, header: @Composable () -> Unit) {
+fun AlbumsTab(grid: Boolean = false, onAlbum: (Album) -> Unit, header: @Composable () -> Unit) {
+    if (grid) {
+        CoverGrid<Album>(
+            key = "albums",
+            load = { after, limit -> Library.index().albums(after, limit) },
+            itemKey = { it.key },
+            header = header,
+        ) { album, size ->
+            GridCell(album.title, ArtistDisplay.of(album.artist), onClick = { onAlbum(album) }) { AlbumCover(album, size) }
+        }
+        return
+    }
     val state = rememberLazyListState()
     val pager = rememberPager<Album, Album>("albums", state, { after, limit -> Library.index().albums(after, limit) }, { it })
+    ScrollToTopOnReselect(state)
     LazyColumn(state = state, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "header") { header() }
         items(pager.items, key = { it.key }) { album -> AlbumRow(album) { onAlbum(album) } }
         if (pager.loaded && pager.items.isEmpty()) item(key = "empty") { EmptyLibrary() }
+    }
+}
+
+/**
+ * A paged grid of covers, read from the index a page at a time as it nears its end, like the
+ * lists. Each cell is a square cover sized to the column, with one or two lines under it.
+ */
+@Composable
+private fun <T : Any> CoverGrid(
+    key: String,
+    load: suspend (after: T?, limit: Int) -> List<T>,
+    itemKey: (T) -> Any,
+    header: @Composable () -> Unit,
+    cell: @Composable (T, androidx.compose.ui.unit.Dp) -> Unit,
+) {
+    val state = rememberLazyGridState()
+    val pager = rememberGridPager<T, T>(key, state, load, { it })
+    OnReselect { state.animateScrollToItem(0) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val columns = NavLayout.gridColumns(maxWidth.value)
+        val gap = 12.dp
+        val side = 16.dp
+        val size = ((maxWidth - side * 2 - gap * (columns - 1)) / columns).coerceAtLeast(48.dp)
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
+            state = state,
+            contentPadding = PaddingValues(start = side, end = side, bottom = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item(key = "header", span = { GridItemSpan(maxLineSpan) }) { header() }
+            items(pager.items, key = itemKey) { cell(it, size) }
+            if (pager.loaded && pager.items.isEmpty()) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) { EmptyLibrary() }
+            pager.error?.let { message ->
+                item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
+                    Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(4.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GridCell(title: String, subtitle: String, onClick: () -> Unit, round: Boolean = false, cover: @Composable () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        horizontalAlignment = if (round) Alignment.CenterHorizontally else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        cover()
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        if (subtitle.isNotBlank()) {
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -70,10 +154,25 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
     }
 }
 
+/** Artists, A to Z (the only order the index keeps for artists), as rows or as a grid of circles. */
 @Composable
-fun ArtistsTab(onArtist: (Artist) -> Unit, header: @Composable () -> Unit) {
+fun ArtistsTab(grid: Boolean = false, onArtist: (Artist) -> Unit, header: @Composable () -> Unit) {
+    if (grid) {
+        CoverGrid<Artist>(
+            key = "artists",
+            load = { after, limit -> Library.index().artists(after, limit) },
+            itemKey = { it.key },
+            header = header,
+        ) { artist, size ->
+            GridCell(artist.name.ifBlank { L.libraryUnknownArtist }, L.librarySongs(artist.songCount), onClick = { onArtist(artist) }, round = true) {
+                Cover(name = artist.name, fileId = 0, round = true, size = size)
+            }
+        }
+        return
+    }
     val state = rememberLazyListState()
     val pager = rememberPager<Artist, Artist>("artists", state, { after, limit -> Library.index().artists(after, limit) }, { it })
+    ScrollToTopOnReselect(state)
     LazyColumn(state = state, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "header") { header() }
         items(pager.items, key = { it.key }) { artist ->
