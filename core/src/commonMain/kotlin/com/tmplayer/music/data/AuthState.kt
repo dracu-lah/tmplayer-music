@@ -60,8 +60,8 @@ sealed interface AuthState {
 
     /**
      * Scan [link] with Telegram on your phone: Settings -> Devices -> Link Desktop Device.
-     * [scanned] only on the screen's own copy held for a moment after the scan ([rememberScanHold]
-     * in :ui); TDLib never reports one.
+     * [scanned] only on the screen's own copy held for a moment after the scan ([QrScanHold]);
+     * TDLib never reports one. Each renewal of the code by TDLib arrives as a new [link].
      */
     data class Qr(val link: String, val scanned: Boolean = false) : AuthState
 
@@ -241,7 +241,14 @@ object AuthFlow {
             else -> AuthStep(AuthState.Failed(UNSUPPORTED_STEP), AuthAction.None)
         }
 
-        is TdAuthorization.WaitOtherDevice -> AuthStep(AuthState.Qr(state.link), AuthAction.None)
+        // A new link replaces the last one on screen. One that is blank or too long to draw as a
+        // code is not shown as a QR code that never appears: it fails with Try again.
+        is TdAuthorization.WaitOtherDevice ->
+            if (state.link.isBlank() || state.link.length > MAX_QR_LINK) {
+                AuthStep(AuthState.Failed(UNSUPPORTED_STEP), AuthAction.None)
+            } else {
+                AuthStep(AuthState.Qr(state.link), AuthAction.None)
+            }
 
         // Telegram mandates this screen when the account has two-step verification enabled.
         is TdAuthorization.WaitPassword ->
@@ -297,6 +304,9 @@ object AuthFlow {
         )
 
     private val UNSUPPORTED_STEP: String get() = L.errorsUnsupportedSignInStep
+
+    /** Telegram's login links are under a hundred characters; a QR code holds about 2,900. */
+    const val MAX_QR_LINK = 1_024
 }
 
 /**

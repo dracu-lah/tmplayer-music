@@ -161,6 +161,16 @@ object MusicIcons {
     /** cancel-01 */
     val Close = icon("Close", "M18 6L6.00081 17.9992M17.9992 18L6 6.00085")
 
+    /** tick-02: done, scanned. */
+    val Check = icon("Check", "M5 14L8.5 17.5L19 6.5")
+
+    /** refresh: a new code, try again. */
+    val Refresh = icon(
+        "Refresh",
+        "M20.0092 2V5.13219C20.0092 5.42605 19.6418 5.55908 19.4537 5.33333C17.6226 3.2875 14.9617 2 12 2" +
+            "C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12",
+    )
+
     /** text-align-left: lines of text, for the lyrics toggle. */
     val Lyrics = icon("Lyrics", "M3 3H21M3 9H11M3 15H21M3 21H11")
 

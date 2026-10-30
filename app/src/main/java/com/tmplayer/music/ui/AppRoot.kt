@@ -23,6 +23,7 @@ import com.tmplayer.music.data.Td
 import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.library.ChatPick
 import com.tmplayer.music.ui.auth.SignInScreen
+import com.tmplayer.music.ui.auth.rememberScanHold
 import com.tmplayer.music.ui.library.LibraryHome
 import com.tmplayer.music.ui.onboarding.ChatPicker
 import com.tmplayer.music.ui.onboarding.Welcome
@@ -41,7 +42,9 @@ fun AppRoot() {
     val prefs = remember { Prefs(context) }
     var welcomed by remember { mutableStateOf(prefs.welcomed) }
     var pickerDone by remember { mutableStateOf(prefs.pickerDone) }
-    val auth by Td.auth.collectAsStateWithLifecycle()
+    val tdAuth by Td.auth.collectAsStateWithLifecycle()
+    // A scanned QR code stays up for a moment with a tick before the sign in moves on.
+    val auth = rememberScanHold(tdAuth)
     val ready by Library.ready.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var hasChats by remember { mutableStateOf<Boolean?>(null) }

@@ -2,20 +2,12 @@
 package com.tmplayer.music.ui.auth
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -36,25 +28,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.zxing.BarcodeFormat
 import com.tmplayer.music.diagnostics.SendLogsButton
-import com.google.zxing.EncodeHintType
-import com.google.zxing.common.BitMatrix
-import com.google.zxing.qrcode.QRCodeWriter
 import com.tmplayer.music.data.AuthState
 import com.tmplayer.music.data.SignInMethod
 import com.tmplayer.music.data.SignInWords
@@ -87,11 +69,21 @@ fun SignInScreen(auth: AuthState) {
     }
     val startOver = { SignInRunner.fire { Td.restartSignIn() } }
 
+    // The code a refresh is replacing stays up, veiled, until the new one arrives; anything else
+    // that comes in its place ends that.
+    val stalled by Td.signInStalled.collectAsStateWithLifecycle()
+    LaunchedEffect(auth) {
+        val replacing = QrCodes.renewing ?: return@LaunchedEffect
+        if (auth !is AuthState.Connecting && !(auth is AuthState.Qr && auth.link == replacing)) QrCodes.renewing = null
+    }
+    val renewing = QrCodes.renewing
+
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (auth) {
-            AuthState.Connecting -> ConnectingStep()
+            AuthState.Connecting ->
+                if (renewing != null && !stalled) QrStep(AuthState.Qr(renewing), renewing = true) else ConnectingStep()
             AuthState.ChooseMethod -> ChooseStep()
-            is AuthState.Qr -> QrStep(auth)
+            is AuthState.Qr -> QrStep(auth, renewing = !auth.scanned && renewing == auth.link)
             is AuthState.Phone -> PhoneStep(
                 state = auth,
                 initial = null,
@@ -157,81 +149,6 @@ private fun ChooseStep() {
             onClick = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Qr) } },
             modifier = Modifier.fillMaxWidth(),
         ) { Text(L.loginChooseQr) }
-    }
-}
-
-@Composable
-private fun QrStep(auth: AuthState.Qr) {
-    val back = { SignInRunner.fire { Td.restartSignIn() } }
-    BackHandler(onBack = back)
-    SignInFrame(onBack = back) {
-        StepTitle(L.loginQrTitle)
-        QrStepLine(1, L.signinQrStepOpen)
-        QrStepLine(2, L.signinQrStepDevices)
-        QrStepLine(3, L.signinQrStepLink)
-        val matrix = remember(auth.link) { runCatching { qrMatrix(auth.link) }.getOrNull() }
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            if (matrix != null) {
-                QrCode(matrix)
-            } else {
-                CircularProgressIndicator()
-            }
-        }
-        StepBody(L.signinQrNote)
-        OutlinedButton(onClick = { SignInRunner.fire { Td.refreshQrCode() } }, modifier = Modifier.fillMaxWidth()) {
-            Text(L.loginQrRefresh)
-        }
-        Button(
-            onClick = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Phone) } },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(L.signinUsePhone) }
-    }
-}
-
-@Composable
-private fun QrStepLine(number: Int, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .sizeIn(minWidth = 28.dp, minHeight = 28.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .padding(horizontal = 8.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("$number", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-        }
-        Spacer(Modifier.width(16.dp))
-        Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-private fun qrMatrix(link: String): BitMatrix =
-    QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.MARGIN to 0))
-
-/**
- * Black on white whatever the theme, with a quiet zone, so every phone camera reads it. The only
- * fixed colours in the sign in: a scanner needs this contrast, not the theme's.
- */
-@Composable
-private fun QrCode(matrix: BitMatrix) {
-    val description = L.signinQrDescription
-    Box(
-        Modifier
-            .widthIn(max = 280.dp)
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(MaterialTheme.shapes.large)
-            .background(Color.White)
-            .padding(16.dp)
-            .semantics { contentDescription = description },
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val cell = size.width / matrix.width
-            for (y in 0 until matrix.height) for (x in 0 until matrix.width) {
-                if (matrix[x, y]) drawRect(Color.Black, Offset(x * cell, y * cell), Size(cell + 0.5f, cell + 0.5f))
-            }
-        }
     }
 }
 
