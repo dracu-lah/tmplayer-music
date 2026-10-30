@@ -11,6 +11,7 @@ engine. Unofficial, not affiliated with Telegram.
 | Topic | File |
 | --- | --- |
 | What to build, in which order, and where it stopped | [plan/PLAN.md](plan/PLAN.md) (read its Progress section first) |
+| The demo cut: the bare minimum to show people | [plan/MVP.md](plan/MVP.md) |
 | The full research and every decision so far | [plan/RESEARCH.md](plan/RESEARCH.md) |
 | TV app, Connect (remote) and Cast | [plan/TV-CAST.md](plan/TV-CAST.md) |
 | Which TMPlayer files to read, and how they are reused | [plan/REFERENCE.md](plan/REFERENCE.md) |
