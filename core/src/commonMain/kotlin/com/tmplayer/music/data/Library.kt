@@ -375,6 +375,7 @@ object Library {
         File(dir, "lyrics").deleteRecursively()
         lyricsCache.evictAll()
         com.tmplayer.music.lyrics.LyricsOnline.clear()
+        com.tmplayer.music.covers.CoverOnline.clear()
         dropLoaders()
         File(dir, ACCOUNT_FILE).delete()
         index = LibraryIndex.open(File(dir, "library.db").path).also { it.hiddenMask = choices.hiddenMask }

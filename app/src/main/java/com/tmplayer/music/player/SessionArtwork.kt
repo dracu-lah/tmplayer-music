@@ -190,11 +190,13 @@ object ArtworkBytes {
     }
 
     /**
-     * The generated cover of [item] ([com.tmplayer.music.ui.common.GeneratedCover]) as JPEG bytes of
-     * [ArtworkBounds.MAX_PX] a side, for a track with no picture of its own. Null on failure.
+     * The kept online cover of [item], else its generated cover ([com.tmplayer.music.ui.common.GeneratedCover]),
+     * as JPEG bytes of [ArtworkBounds.MAX_PX] a side, for a track with no picture of its own. Null on failure.
      */
     fun generated(item: MediaItem): ByteArray? {
         val key = MediaIds.coverArt(item) ?: return null
+        // A cover found online and already kept on the device (no request from here) comes first.
+        com.tmplayer.music.covers.CoverOnline.cached(key)?.let(::encode)?.let { return it }
         return com.tmplayer.music.ui.common.GeneratedCover.jpeg(key, ArtworkBounds.MAX_PX)
     }
 

@@ -65,6 +65,12 @@ object CoverArt {
     /** The key of a playlist with no cover yet. */
     fun keyOfPlaylist(id: Long): String = "p:$id"
 
+    /** The album key inside an album cover key, or null for any other key. */
+    fun albumKeyOf(key: String): String? = if (key.startsWith(ALBUM)) key.substring(ALBUM.length) else null
+
+    /** The song base key inside a song cover key, or null for any other key. */
+    fun songBaseOf(key: String): String? = if (key.startsWith(SONG)) key.substring(SONG.length) else null
+
     private const val ALBUM = "a:"
     private const val SONG = "s:"
 

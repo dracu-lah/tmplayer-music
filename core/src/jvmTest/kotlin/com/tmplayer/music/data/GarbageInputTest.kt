@@ -9,6 +9,8 @@ import com.tmplayer.music.library.playlistName
 import com.tmplayer.music.library.recentSearchKey
 import com.tmplayer.music.library.searchText
 import com.tmplayer.music.library.searchWords
+import com.tmplayer.music.covers.CoverAnswer
+import com.tmplayer.music.covers.CoverHttpAnswer
 import com.tmplayer.music.lyrics.GatewayAnswer
 import com.tmplayer.music.lyrics.HttpAnswer
 import com.tmplayer.music.lyrics.LyricsParser
@@ -156,6 +158,35 @@ class GarbageInputTest {
             val alphabet = "[]:.0123456789<>ab\n"
             LyricsParser.parse(String(CharArray(random.nextInt(0, 400)) { alphabet[random.nextInt(alphabet.length)] }))
         }
+    }
+
+    @Test
+    fun `cover gateway answers that are garbage read as a result, never a crash`() {
+        val random = Random(23)
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 0x10, 0x4A, 0x46, 0x49, 0x46)
+        val bodies = listOf(
+            ByteArray(0), "{".toByteArray(), "[]".toByteArray(), "{\"error\":7}".toByteArray(), "{\"retryAfter\":1e999}".toByteArray(),
+            "{\"error\":\"not_found\"".toByteArray(), jpeg.copyOf(3), jpeg, ByteArray(CoverAnswer.MAX_IMAGE_BYTES + 1) { jpeg[it % 3] },
+            "<html>".toByteArray(), ByteArray(CoverAnswer.MAX_ERROR_BYTES + 10) { '{'.code.toByte() },
+        )
+        val types = listOf(null, "", "image/jpeg", "IMAGE/PNG; q=1", "text/html", "image/webp", "image/jpeg;;;", "\u0000")
+        for (code in listOf(200, 400, 404, 429, 500, 502, -1, 999)) {
+            for (body in bodies) for (type in types) {
+                CoverAnswer.parse(CoverHttpAnswer(code, body, type))
+                CoverAnswer.parse(CoverHttpAnswer(code, body, type, retryAfterSec = Long.MIN_VALUE))
+            }
+        }
+        repeat(2000) {
+            CoverAnswer.parse(CoverHttpAnswer(if (random.nextBoolean()) 200 else random.nextInt(-5, 700), random.nextBytes(random.nextInt(0, 512)), types.random(random), random.nextLong()))
+        }
+        // Only a whole image of the type it says, within the cap, is a cover.
+        assertTrue(CoverAnswer.parse(CoverHttpAnswer(200, jpeg, "image/jpeg")) is CoverAnswer.Found)
+        assertEquals(CoverAnswer.Failed, CoverAnswer.parse(CoverHttpAnswer(200, jpeg, "image/png")))
+        assertEquals(CoverAnswer.Failed, CoverAnswer.parse(CoverHttpAnswer(200, jpeg.copyOf(3), "image/jpeg")))
+        assertEquals(CoverAnswer.Failed, CoverAnswer.parse(CoverHttpAnswer(200, bodies[8], "image/jpeg")))
+        assertEquals(CoverAnswer.Failed, CoverAnswer.parse(CoverHttpAnswer(200, jpeg, "text/html")))
+        assertEquals(CoverAnswer.Busy(1), CoverAnswer.parse(CoverHttpAnswer(429, ByteArray(0), null, retryAfterSec = -100)))
+        assertEquals(CoverAnswer.Refused, CoverAnswer.parse(CoverHttpAnswer(404, "{\"error\":\"no_route\"}".toByteArray(), "application/json")))
     }
 
     @Test

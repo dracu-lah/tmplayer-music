@@ -148,7 +148,8 @@ export function lyricsOf(record: unknown): Lyrics | null {
   return { synced, plain, instrumental: false };
 }
 
-function sameArtist(asked: string, found: string): boolean {
+/** Whether two normalised artist names are the same, or one credit holds the other as whole words. */
+export function sameArtist(asked: string, found: string): boolean {
   if (asked === "" || found === "") return false;
   if (asked === found) return true;
   // "Artist" against "Artist feat Other", whole words only.

@@ -36,6 +36,8 @@ class MusicApp : Application() {
         // The user's choices (a Pause stays on after a restart) live in Prefs; a weak device reads tags in smaller batches.
         Library.start(File(filesDir, "library"), Prefs(this), lowRam = weakDevice())
         NetworkWatch.start(this)
+        // Covers found online (opt in, the lyrics switch); never started in the demo, which returned above.
+        com.tmplayer.music.covers.CoverOnline.start(File(cacheDir, "covers-online"))
         // What this build is, for the update check; off in a store build (BuildConfig.UPDATE_CHECK).
         Updates.configureForAndroid(this)
         Storage.cacheDir = AndroidPaths(this).filesDir

@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tmplayer.music.covers.CoverOnline
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.lyrics.LyricsOnline
 import com.tmplayer.music.platform.JobFailures
@@ -33,8 +34,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Settings, Lyrics: "Look up lyrics online" (off by default, with what is sent said plainly) and
- * Clear saved lyrics. Only this switch and the lyrics page's question turn the lookup on.
+ * Settings, Lyrics: "Look up lyrics and covers online" (off by default, with what is sent said
+ * plainly), Clear saved lyrics and Clear saved covers. Only this switch and the lyrics page's question
+ * turn the lookups on.
  */
 @Composable
 internal fun LyricsSettingsSection() {
@@ -58,27 +60,45 @@ internal fun LyricsSettingsSection() {
         }
         Switch(checked = online, onCheckedChange = null)
     }
+    ClearRow(L.lyricsClear, if (cleared) L.lyricsCleared else L.lyricsClearDetail) {
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { LyricsOnline.clear() }
+                cleared = true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                JobFailures.handle("LyricsSettings", e)
+            }
+        }
+    }
+    var coversCleared by remember { mutableStateOf(false) }
+    ClearRow(L.lyricsCoversClear, if (coversCleared) L.lyricsCoversCleared else L.lyricsCoversClearDetail) {
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { CoverOnline.clear() }
+                coversCleared = true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                JobFailures.handle("LyricsSettings", e)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClearRow(title: String, detail: String, onClick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clickable(role = Role.Button) {
-                scope.launch {
-                    try {
-                        withContext(Dispatchers.IO) { LyricsOnline.clear() }
-                        cleared = true
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        JobFailures.handle("LyricsSettings", e)
-                    }
-                }
-            }
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(L.lyricsClear, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
+        Text(title, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
         Text(
-            if (cleared) L.lyricsCleared else L.lyricsClearDetail,
+            detail,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },

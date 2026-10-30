@@ -12,7 +12,9 @@
   // for anything but a broken deploy; it would show request URLs.
 
   "vars": {
-    "USER_AGENT": "TMPlayerMusic-gateway/1.0 (https://tmplayer.org)"
+    "USER_AGENT": "TMPlayerMusic-gateway/1.0 (https://tmplayer.org)",
+    // MusicBrainz and the Cover Art Archive (/v1/cover) ask for a contact in every User-Agent.
+    "COVER_USER_AGENT": "TMPlayerMusic-gateway/1 (https://music.tmplayer.org)"
   }
 
   // No rate limiting binding: Pages Functions do not support `ratelimits` (a Workers only binding).

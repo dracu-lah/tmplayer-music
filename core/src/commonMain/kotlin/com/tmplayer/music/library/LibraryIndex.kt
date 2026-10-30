@@ -709,6 +709,23 @@ class LibraryIndex private constructor(
         query("SELECT $ALBUM_COLUMNS FROM albums WHERE album_key = ? LIMIT 1", key, map = ::readAlbum).firstOrNull()
     }
 
+    /**
+     * One file behind a generated cover key ([CoverArt.keyOf]): a track of the album for an album key,
+     * a version of the song for a song key. The online cover lookup reads its title, artist and album.
+     * Null for a playlist key, a blank key, or a key with nothing left behind it.
+     */
+    suspend fun trackForCover(artKey: String): Track? = io {
+        val album = CoverArt.albumKeyOf(artKey)
+        val base = CoverArt.songBaseOf(artKey)
+        when {
+            !album.isNullOrEmpty() ->
+                query("SELECT $TRACK_COLUMNS FROM tracks WHERE album_key = ? LIMIT 1", album, map = ::readTrack).firstOrNull()
+            !base.isNullOrEmpty() ->
+                query("SELECT $TRACK_COLUMNS FROM tracks WHERE group_key = ? LIMIT 1", base, map = ::readTrack).firstOrNull()
+            else -> null
+        }
+    }
+
     /** A track of album [key] that has Telegram's cover thumbnail, so the tile can ask for it by message. */
     suspend fun albumThumbTrack(key: String): TrackId? = io {
         if (key.isEmpty()) return@io null

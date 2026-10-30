@@ -1,4 +1,4 @@
-// The four values a lookup may carry, checked and bounded. Everything else in the query string is
+// The values a lookup may carry (lyrics: four, covers: three and a size), checked and bounded. Everything else in the query string is
 // ignored, so a client that sends more learns nothing and nothing extra goes upstream.
 
 export interface LyricsQuery {
@@ -51,6 +51,38 @@ export function parseQuery(params: URLSearchParams): LyricsQuery | { error: stri
   if (duration < 1 || duration > MAX_DURATION) return { error: `duration must be 1 to ${MAX_DURATION} seconds.` };
 
   return { title, artist, album, duration };
+}
+
+/** A cover lookup: the same text rules as lyrics, an optional album, and one of three sizes. */
+export interface CoverQuery {
+  title: string;
+  artist: string;
+  /** Empty when the track has no album: then only the recording search is made. */
+  album: string;
+  /** The Cover Art Archive's thumbnail size in pixels. */
+  size: CoverSize;
+}
+
+export const COVER_SIZES = [250, 500, 1200] as const;
+export type CoverSize = (typeof COVER_SIZES)[number];
+export const DEFAULT_COVER_SIZE: CoverSize = 500;
+
+/** The cover lookup in [params], or a short reason it is refused. */
+export function parseCoverQuery(params: URLSearchParams): CoverQuery | { error: string } {
+  const title = text(params, "title", MAX_TITLE, true);
+  if (typeof title !== "string") return title;
+  const artist = text(params, "artist", MAX_ARTIST, true);
+  if (typeof artist !== "string") return artist;
+  const album = text(params, "album", MAX_ALBUM, false);
+  if (typeof album !== "string") return album;
+
+  const sizes = params.getAll("size");
+  if (sizes.length > 1) return { error: "size is given more than once." };
+  const raw = sizes[0];
+  if (raw === undefined || raw === "") return { title, artist, album, size: DEFAULT_COVER_SIZE };
+  const size = COVER_SIZES.find((s) => String(s) === raw);
+  if (size === undefined) return { error: `size must be one of ${COVER_SIZES.join(", ")}.` };
+  return { title, artist, album, size };
 }
 
 /**
