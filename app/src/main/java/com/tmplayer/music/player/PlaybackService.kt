@@ -27,6 +27,7 @@ import com.tmplayer.music.R
 import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.Storage
+import com.tmplayer.music.data.TagEnricher
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
@@ -112,6 +113,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        Library.setPlaying(false)
         save()
         session?.run {
             player.release()
@@ -193,15 +195,29 @@ class PlaybackService : MediaSessionService() {
             if (player.isPlaying) recordPlay(player.currentMediaItem)
             saveSoon()
             trimSoon()
+            readAhead()
         }
 
-        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) = saveSoon()
+        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+            saveSoon()
+            readAhead()
+        }
+
+        /** The playing track and the next few get their tags read before the rest of the library. */
+        private fun readAhead() {
+            val count = player.mediaItemCount
+            if (count == 0) return
+            val from = player.currentMediaItemIndex.coerceIn(0, count - 1)
+            val ids = (from until minOf(count, from + TagEnricher.UPCOMING)).mapNotNull { MediaIds.item(player.getMediaItemAt(it).mediaId)?.id }
+            runCatching { Library.enricher.preferUpcoming(ids) }
+        }
 
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = saveSoon()
 
         override fun onRepeatModeChanged(repeatMode: Int) = saveSoon()
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            Library.setPlaying(isPlaying)
             if (isPlaying) recordPlay(player.currentMediaItem) else saveSoon()
         }
 

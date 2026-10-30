@@ -16,6 +16,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,7 +56,7 @@ import kotlinx.coroutines.launch
  * Free up space asks first and says what happens: the songs stay, they stream again when played.
  */
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onManageChats: () -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
     val scope = rememberCoroutineScope()
@@ -70,7 +72,7 @@ fun SettingsScreen() {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-        LibrarySection()
+        LibrarySection(onManageChats)
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Section(L.settingsStorage)
         Line(L.settingsCacheUsed(if (used < 0) "…" else Format.size(used).ifEmpty { L.settingsNothing }))
@@ -133,7 +135,7 @@ fun SettingsScreen() {
  * Try again, and each chat with its state (a failed one with its reason and Try again).
  */
 @Composable
-private fun LibrarySection() {
+private fun LibrarySection(onManageChats: () -> Unit) {
     val scope = rememberCoroutineScope()
     val flow = remember { Library.view() }
     val view by flow.collectAsStateWithLifecycle(initialValue = null)
@@ -141,6 +143,10 @@ private fun LibrarySection() {
     val scan by Library.scanner.status.collectAsStateWithLifecycle()
     val tags by Library.enricher.status.collectAsStateWithLifecycle()
     val changes by Library.changes.collectAsStateWithLifecycle()
+    val showShort by Library.choices.showShort.collectAsStateWithLifecycle()
+    val showVoice by Library.choices.showVoice.collectAsStateWithLifecycle()
+    val mobile by Library.choices.mobileAllowed.collectAsStateWithLifecycle()
+    val tagBytes by Library.choices.tagBytes.collectAsStateWithLifecycle()
     var chats by remember { mutableStateOf<List<ChatRow>>(emptyList()) }
     var checking by remember { mutableStateOf(false) }
     var retrying by remember { mutableStateOf(false) }
@@ -163,7 +169,7 @@ private fun LibrarySection() {
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
         // The reading progress has its own line below; a scan or a wait says more than the state does.
-        if (current.phase == LibraryPhase.Scanning || current.phase == LibraryPhase.Waiting) Hint(current.line)
+        if (current.phase == LibraryPhase.Scanning || current.phase == LibraryPhase.Waiting || current.phase == LibraryPhase.WaitingWifi) Hint(current.line)
     }
     val counts = tags.counts
     Line(L.settingsLibraryCounts(counts.total, chats.size))
@@ -233,6 +239,43 @@ private fun LibrarySection() {
                 }
             }
         }
+    }
+    SwitchLine(L.chatfirstSettingsShort, L.chatfirstSettingsShortDetail, showShort) { Library.setShowClips(showShort = it) }
+    SwitchLine(L.chatfirstSettingsVoice, L.chatfirstSettingsVoiceDetail, showVoice) { Library.setShowClips(showVoice = it) }
+    SwitchLine(L.chatfirstSettingsMobile, L.chatfirstSettingsMobileDetail, mobile) { Library.setMobileAllowed(it) }
+    Line(L.chatfirstSettingsDataUsed(Format.size(tagBytes).ifEmpty { L.settingsNothing }))
+
+    // The most common report is a track that does not show up: say why it may not, and where to go.
+    Text(L.chatfirstNotFindingTitle, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp))
+    Hint(L.chatfirstNotFindingBody)
+    Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = onManageChats) { Text(L.manageTitle) }
+        TextButton(
+            enabled = !scan.running && !checking,
+            onClick = {
+                checking = true
+                scope.launch { runCatching { Library.refresh() }.onFailure { checking = false } }
+            },
+        ) { Text(L.scanCheckNow) }
+    }
+}
+
+/** A setting that is on or off, with a line saying what it does; the whole row toggles it. */
+@Composable
+private fun SwitchLine(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = on, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = on, onCheckedChange = null)
     }
 }
 

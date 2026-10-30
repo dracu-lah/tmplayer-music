@@ -253,4 +253,23 @@ class GarbageInputTest {
             redactor.redact(text)
         }
     }
+
+    @Test
+    fun `name tidying and bar letters on garbage never crash`() {
+        val random = Random(23)
+        val odd = listOf(
+            "", "#", "##", "_", "___", "#_#_", "01", "(", "(1", "(123) ", "0 - ", "1. ", "\u0000_\u0000", "\uD800_x",
+            "_".repeat(100_000), "#".repeat(50_000) + "a", "01 " + "x_".repeat(30_000), "<unknown>", " UNKNOWN ARTIST ",
+        )
+        repeat(1_500) {
+            val text = if (it < odd.size) odd[it] else String(CharArray(random.nextInt(0, 300)) { random.nextInt(0, 0xFFFF).toChar() })
+            val title = com.tmplayer.music.library.TitleFallback.tidyTitle(text)
+            assertTrue("title grew: ${text.length} to ${title.length}", title.length <= text.length)
+            com.tmplayer.music.library.TitleFallback.tidyArtist(text)
+            com.tmplayer.music.library.TitleFallback.display(text, text, text, text, text)
+            com.tmplayer.music.library.Letters.of(text)
+        }
+        com.tmplayer.music.library.TitleFallback.tidyTitle(null)
+        com.tmplayer.music.library.TitleFallback.tidyArtist(null)
+    }
 }

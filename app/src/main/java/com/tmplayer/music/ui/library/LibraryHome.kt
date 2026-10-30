@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,7 +59,6 @@ import com.tmplayer.music.library.ChatRow
 import com.tmplayer.music.library.Playlist
 import com.tmplayer.music.library.Song
 import com.tmplayer.music.ui.common.MusicIcons
-import com.tmplayer.music.library.SongCursor
 import com.tmplayer.music.library.SongSort
 import com.tmplayer.music.ui.onboarding.ChatPicker
 import kotlinx.coroutines.launch
@@ -77,13 +75,18 @@ private sealed interface Page {
     data object Settings : Page
 }
 
-private enum class LibraryTab { Home, Songs, Albums, Artists, Playlists }
+private enum class LibraryTab { Home, Chats, Songs, Albums, Artists, Playlists }
 
+/**
+ * The library: tabs, the pages opened from them, the scan banner, and the one time question about
+ * reading track details on mobile data. [startOnChats] opens on the Chats tab, for the first run,
+ * where the chats just picked can be played before the scan has filled the other tabs.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryHome(onLogOut: () -> Unit) {
+fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false) {
     val stack = remember { mutableStateListOf<Page>() }
-    var tab by rememberSaveable { mutableStateOf(LibraryTab.Home) }
+    var tab by rememberSaveable { mutableStateOf(if (startOnChats) LibraryTab.Chats else LibraryTab.Home) }
     var sort by rememberSaveable { mutableStateOf(SongSort.Title) }
     var versionsOf by remember { mutableStateOf<Song?>(null) }
     var chatTitles by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
@@ -180,6 +183,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
                                 Text(
                                     when (t) {
                                         LibraryTab.Home -> L.tabHome
+                                        LibraryTab.Chats -> L.chatfirstTabChats
                                         LibraryTab.Playlists -> L.tabPlaylists
                                         LibraryTab.Songs -> L.tabSongs
                                         LibraryTab.Albums -> L.tabAlbums
@@ -191,6 +195,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
                     }
                     RefreshBox { when (tab) {
                         LibraryTab.Home -> HomeTab(actions, onShuffleAll = { scope.launch { runCatching { actions.shuffle(allSongs()) } } })
+                        LibraryTab.Chats -> ChatsTab(actions, onChat = { stack += Page.ChatPage(it) }, onAdd = { stack += Page.Picker })
                         LibraryTab.Playlists -> PlaylistsTab(onPlaylist = { stack += Page.PlaylistPage(it) })
                         LibraryTab.Songs -> SongsTab(sort, actions) {
                             Column {
@@ -204,19 +209,9 @@ fun LibraryHome(onLogOut: () -> Unit) {
                 }
                 is Page.AlbumPage -> AlbumScreen(page.album, actions)
                 is Page.ArtistPage -> ArtistScreen(page.artist, actions, onAlbum = { stack += Page.AlbumPage(it) })
-                is Page.ChatPage -> {
-                    val state = rememberLazyListState()
-                    val chatId = page.chat.chatId
-                    val pager = rememberPager<SongCursor, Song>(
-                        key = "chat:$chatId",
-                        state = state,
-                        load = { after, limit -> Library.index().chatSongs(chatId, after, limit) },
-                        cursorOf = { SongCursor.of(it, SongSort.Title) },
-                    )
-                    SongList(pager, state, actions)
-                }
+                is Page.ChatPage -> ChatScreen(page.chat, actions, onGone = { stack.remove(page) })
                 is Page.PlaylistPage -> PlaylistScreen(page.playlist, actions, onDeleted = { stack.removeAt(stack.lastIndex) })
-                Page.Settings -> SettingsScreen()
+                Page.Settings -> SettingsScreen(onManageChats = { stack += Page.Manage })
                 Page.Search -> SearchScreen(actions, onAlbum = { stack += Page.AlbumPage(it) }, onArtist = { stack += Page.ArtistPage(it) })
                 Page.Manage -> ManageChats(onAddChats = { stack += Page.Picker }, onChat = { stack += Page.ChatPage(it) })
                 Page.Picker -> Unit
@@ -248,6 +243,26 @@ fun LibraryHome(onLogOut: () -> Unit) {
         )
     }
     playlistFor?.let { song -> AddToPlaylistSheet(song, onDismiss = { playlistFor = null }) }
+    MobileDataQuestion()
+}
+
+/**
+ * Asked once, the first time the library has files waiting for their details while the phone is on
+ * mobile data: read them on mobile data too, or wait for Wi-Fi. Off by default; dismissing it is a
+ * no. The answer is kept and can be changed in Settings.
+ */
+@Composable
+private fun MobileDataQuestion() {
+    val flow = remember { Library.askMobile() }
+    val ask by flow.collectAsStateWithLifecycle(initialValue = false)
+    if (!ask) return
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { Library.setMobileAllowed(false) },
+        title = { Text(L.chatfirstMobileTitle) },
+        text = { Text(L.chatfirstMobileBody) },
+        confirmButton = { TextButton(onClick = { Library.setMobileAllowed(true) }) { Text(L.chatfirstMobileYes) } },
+        dismissButton = { TextButton(onClick = { Library.setMobileAllowed(false) }) { Text(L.chatfirstMobileNo) } },
+    )
 }
 
 /**

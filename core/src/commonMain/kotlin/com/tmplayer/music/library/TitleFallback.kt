@@ -79,17 +79,70 @@ object TitleFallback {
             }
         }
         if (title.isEmpty()) title = name
-        return TextFold.trimField(artist) to TextFold.trimField(title)
+        return tidyArtist(artist) to tidyTitle(title)
     }
+
+    /**
+     * A title as it is shown, from any source: a name written with underscores for spaces
+     * (`Some_Movie_Songs_-_Title_Words`) gets its spaces back, runs of spaces become one, a hashtag's
+     * `#` before a word goes, and a track number goes only when it is clearly one (`01 `, `07 - `,
+     * `1. `, `(03) `), never a number that is part of the name (`7 Rings`, `#1 Crush`). The letters are
+     * kept as written. Blank only when [text] is.
+     */
+    fun tidyTitle(text: String?): String {
+        val tidied = tidyName(text)
+        val match = CLEAR_TRACK_NUMBER.find(tidied) ?: return tidied
+        val rest = tidied.substring(match.range.last + 1).trim()
+        return if (rest.any { it.isLetter() }) rest else tidied
+    }
+
+    /**
+     * An artist as it is shown: blank for the words that mean "nobody" ([isPlaceholderArtist]), so the
+     * list says "Unknown artist" and the Artists tab leaves it out; otherwise tidied like a title,
+     * without the track number rule (`50 Cent` stays).
+     */
+    fun tidyArtist(text: String?): String {
+        val tidied = tidyName(text)
+        return if (isPlaceholderArtist(tidied)) "" else tidied
+    }
+
+    /** True for an artist field that says nobody: blank, `<unknown>`, `Unknown Artist` and the like. */
+    fun isPlaceholderArtist(value: String?): Boolean {
+        val trimmed = TextFold.trimField(value)
+        return trimmed.isEmpty() || trimmed.lowercase() in PLACEHOLDER_ARTISTS
+    }
+
+    /** Underscores, spaces and a leading hashtag mark tidied; see [tidyTitle]. */
+    private fun tidyName(text: String?): String {
+        var t = TextFold.trimField(text)
+        if (t.isEmpty()) return t
+        // Underscores stand for spaces only in a name written that way, not in one with a stray `_`.
+        if ('_' in t && t.count { it == '_' } >= t.count { it == ' ' }) t = t.replace('_', ' ')
+        t = t.replace(SPACES, " ").trim()
+        t = HASHTAG_MARK.replace(t, "").trim()
+        return t
+    }
+
+    /** `#` (one or more) right before a letter at the start: a hashtag, not part of the name. */
+    private val HASHTAG_MARK = Regex("^#+(?=\\p{L})")
+
+    /**
+     * A track number that cannot be part of a title: zero padded (`01 `, `007.`), in brackets
+     * (`(03) `), or followed by a dot, a bracket or a spaced dash (`1. `, `2) `, `12 - `).
+     */
+    private val CLEAR_TRACK_NUMBER = Regex(
+        "^(?:\\(\\d{1,3}\\)\\s*|0\\d{1,2}(?:\\s*[.):\\-\u2012\u2013\u2014\u2015\u2212]\\s*|\\s+)|" +
+            "\\d{1,3}(?:[.)]\\s+|\\s+[\\-\u2012\u2013\u2014\u2015\u2212]\\s+))",
+    )
 
     /**
      * Words taggers and phones write when they do not know the artist ("<unknown>" is Android's own).
      * They mean nothing, so they count as blank and the next source is asked.
      */
-    private val PLACEHOLDER_ARTISTS = setOf("<unknown>", "unknown", "unknown artist", "[unknown]", "artist", "n/a")
+    internal val PLACEHOLDER_ARTISTS = setOf("<unknown>", "unknown", "unknown artist", "[unknown]", "artist", "n/a")
 
     private fun realArtist(value: String?): String =
-        TextFold.trimField(value).takeUnless { it.lowercase() in PLACEHOLDER_ARTISTS }.orEmpty()
+        TextFold.trimField(value).takeUnless { isPlaceholderArtist(it) }.orEmpty()
 
     private fun stripTrackNumber(text: String): String {
         val match = TRACK_NUMBER.find(text) ?: return text

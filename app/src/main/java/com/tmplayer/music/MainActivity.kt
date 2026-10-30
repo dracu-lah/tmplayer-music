@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.tmplayer.music.data.Library
 import com.tmplayer.music.diagnostics.CrashOffer
 import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.ui.AppRoot
@@ -21,5 +22,16 @@ class MainActivity : ComponentActivity() {
                 CrashOffer()
             }
         }
+    }
+
+    // The tag reader's background trickle runs only while the app is on screen or playing.
+    override fun onStart() {
+        super.onStart()
+        Library.setForeground(true)
+    }
+
+    override fun onStop() {
+        Library.setForeground(false)
+        super.onStop()
     }
 }

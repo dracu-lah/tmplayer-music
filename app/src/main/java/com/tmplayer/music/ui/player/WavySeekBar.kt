@@ -1,5 +1,8 @@
 package com.tmplayer.music.ui.player
 
+import android.app.ActivityManager
+import android.content.Context
+import android.os.PowerManager
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -15,7 +18,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -24,6 +26,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -42,14 +45,11 @@ import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.sin
 
-/** The wave's shape: one crest every 40 dp, 3 dp high, travelling one wavelength a second. */
+/** The wave's shape: one crest every 40 dp, 3 dp high, travelling one wavelength a second in steps. */
 private val Wavelength = 40.dp
 private val Amplitude = 3.dp
 private val StrokeWidth = 4.dp
 private val Gap = 6.dp
-
-/** How often the travelling wave is redrawn. */
-private const val WAVE_FPS = 30
 
 /**
  * The seek bar, in the Material 3 Expressive style: the played part is a wavy line, the rest a flat
@@ -57,7 +57,8 @@ private const val WAVE_FPS = 30
  * needs minSdk 24, so it is drawn here.)
  *
  * When it moves ([WaveLogic]): the crest travels only while the track plays, Now Playing is open
- * ([visible]) and the app is in the foreground; motion off ("Remove animations") keeps it still.
+ * ([visible]) and the app is in the foreground, about 15 steps a second; motion off ("Remove
+ * animations"), a low memory phone and Battery Saver keep it still (still wavy while playing).
  * Paused, scrubbing or with no known length the wave springs flat and the frame loop stops, so
  * nothing runs while idle.
  *
@@ -80,26 +81,26 @@ fun WavySeekBar(
     val resumed = lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     val reduced = LocalReducedMotion.current
     val known = durationMs > 0
-    val travels = WaveLogic.travels(playing, resumed, visible, reduced, known) && seeking == null
+    val context = LocalContext.current
+    val lowRam = remember(context) { (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true }
+    // Battery Saver is read again each time the app comes back to the front.
+    val powerSave = remember(context, resumed) { (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true }
+    val still = WaveLogic.stillDevice(lowRam, powerSave)
+    val travels = WaveLogic.travels(playing, resumed, visible, reduced, known, still) && seeking == null
     val amplitude by animateFloatAsState(
         WaveLogic.amplitude(playing, known, seeking != null),
         MusicMotion.current.defaultEffects(),
         label = "amplitude",
     )
-    // The crest's phase, advanced by a frame loop that exists only while the wave travels. Each
-    // change redraws the whole window, so it moves at most [WAVE_FPS] times a second: a slow crest
-    // looks the same, and a phone pays a third of the cost of 60 or 90 frames a second.
+    // The crest's phase, moved on by a timed step (WaveLogic.STEP_MS, about 15 a second) that runs
+    // only while the wave travels. Each step redraws the window, so it is a step, not every frame.
     var phase by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(travels) {
         if (!travels) return@LaunchedEffect
-        var last = withFrameNanos { it }
         while (true) {
             // Sleeps between steps, so no frame is asked for in between.
-            delay(1_000L / WAVE_FPS)
-            withFrameNanos { now ->
-                phase = (phase + (now - last) / 1_000_000_000f) % 1f
-                last = now
-            }
+            delay(WaveLogic.STEP_MS)
+            phase = WaveLogic.nextPhase(phase, WaveLogic.STEP_MS)
         }
     }
     val currentSeek by rememberUpdatedState(onSeek)

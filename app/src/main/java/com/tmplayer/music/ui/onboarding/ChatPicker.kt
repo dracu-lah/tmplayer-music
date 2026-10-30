@@ -42,6 +42,15 @@ import androidx.compose.ui.unit.dp
 import com.tmplayer.music.data.ChatDirectory
 import com.tmplayer.music.data.ChatEntry
 import com.tmplayer.music.data.Failures
+import com.tmplayer.music.data.FirstRun
+import com.tmplayer.music.ui.theme.Pill
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import com.tmplayer.music.diagnostics.SendLogsButton
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.ui.common.Cover
@@ -58,6 +67,10 @@ data class PickedChat(val chatId: Long, val title: String)
  * audio in it. An empty choice is allowed and lands on an empty library.
  *
  * [already] are the chats picked before (Manage chats), shown ticked; [onDone] gets the whole choice.
+ *
+ * On the first run (nothing picked before) the list is led by "Start with Saved Messages": one tap
+ * picks Saved Messages and the few chats with the most audio ([FirstRun]), from the counts of
+ * Saved Messages and the top of the list, asked for as the picker opens. The full list stays below.
  */
 @Composable
 fun ChatPicker(
@@ -74,6 +87,46 @@ fun ChatPicker(
     var touchedSaved by rememberSaveable { mutableStateOf(already.isNotEmpty()) }
     var query by rememberSaveable { mutableStateOf("") }
     var confirmAll by remember { mutableStateOf<List<ChatEntry>?>(null) }
+    val firstRun = already.isEmpty()
+    var starting by remember { mutableStateOf(false) }
+    var startNone by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val name: (ChatEntry) -> String = { if (it.savedMessages) L.pickerSavedMessages else it.title.ifBlank { L.pickerUntitled } }
+
+    suspend fun countOf(chat: ChatEntry): Int? {
+        val count = try {
+            directory.audioCount(chat.chatId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        if (count != null) counts[chat.chatId] = count
+        return count
+    }
+
+    // The one tap needs the counts of Saved Messages and the chats at the top before anything is shown.
+    LaunchedEffect(chats, firstRun) {
+        val all = chats ?: return@LaunchedEffect
+        if (!firstRun) return@LaunchedEffect
+        FirstRun.toCount(all).forEach { chat -> launch { if (!counts.containsKey(chat.chatId)) countOf(chat) } }
+    }
+
+    val startWithSaved: () -> Unit = start@{
+        val all = chats ?: return@start
+        if (starting) return@start
+        starting = true
+        startNone = false
+        scope.launch {
+            // Counts already in come back at once; the rest get a few seconds, then what is known is used.
+            withTimeoutOrNull(START_BUDGET_MS) {
+                FirstRun.toCount(all).map { chat -> async { counts[chat.chatId] ?: countOf(chat) } }.awaitAll()
+            }
+            val picked = FirstRun.pick(all, counts.toMap())
+            starting = false
+            if (picked.isEmpty()) startNone = true else onDone(picked.map { PickedChat(it.chatId, name(it)) })
+        }
+    }
 
     LaunchedEffect(attempt) {
         failure = null
@@ -136,6 +189,9 @@ fun ChatPicker(
                         )
                     }
                     LazyColumn(Modifier.weight(1f)) {
+                        if (firstRun && needle.isEmpty()) {
+                            item(key = "startWithSaved") { StartCard(starting, startNone, startWithSaved) }
+                        }
                         if (shown.isNotEmpty()) {
                             item(key = "selectAll") {
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
@@ -180,7 +236,7 @@ fun ChatPicker(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (onBack != null) TextButton(onClick = onBack) { Text(L.commonBack) }
                     Button(
-                        onClick = { onDone(picked.map { PickedChat(it.chatId, it.title.ifBlank { L.pickerUntitled }) }) },
+                        onClick = { onDone(picked.map { PickedChat(it.chatId, name(it)) }) },
                         enabled = all != null,
                         modifier = Modifier.weight(1f),
                     ) { Text(if (picked.isEmpty()) L.pickerLater else L.commonContinue) }
@@ -201,6 +257,43 @@ fun ChatPicker(
                 }) { Text(L.pickerConfirmAllYes) }
             },
             dismissButton = { TextButton(onClick = { confirmAll = null }) { Text(L.commonCancel) } },
+        )
+    }
+}
+
+/**
+ * The one tap first run: a large card with "Start with Saved Messages", what it picks, and the way
+ * to the full list below. While the counts come in the button says so; with no audio found it says
+ * to pick below.
+ */
+@Composable
+private fun StartCard(starting: Boolean, none: Boolean, onStart: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onStart, enabled = !starting, shape = Pill, modifier = Modifier.fillMaxWidth()) {
+                    if (starting) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Text(L.chatfirstPickerStart)
+                }
+                Text(
+                    when {
+                        starting -> L.chatfirstPickerStartCounting
+                        none -> L.chatfirstPickerStartNone
+                        else -> L.chatfirstPickerStartDetail
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
+        Text(
+            L.chatfirstPickerOrPick,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 4.dp),
         )
     }
 }
@@ -256,3 +349,6 @@ private fun fold(text: String): String =
     Normalizer.normalize(text.trim().lowercase(), Normalizer.Form.NFKD).replace(Regex("\\p{Mn}+"), "")
 
 private const val LARGE_SELECTION = 50
+
+/** How long the one tap waits for the counts it lacks before it picks from what is known. */
+private const val START_BUDGET_MS = 4_000L

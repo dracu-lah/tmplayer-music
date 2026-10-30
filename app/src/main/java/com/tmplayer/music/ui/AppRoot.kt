@@ -45,6 +45,8 @@ fun AppRoot() {
     val ready by Library.ready.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var hasChats by remember { mutableStateOf<Boolean?>(null) }
+    // Picked in this session: the library opens on its Chats tab, where they play at once.
+    var justPicked by remember { mutableStateOf(false) }
 
     LaunchedEffect(ready) {
         if (!ready) return@LaunchedEffect
@@ -73,10 +75,12 @@ fun AppRoot() {
                     prefs.pickerDone = true
                     pickerDone = true
                     hasChats = picked.isNotEmpty()
+                    justPicked = picked.isNotEmpty()
                 }
             },
         )
         else -> PlayerSheetHost { LibraryHome(
+            startOnChats = justPicked,
             onLogOut = {
                 scope.launch {
                     PlayerConnection.clear()

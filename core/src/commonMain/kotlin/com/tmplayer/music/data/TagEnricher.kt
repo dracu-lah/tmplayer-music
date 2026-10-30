@@ -36,6 +36,9 @@ interface TagStore {
     /** The tracks among [ids] that still wait for their tags; for reading what is on screen first. */
     suspend fun pendingAmong(ids: Collection<TrackId>): List<Track> = emptyList()
 
+    /** Up to [limit] waiting tracks whose duration is unknown (audio sent as documents), newest first. */
+    suspend fun pendingDocuments(limit: Int): List<Track> = emptyList()
+
     /** What one batch read, written together. A null [TagResult.tags] marks that file unreadable. */
     suspend fun applyTags(results: List<TagResult>)
 
@@ -79,6 +82,11 @@ data class EnrichStatus(
     val paused: Boolean = false,
     val waiting: Boolean = false,
     val counts: TagCounts = TagCounts(),
+    /**
+     * False while the reader only reads what is on screen or about to play: a few files the banner
+     * does not need to announce. True for the documents and the background trickle.
+     */
+    val background: Boolean = true,
 )
 
 /**
@@ -92,7 +100,14 @@ data class EnrichStatus(
  * a batch of [BATCH] written in one transaction, a pause of [gapMs] between batches, and the
  * parsing on low priority threads. Files the user has on screen ([prefer]) are read first.
  *
- * It stops by itself once nothing is pending, and waits while [paused] (the scan's Pause). A file
+ * What it reads, and in which order, follows [policy] and [TagPriority]: (a) the rows on screen
+ * ([prefer]), (b) the playing track and the next few ([preferUpcoming]), (c) audio documents whose
+ * length is unknown, (d) the rest as a gentle trickle. The app's policy keeps (c) bounded and (d)
+ * off on mobile data unless the user said yes, and (d) off while the app is neither on screen nor
+ * playing. Every byte fetched is reported to [onBytes], for the data used line in Settings.
+ *
+ * It stops by itself once nothing allowed is pending (a change of policy or a [prefer] starts it
+ * again), and waits while [paused] (the scan's Pause). A file
  * whose tags cannot be parsed keeps Telegram's fields and is marked failed, so it is not tried for
  * ever. A file whose bytes cannot be had is different: when a whole batch gets none, the connection
  * may be the cause, so the reader waits ([backoffMs], doubling) and stops after [MAX_BACKOFFS] rounds
@@ -113,6 +128,12 @@ class TagEnricher(
     private val backoffMs: Long = BACKOFF_MS,
     /** Where the parsing runs; low priority threads in the app. */
     private val work: CoroutineContext = EmptyCoroutineContext,
+    /** What may be read now; everything unless the app says otherwise. */
+    private val policy: StateFlow<ReadPolicy> = MutableStateFlow(ReadPolicy.ALL),
+    /** Bytes fetched by one read, for the data used counter. */
+    private val onBytes: (Long) -> Unit = {},
+    /** Files per batch; smaller on a low memory device. */
+    private val batchSize: Int = BATCH,
 ) {
     private val _status = MutableStateFlow(EnrichStatus())
     val status: StateFlow<EnrichStatus> = _status.asStateFlow()
@@ -127,6 +148,14 @@ class TagEnricher(
     @Volatile
     private var preferred: List<TrackId> = emptyList()
 
+    /** The playing track and the next few; kept until the queue moves on. */
+    @Volatile
+    private var upcoming: List<TrackId> = emptyList()
+
+    /** Documents read under a [ReadPolicy.documentsCap] this session. */
+    @Volatile
+    private var cappedDocumentsRead = 0
+
     /** Starts reading if it is not already; cheap to call after every scanned page. */
     fun kick() {
         scope.launch {
@@ -140,7 +169,16 @@ class TagEnricher(
 
     /** Reads [ids] (the rows on screen) next, if they still wait. Only the last call counts. */
     fun prefer(ids: List<TrackId>) {
-        preferred = ids.take(BATCH)
+        preferred = ids.take(batchSize)
+        if (ids.isNotEmpty()) kick()
+    }
+
+    /** Reads [ids] (the playing track first, then the next few) before the rest, if they still wait. */
+    fun preferUpcoming(ids: List<TrackId>) {
+        val next = ids.take(UPCOMING)
+        if (next == upcoming) return
+        upcoming = next
+        if (next.isNotEmpty()) kick()
     }
 
     /** Refreshes the counts from the index without starting anything, for a screen that opens. */
@@ -160,12 +198,24 @@ class TagEnricher(
                     online.first { it }
                     _status.update { it.copy(waiting = false) }
                 }
+                val allowed = policy.value
                 val wanted = preferred
                 preferred = emptyList()
-                val first = if (wanted.isEmpty()) emptyList() else runCatching { store.pendingAmong(wanted) }.getOrDefault(emptyList())
-                val rest = if (first.size >= BATCH) emptyList() else store.pendingTags(BATCH)
-                val batch = (first + rest).distinctBy { it.id }.take(BATCH)
+                val next = upcoming
+                val onScreen = if (!allowed.onDemand || wanted.isEmpty()) emptyList() else runCatching { store.pendingAmong(wanted) }.getOrDefault(emptyList())
+                val soon = if (!allowed.onDemand || next.isEmpty()) emptyList() else runCatching { store.pendingAmong(next) }.getOrDefault(emptyList())
+                val room = batchSize - onScreen.size - soon.size
+                val documentsLeft = if (allowed.documentsCap == Int.MAX_VALUE) Int.MAX_VALUE else allowed.documentsCap - cappedDocumentsRead
+                val documents = if (room <= 0 || !allowed.documents || documentsLeft <= 0) emptyList() else store.pendingDocuments(batchSize)
+                val rest = if (room <= 0 || !allowed.trickle) emptyList() else store.pendingTags(batchSize)
+                val batch = TagPriority.plan(onScreen, soon, documents, rest, allowed, batchSize, documentsLeft)
                 if (batch.isEmpty()) break
+                val asked = (onScreen + soon).mapTo(HashSet()) { it.id }
+                if (documentsLeft != Int.MAX_VALUE) {
+                    val docIds = documents.mapTo(HashSet()) { it.id }
+                    cappedDocumentsRead += batch.count { it.id in docIds && it.id !in asked }
+                }
+                _status.update { it.copy(background = batch.any { t -> t.id !in asked }) }
                 val outcomes = coroutineScope {
                     batch.chunked((batch.size + PARALLEL - 1) / PARALLEL).map { part ->
                         async {
@@ -218,7 +268,7 @@ class TagEnricher(
             withContext(NonCancellable) {
                 lock.withLock {
                     worker = null
-                    _status.update { it.copy(running = false, waiting = false, paused = false) }
+                    _status.update { it.copy(running = false, waiting = false, paused = false, background = true) }
                 }
             }
         }
@@ -290,7 +340,7 @@ class TagEnricher(
 
     /** Some bytes of [track]'s file; null when they could not be had, a failure included. */
     private suspend fun fetch(track: Track, fileId: Int, offset: Long, length: Int): ByteArray? = try {
-        bytes.read(fileId, offset, length)
+        bytes.read(fileId, offset, length)?.also { got -> runCatching { onBytes(got.size.toLong()) } }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -309,7 +359,13 @@ class TagEnricher(
     companion object {
         private const val TAG = "TagEnricher"
         const val BATCH = 12
+
+        /** The batch on a low memory device. */
+        const val SMALL_BATCH = 6
         const val PARALLEL = 2
+
+        /** The playing track and the next tracks read ahead of the rest. */
+        const val UPCOMING = 4
 
         /** The pause between batches, so the reader leaves the CPU and the connection room. */
         const val BATCH_GAP_MS = 1_000L

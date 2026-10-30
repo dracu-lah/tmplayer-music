@@ -3,6 +3,7 @@ package com.tmplayer.music.tags
 import com.tmplayer.music.library.AudioFormat
 import com.tmplayer.music.library.Picture
 import com.tmplayer.music.library.Tags
+import com.tmplayer.music.library.TitleFallback
 
 /**
  * What the readers have found so far. Text fields keep the first non-blank value offered, so the
@@ -39,8 +40,9 @@ internal class TagBuilder {
         if (title.isEmpty()) title = TextDecoding.clean(s)
     }
 
+    /** A placeholder such as `<unknown>` is not an artist: the next tag may still name one. */
     fun artist(s: String) {
-        if (artist.isEmpty()) artist = TextDecoding.clean(s)
+        if (artist.isEmpty()) artist = realArtist(s)
     }
 
     fun album(s: String) {
@@ -48,8 +50,11 @@ internal class TagBuilder {
     }
 
     fun albumArtist(s: String) {
-        if (albumArtist.isEmpty()) albumArtist = TextDecoding.clean(s)
+        if (albumArtist.isEmpty()) albumArtist = realArtist(s)
     }
+
+    private fun realArtist(s: String): String =
+        TextDecoding.clean(s).takeUnless { TitleFallback.isPlaceholderArtist(it) }.orEmpty()
 
     fun lyrics(s: String) {
         if (lyrics.isEmpty()) lyrics = TextDecoding.clean(s)

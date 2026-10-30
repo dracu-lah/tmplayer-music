@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -58,7 +59,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.snapshotFlow
 import com.tmplayer.music.data.TagEnricher
 
@@ -71,6 +71,8 @@ fun SongsTab(sort: SongSort, actions: SongActions, header: @Composable () -> Uni
         state = state,
         load = { after, limit -> Library.index().songs(sort, after, limit) },
         cursorOf = { SongCursor.of(it, sort) },
+        loadAt = { offset, limit -> Library.index().songsAt(sort, offset, limit) },
+        loadBefore = { before, limit -> Library.index().songsBefore(sort, before, limit) },
     )
     // The bar has its own column, so it never covers a row's title or format badge.
     Row(Modifier.fillMaxSize()) {
@@ -82,9 +84,10 @@ fun SongsTab(sort: SongSort, actions: SongActions, header: @Composable () -> Uni
 /**
  * The A to Z bar at the edge of Songs: each first letter in the list. Tap a letter, or drag along
  * the bar, to go there. When more letters exist than fit (Latin plus another script), an even
- * sample is shown, the first and last always. The rows up to that letter are read first (keyset
- * pages), so a jump to the end of a long list waits for them; the bar hides itself when the list
- * has fewer than [LETTER_BAR_MIN] rows.
+ * sample is shown, the first and last always. A jump reads one page around the letter's row
+ * ([Pager.jumpTo]), however far down it is; the bar hides itself when the list has fewer than
+ * [LETTER_BAR_MIN] rows. The letters are read again only after the index changed (they are cached
+ * there), and a look-alike letter sorted after Z is folded into its plain one ([Letters]).
  */
 @Composable
 private fun LetterBar(sort: SongSort, pager: Pager<SongCursor, Song>, state: LazyListState, modifier: Modifier) {
@@ -100,9 +103,9 @@ private fun LetterBar(sort: SongSort, pager: Pager<SongCursor, Song>, state: Laz
     LaunchedEffect(pager, state) {
         target.collectLatest { position ->
             if (position == null) return@collectLatest
-            pager.ensure(position)
+            val index = pager.jumpTo(position)
             // +1 for the header row above the songs.
-            state.scrollToItem((position + 1).coerceAtMost(pager.items.size))
+            state.scrollToItem((index + 1).coerceAtMost(pager.items.size))
         }
     }
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.width(LETTER_BAR_WIDTH)) {
@@ -189,14 +192,12 @@ fun SongList(
 }
 
 /**
- * While the tag reader runs, the rows on screen go to the front of its queue, once the scroll has
- * settled, so what the user looks at gets its real title and cover first. Nothing runs otherwise.
+ * The rows on screen go to the front of the tag reader's queue once the scroll has settled, so what
+ * the user looks at gets its real title and cover first, on mobile data too (a few files). Rows whose
+ * tags are read already cost one lookup and start nothing.
  */
 @Composable
 private fun ReadVisibleFirst(pager: Pager<SongCursor, Song>, state: LazyListState) {
-    val flow = remember { Library.enricher.status.map { it.running && !it.paused }.distinctUntilChanged() }
-    val reading by flow.collectAsStateWithLifecycle(initialValue = false)
-    if (!reading) return
     LaunchedEffect(pager, state) {
         snapshotFlow { state.firstVisibleItemIndex }.distinctUntilChanged().collectLatest { first ->
             delay(VISIBLE_SETTLE_MS)
@@ -218,6 +219,7 @@ fun SongRow(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val subtitle = listOf(song.artist.ifBlank { L.libraryUnknownArtist }, Format.duration(song.durationMs)).joinToString("  ·  ")
+    val mark = playingMarkOf(song.groupKey)
     Row(
         Modifier
             .fillMaxWidth()
@@ -232,7 +234,16 @@ fun SongRow(
             Cover(name = song.title, fileId = 0, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), track = song.defaultTrack.takeIf { song.thumbFileId != 0 })
         }
         Column(Modifier.weight(1f)) {
-            Text(song.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (mark != null) PlayingGlyph(playing = mark, modifier = Modifier.padding(end = 6.dp))
+                Text(
+                    song.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (mark != null) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
@@ -248,6 +259,35 @@ fun SongRow(
         }
         trailing?.invoke()
     }
+}
+
+/**
+ * Whether the song keyed [songKey] is the current one: true playing, false paused, null not current.
+ * Each row reads the shared mark through a derived state, so when the current song changes only the
+ * row that gains it and the row that loses it are redrawn, and the position never redraws any.
+ */
+@Composable
+fun playingMarkOf(songKey: String): Boolean? {
+    val mark = com.tmplayer.music.player.PlayerConnection.mark.collectAsStateWithLifecycle()
+    val mine = remember(songKey) {
+        androidx.compose.runtime.derivedStateOf { mark.value?.takeIf { it.songKey == songKey }?.playing }
+    }
+    return mine.value
+}
+
+/**
+ * The still glyph before the current song's title: three bars of different heights while it plays,
+ * three low bars when paused, in the primary colour. It never animates, so a list costs nothing
+ * while music plays.
+ */
+@Composable
+fun PlayingGlyph(playing: Boolean, modifier: Modifier = Modifier) {
+    androidx.compose.material3.Icon(
+        if (playing) com.tmplayer.music.ui.common.MusicIcons.Equalizer else com.tmplayer.music.ui.common.MusicIcons.EqualizerPaused,
+        contentDescription = if (playing) L.listeningNowPlaying else L.listeningNowPaused,
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = modifier.size(16.dp),
+    )
 }
 
 @Composable

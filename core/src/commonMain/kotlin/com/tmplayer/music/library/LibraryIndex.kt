@@ -92,7 +92,27 @@ class LibraryIndex private constructor(
 
     private val lock = ReentrantLock()
     private val statements = HashMap<String, SQLiteStatement>()
+
+    /**
+     * What the lists leave out: [ClipRules] bits (short clips, voice style files), read at query
+     * time, so a Settings switch changes the lists without touching a row. 0 shows everything.
+     * Favourites and playlists are the user's own picks and always show what they hold.
+     */
+    @Volatile
+    var hiddenMask: Int = 0
+
+    /** " AND (hide & mask) = 0" for the songs aliased [alias] (blank for none), or "" when nothing is hidden. */
+    private fun visible(alias: String = ""): String {
+        val mask = hiddenMask and (ClipRules.SHORT or ClipRules.VOICE)
+        return if (mask == 0) "" else " AND (${alias}hide & $mask) = 0"
+    }
     private var closed = false
+
+    /** Moves on with every write, so a cached read knows it may be stale. Guarded by [lock]. */
+    private var revision = 0L
+
+    /** The last [letterIndex] per sort with the [revision] it was read at; at most one per sort. */
+    private val letterCache = HashMap<SongSort, Pair<Long, List<Pair<Char, Int>>>>()
 
     // Chats
 
@@ -135,6 +155,11 @@ class LibraryIndex private constructor(
      */
     suspend fun removeChat(chatId: Long) = io {
         tx { purgeChat(chatId, keepRow = false) }
+    }
+
+    /** One chosen chat with its scan state and track count, or null when it is not chosen. */
+    suspend fun pickedChat(chatId: Long): ChatRow? = io {
+        query("SELECT $CHAT_COLUMNS FROM chats WHERE chat_id = ? AND picked = 1 LIMIT 1", chatId, map = ::readChat).firstOrNull()
     }
 
     /** How far the scan of [chatId] got, or null for a chat the index does not know. */
@@ -181,6 +206,7 @@ class LibraryIndex private constructor(
                         .firstOrNull() == true
                 }
                 if (!picked) continue
+                if (track.tagState == TagState.TelegramOnly && keepsReadTags(track)) continue
                 val existed = touchOld(track.id, touched)
                 val base = indexBaseKey(track)
                 val album = indexAlbumKey(track)
@@ -209,6 +235,71 @@ class LibraryIndex private constructor(
             rebuild(touched)
         }
         return stored
+    }
+
+    /**
+     * True when the stored row for [track]'s message already has its tags read (or given up on) for
+     * the same file, so Telegram's fields seen again (a scan, a chat page) must not replace them.
+     */
+    private fun keepsReadTags(track: Track): Boolean = query(
+        "SELECT tag_state, unique_id FROM tracks WHERE chat_id = ? AND message_id = ? LIMIT 1",
+        track.chatId, track.messageId,
+    ) { text(it, 0) to text(it, 1) }.firstOrNull()?.let { (state, unique) ->
+        state != TagState.TelegramOnly.name && unique == track.uniqueId
+    } == true
+
+    /**
+     * Adds those of [tracks] the index does not hold yet (a chat page read them from Telegram before
+     * the scan got there), leaving the stored ones alone. Files of chats that are not chosen are
+     * dropped, as in [upsert]. Returns how many were added.
+     */
+    suspend fun upsertMissing(tracks: List<Track>): Int = io {
+        if (tracks.isEmpty()) return@io 0
+        val fresh = tracks.distinctBy { it.id }.filter { t ->
+            count("SELECT COUNT(*) FROM tracks WHERE chat_id = ? AND message_id = ?", t.chatId, t.messageId) == 0
+        }
+        if (fresh.isEmpty()) 0 else tx { upsertRows(fresh) }
+    }
+
+    /**
+     * One page of [chatId]'s files in message order, after message [after] (null for the first
+     * page): newest first, or oldest first when [oldestFirst]. Read through the primary key, so a
+     * page deep in a chat of 20,000 costs what the first does.
+     */
+    suspend fun chatTracks(chatId: Long, oldestFirst: Boolean, after: Long?, limit: Int): List<Track> = io {
+        val n = pageSize(limit)
+        val (op, dir) = if (oldestFirst) ">" to "ASC" else "<" to "DESC"
+        if (after == null) {
+            query("SELECT $TRACK_COLUMNS FROM tracks WHERE chat_id = ? ORDER BY message_id $dir LIMIT ?", chatId, n, map = ::readTrack)
+        } else {
+            query(
+                "SELECT $TRACK_COLUMNS FROM tracks WHERE chat_id = ? AND message_id $op ? ORDER BY message_id $dir LIMIT ?",
+                chatId, after, n, map = ::readTrack,
+            )
+        }
+    }
+
+    /** The files of [chatId] among [messageIds] the index holds, by message id; at most [MAX_PAGE] asked. */
+    suspend fun chatTracksByIds(chatId: Long, messageIds: Collection<Long>): Map<Long, Track> = io {
+        val out = HashMap<Long, Track>()
+        for (part in messageIds.distinct().take(MAX_PAGE).chunked(ID_CHUNK)) {
+            query(
+                "SELECT $TRACK_COLUMNS FROM tracks WHERE chat_id = ? AND message_id IN (${part.joinToString { "?" }})",
+                chatId, *part.toTypedArray(), map = ::readTrack,
+            ).forEach { out[it.messageId] = it }
+        }
+        out
+    }
+
+    /**
+     * Up to [limit] files waiting for their tags whose duration is not known (audio sent as a
+     * document, most lossless), newest post first: the tag reader reads these before the rest.
+     */
+    suspend fun pendingDocuments(limit: Int): List<Track> = io {
+        query(
+            "SELECT $TRACK_COLUMNS FROM tracks WHERE tag_state = ? AND duration_ms = 0 ORDER BY date_sec DESC LIMIT ?",
+            TagState.TelegramOnly.name, pageSize(limit), map = ::readTrack,
+        )
     }
 
     /** Removes the given files (deleted messages) and rebuilds what they were part of. */
@@ -264,11 +355,11 @@ class LibraryIndex private constructor(
         val column = sortColumn(sort)
         val n = pageSize(limit)
         if (after == null) {
-            query("SELECT $SONG_COLUMNS FROM songs ORDER BY $column, song_key LIMIT ?", n, map = ::readSong)
+            query("SELECT $SONG_COLUMNS FROM songs WHERE 1 = 1${visible()} ORDER BY $column, song_key LIMIT ?", n, map = ::readSong)
         } else {
             val key: Any = if (sort == SongSort.Added) after.key.toLongOrNull() ?: Long.MIN_VALUE else after.key
             query(
-                "SELECT $SONG_COLUMNS FROM songs WHERE ($column, song_key) > (?, ?) ORDER BY $column, song_key LIMIT ?",
+                "SELECT $SONG_COLUMNS FROM songs WHERE ($column, song_key) > (?, ?)${visible()} ORDER BY $column, song_key LIMIT ?",
                 key, after.groupKey, n, map = ::readSong,
             )
         }
@@ -280,7 +371,7 @@ class LibraryIndex private constructor(
     }
 
     /** How many songs the library has, every set of versions counted once. */
-    suspend fun songCount(): Int = io { count("SELECT COUNT(*) FROM songs") }
+    suspend fun songCount(): Int = io { count("SELECT COUNT(*) FROM songs WHERE 1 = 1${visible()}") }
 
     /** How many audio files the library has, so "5,820 songs (7,311 files)" adds up. */
     suspend fun fileCount(): Int = io { count("SELECT COUNT(*) FROM tracks") }
@@ -300,6 +391,16 @@ class LibraryIndex private constructor(
     /** One page of albums by title, starting after [after]. */
     suspend fun albums(after: Album?, limit: Int): List<Album> = io {
         val n = pageSize(limit)
+        val count = albumVisibleCount()
+        if (count != null) {
+            val keyset = if (after == null) "" else "(a.title_sort, a.album_key) > (?, ?) AND "
+            val args: List<Any?> = if (after == null) listOf(n) else listOf(titleOrder(after.title), after.key, n)
+            return@io query(
+                "SELECT a.album_key, a.title, a.artist, a.year, $count, a.thumb_file_id, a.cover_key FROM albums a " +
+                    "WHERE $keyset$count > 0 ORDER BY a.title_sort, a.album_key LIMIT ?",
+                *args.toTypedArray(), map = ::readAlbum,
+            )
+        }
         if (after == null) {
             query("SELECT $ALBUM_COLUMNS FROM albums ORDER BY title_sort, album_key LIMIT ?", n, map = ::readAlbum)
         } else {
@@ -317,7 +418,7 @@ class LibraryIndex private constructor(
             SELECT ${SONG_COLUMNS.split(", ").joinToString { "s.$it" }} FROM songs s JOIN (
                 SELECT song_key, MIN(disc_number * 100000 + track_number) AS position FROM tracks
                 WHERE album_key = ? GROUP BY song_key
-            ) t ON s.song_key = t.song_key ORDER BY t.position, s.title_sort, s.song_key LIMIT ?
+            ) t ON s.song_key = t.song_key WHERE 1 = 1${visible("s.")} ORDER BY t.position, s.title_sort, s.song_key LIMIT ?
             """,
             albumKey, listSize(limit), map = ::readSong,
         )
@@ -326,6 +427,16 @@ class LibraryIndex private constructor(
     /** One page of artists by name, starting after [after]. Files with no artist are in no artist. */
     suspend fun artists(after: Artist?, limit: Int): List<Artist> = io {
         val n = pageSize(limit)
+        val counts = artistVisibleCounts()
+        if (counts != null) {
+            val keyset = if (after == null) "" else "(r.name_sort, r.artist_key) > (?, ?) AND "
+            val args: List<Any?> = if (after == null) listOf(n) else listOf(sortOrLast(after.name), after.key, n)
+            return@io query(
+                "SELECT r.artist_key, r.name, ${counts.first}, ${counts.second} FROM artists r " +
+                    "WHERE $keyset${counts.first} > 0 ORDER BY r.name_sort, r.artist_key LIMIT ?",
+                *args.toTypedArray(), map = ::readArtist,
+            )
+        }
         if (after == null) {
             query("SELECT $ARTIST_COLUMNS FROM artists ORDER BY name_sort, artist_key LIMIT ?", n, map = ::readArtist)
         } else {
@@ -339,7 +450,7 @@ class LibraryIndex private constructor(
     /** The songs of one artist by title: every song with a version whose credit names the artist. */
     suspend fun artistSongs(artistKey: String, limit: Int = MAX_LIST): List<Song> = io {
         query(
-            "SELECT $SONG_COLUMNS FROM songs WHERE song_key IN (SELECT song_key FROM track_artists WHERE artist_key = ?) " +
+            "SELECT $SONG_COLUMNS FROM songs WHERE song_key IN (SELECT song_key FROM track_artists WHERE artist_key = ?)${visible()} " +
                 "ORDER BY title_sort, song_key LIMIT ?",
             artistKey, listSize(limit), map = ::readSong,
         )
@@ -373,7 +484,7 @@ class LibraryIndex private constructor(
     /** One page of the songs that have a version in [chatId], by title (the "From: one chat" filter). */
     suspend fun chatSongs(chatId: Long, after: SongCursor?, limit: Int): List<Song> = io {
         val n = pageSize(limit)
-        val inChat = "song_key IN (SELECT song_key FROM tracks WHERE chat_id = ?)"
+        val inChat = "song_key IN (SELECT song_key FROM tracks WHERE chat_id = ?)${visible()}"
         if (after == null) {
             query("SELECT $SONG_COLUMNS FROM songs WHERE $inChat ORDER BY title_sort, song_key LIMIT ?", chatId, n, map = ::readSong)
         } else {
@@ -383,6 +494,15 @@ class LibraryIndex private constructor(
                 chatId, after.key, after.groupKey, n, map = ::readSong,
             )
         }
+    }
+
+    /** The song [id]'s file is a version of now, or null when the file is not in the index. */
+    suspend fun songOf(id: TrackId): Song? = io {
+        query(
+            "SELECT ${prefixed("s")} FROM tracks t JOIN songs s ON s.song_key = t.song_key " +
+                "WHERE t.chat_id = ? AND t.message_id = ? LIMIT 1",
+            id.chatId, id.messageId, map = ::readSong,
+        ).firstOrNull()
     }
 
     /** One file by its message, or null when it is not in the index. */
@@ -435,6 +555,43 @@ class LibraryIndex private constructor(
         }
     }
 
+    /**
+     * Gives rows stored by an older version the names a new scan would give them (2026-10-30): titles
+     * written with underscores, a leading hashtag mark or a clear track number ([TitleFallback.tidyTitle]),
+     * and artists that only say "unknown" ([TitleFallback.tidyArtist]). Only rows that may need it are
+     * read (one pass over the tracks table), and only the ones that change are written, through the
+     * same rebuild as a scan, so favourites and playlists follow their songs. Run when the index opens;
+     * a second run finds nothing to change. Returns how many files changed.
+     */
+    suspend fun tidyStoredNames(): Int = io { tidyStoredNamesLocked() }
+
+    private fun tidyStoredNamesLocked(): Int {
+        val placeholders = TitleFallback.PLACEHOLDER_ARTISTS.toList()
+        val marks = placeholders.joinToString { "?" }
+        val candidates = query(
+            "SELECT $TRACK_COLUMNS FROM tracks WHERE instr(title, '_') > 0 OR instr(title, '  ') > 0 OR " +
+                "substr(title, 1, 1) IN ('#', '(') OR title GLOB '[0-9]*' OR instr(artist, '_') > 0 OR " +
+                "substr(artist, 1, 1) = '#' OR lower(trim(artist)) IN ($marks) OR lower(trim(album_artist)) IN ($marks) " +
+                "LIMIT $MAX_ROWS",
+            *placeholders.toTypedArray(), *placeholders.toTypedArray(), map = ::readTrack,
+        )
+        val changed = candidates.mapNotNull { track ->
+            val title = TitleFallback.tidyTitle(track.title).ifEmpty { track.title }
+            val artist = TitleFallback.tidyArtist(track.artist)
+            val albumArtist = TitleFallback.tidyArtist(track.albumArtist)
+            if (title == track.title && artist == track.artist && albumArtist == track.albumArtist) return@mapNotNull null
+            track.copy(
+                title = title,
+                artist = artist,
+                albumArtist = albumArtist,
+                groupKey = GroupKey.of(title, artist, track.durationMs),
+                variant = GroupKey.variantOf(title),
+            )
+        }
+        changed.chunked(TIDY_BATCH).forEach { batch -> tx { upsertRows(batch) } }
+        return changed.size
+    }
+
     /** How many files wait for their tags, have them, and could not be read. */
     suspend fun tagCounts(): TagCounts = io {
         var pending = 0
@@ -484,6 +641,7 @@ class LibraryIndex private constructor(
             bitrateKbps = tags.bitrateKbps.takeIf { it > 0 } ?: track.bitrateKbps,
             sampleRate = tags.sampleRate.takeIf { it > 0 } ?: track.sampleRate,
             bitDepth = tags.bitDepth.takeIf { it > 0 } ?: track.bitDepth,
+            channels = tags.channels.takeIf { it > 0 } ?: track.channels,
             tagState = TagState.Read,
             coverKey = coverKey.ifBlank { track.coverKey },
             groupKey = GroupKey.of(title, artist, duration),
@@ -499,19 +657,47 @@ class LibraryIndex private constructor(
      */
     suspend fun letterIndex(sort: SongSort): List<Pair<Char, Int>> = io {
         if (sort == SongSort.Added) return@io emptyList()
+        // The GROUP BY reads every song (25 to 30 ms at 100,000), so it runs again only after a write.
+        letterCache[sort]?.takeIf { it.first == revision }?.let { return@io it.second }
         val column = sortColumn(sort)
-        val groups = query("SELECT substr($column, 1, 1), COUNT(*) FROM songs GROUP BY 1 ORDER BY 1 LIMIT $MAX_ROWS") {
+        val groups = query("SELECT substr($column, 1, 1), COUNT(*) FROM songs WHERE 1 = 1${visible()} GROUP BY 1 ORDER BY 1 LIMIT $MAX_ROWS") {
             text(it, 0) to it.getLong(1)
         }
-        val out = ArrayList<Pair<Char, Int>>()
-        val seen = HashSet<Char>()
-        var position = 0L
-        for ((first, count) in groups) {
-            val letter = letterOf(first)
-            if (seen.add(letter)) out += letter to position.toInt()
-            position += count
+        Letters.index(groups).also { letterCache[sort] = revision to it }
+    }
+
+    /**
+     * Up to [limit] songs in [sort] order starting at row [offset] (0 is the first), for a jump to a
+     * letter far down the list: the row at the offset is found by walking the sort index alone, then
+     * the page is read from there by key, so a jump to row 90,000 reads one page, not 90,000 rows.
+     */
+    suspend fun songsAt(sort: SongSort, offset: Int, limit: Int): List<Song> = io {
+        val column = sortColumn(sort)
+        val n = pageSize(limit)
+        if (offset <= 0) {
+            return@io query("SELECT $SONG_COLUMNS FROM songs ORDER BY $column, song_key LIMIT ?", n, map = ::readSong)
         }
-        out
+        val start = query(
+            "SELECT $column, song_key FROM songs ORDER BY $column, song_key LIMIT 1 OFFSET ?",
+            offset,
+        ) { (if (sort == SongSort.Added) it.getLong(0) else text(it, 0)) to text(it, 1) }.firstOrNull() ?: return@io emptyList()
+        query(
+            "SELECT $SONG_COLUMNS FROM songs WHERE ($column, song_key) >= (?, ?) ORDER BY $column, song_key LIMIT ?",
+            start.first, start.second, n, map = ::readSong,
+        )
+    }
+
+    /**
+     * Up to [limit] songs just before [before] in [sort] order, nearest last (so the page reads in list
+     * order), for scrolling up from a list that starts part way down.
+     */
+    suspend fun songsBefore(sort: SongSort, before: SongCursor, limit: Int): List<Song> = io {
+        val column = sortColumn(sort)
+        val key: Any = if (sort == SongSort.Added) before.key.toLongOrNull() ?: Long.MAX_VALUE else before.key
+        query(
+            "SELECT $SONG_COLUMNS FROM songs WHERE ($column, song_key) < (?, ?) ORDER BY $column DESC, song_key DESC LIMIT ?",
+            key, before.groupKey, pageSize(limit), map = ::readSong,
+        ).reversed()
     }
 
     // Going from a song to its album and artist
@@ -614,7 +800,7 @@ class LibraryIndex private constructor(
     suspend fun recentlyPlayed(limit: Int): List<Song> = io {
         query(
             "SELECT ${prefixed("s")}, MAX(p.at_sec) AS at, MAX(p.play_id) AS seq FROM plays p " +
-                "JOIN songs s ON s.song_key = ${resolved("p")} GROUP BY s.song_key ORDER BY at DESC, seq DESC LIMIT ?",
+                "JOIN songs s ON s.song_key = ${resolved("p")} WHERE 1 = 1${visible("s.")} GROUP BY s.song_key ORDER BY at DESC, seq DESC LIMIT ?",
             listSize(limit), map = ::readSong,
         )
     }
@@ -774,19 +960,24 @@ class LibraryIndex private constructor(
 
         // Songs are found through the narrow search index first, then read whole by key.
         val songKeys = this.query(
-            "SELECT song_key FROM songs WHERE ${where("search")} ORDER BY ${rank("search")}, search, song_key LIMIT ?",
+            "SELECT song_key FROM songs WHERE ${where("search")}${visible()} ORDER BY ${rank("search")}, search, song_key LIMIT ?",
             *args,
         ) { text(it, 0) }
         val songs = songKeys.mapNotNull { key ->
             this.query("SELECT $SONG_COLUMNS FROM songs WHERE song_key = ? LIMIT 1", key, map = ::readSong).firstOrNull()
         }
+        val albumCount = albumVisibleCount()
         val albums = this.query(
-            "SELECT $ALBUM_COLUMNS FROM albums WHERE ${where("search")} ORDER BY ${rank("search")}, search, album_key LIMIT ?",
+            "SELECT a.album_key, a.title, a.artist, a.year, ${albumCount ?: "a.song_count"}, a.thumb_file_id, a.cover_key " +
+                "FROM albums a WHERE ${where("a.search")}${albumCount?.let { " AND $it > 0" }.orEmpty()} " +
+                "ORDER BY ${rank("a.search")}, a.search, a.album_key LIMIT ?",
             *args, map = ::readAlbum,
         )
+        val artistCounts = artistVisibleCounts()
         val artists = this.query(
-            "SELECT $ARTIST_COLUMNS FROM artists WHERE ${where("name_sort")} " +
-                "ORDER BY ${rank("name_sort")}, name_sort, artist_key LIMIT ?",
+            "SELECT r.artist_key, r.name, ${artistCounts?.first ?: "r.song_count"}, ${artistCounts?.second ?: "r.album_count"} " +
+                "FROM artists r WHERE ${where("r.name_sort")}${artistCounts?.let { " AND ${it.first} > 0" }.orEmpty()} " +
+                "ORDER BY ${rank("r.name_sort")}, r.name_sort, r.artist_key LIMIT ?",
             *args, map = ::readArtist,
         )
         SearchResults(songs, albums, artists)
@@ -826,6 +1017,23 @@ class LibraryIndex private constructor(
             statements.clear()
             runCatching { db.close() }
         }
+    }
+
+    /**
+     * The songs an album (aliased a) still shows under [hiddenMask], as SQL, or null when nothing is
+     * hidden and the stored count holds. Counted through `tracks_album`, a page of albums at a time.
+     */
+    private fun albumVisibleCount(): String? {
+        val filter = visible("s.").ifEmpty { return null }
+        return "(SELECT COUNT(DISTINCT t.song_key) FROM tracks t JOIN songs s ON s.song_key = t.song_key " +
+            "WHERE t.album_key = a.album_key$filter)"
+    }
+
+    /** The songs and albums an artist (aliased r) still shows under [hiddenMask], or null when nothing is hidden. */
+    private fun artistVisibleCounts(): Pair<String, String>? {
+        val filter = visible("s.").ifEmpty { return null }
+        val from = "FROM track_artists x JOIN songs s ON s.song_key = x.song_key WHERE x.artist_key = r.artist_key$filter"
+        return "(SELECT COUNT(DISTINCT x.song_key) $from)" to "(SELECT COUNT(DISTINCT NULLIF(x.album_key, '')) $from)"
     }
 
     // Rebuilding what a write touched
@@ -934,12 +1142,14 @@ class LibraryIndex private constructor(
             versions.firstNotNullOfOrNull { v -> indexAlbumKey(v).takeIf { it.isNotEmpty() } }.orEmpty()
         }
         exec(
-            "INSERT OR REPLACE INTO songs($SONG_COLUMNS, base_key, title_sort, artist_sort, album_sort, added_neg, search) " +
-                "VALUES(${List(21) { "?" }.joinToString()})",
+            "INSERT OR REPLACE INTO songs($SONG_COLUMNS, base_key, title_sort, artist_sort, album_sort, added_neg, search, hide) " +
+                "VALUES(${List(22) { "?" }.joinToString()})",
             songKey, title, default.artist, default.album, duration, default.chatId, default.messageId,
             versionCount, best.name, thumb, cover, default.variant, added, albumKey, indexArtistKey(default),
             base, titleOrder(title), artistOrder(default.artist, title), albumOrder(default.album, title), -added,
             searchText(title, default.artist, default.album),
+            // Judged with the song's duration, so a document whose length a sibling knows is judged too.
+            ClipRules.bits(default.copy(durationMs = duration)),
         )
     }
 
@@ -1128,6 +1338,7 @@ class LibraryIndex private constructor(
     }
 
     private fun exec(sql: String, vararg args: Any?) {
+        revision++
         val statement = statement(sql, args)
         try {
             statement.step()
@@ -1181,14 +1392,18 @@ class LibraryIndex private constructor(
         private val REF_TABLES = listOf("favourites", "plays", "playlist_items")
 
         private const val MAX_VERSIONS = 500
+
+        /** Files [tidyStoredNames] rewrites per transaction. */
+        private const val TIDY_BATCH = 500
         private const val MAX_PAGE = 1_000
+        private const val ID_CHUNK = 200
         private const val MAX_LIST = 5_000
 
         private const val TRACK_COLUMNS =
             "chat_id, message_id, file_id, unique_id, file_name, mime, size_bytes, date_sec, title, artist, album, " +
                 "album_artist, year, track_number, disc_number, duration_ms, format, bitrate_kbps, sample_rate, " +
-                "bit_depth, tag_state, thumb_file_id, cover_key, group_key, variant"
-        private const val TRACK_COLUMN_COUNT = 25
+                "bit_depth, tag_state, thumb_file_id, cover_key, group_key, variant, channels"
+        private const val TRACK_COLUMN_COUNT = 26
         private const val SONG_COLUMNS =
             "song_key, title, artist, album, duration_ms, default_chat_id, default_message_id, version_count, " +
                 "best_format, thumb_file_id, cover_key, variant, added_sec, album_key, artist_key"
@@ -1221,7 +1436,12 @@ class LibraryIndex private constructor(
                     connect(":memory:")
                 }
             }
-            return LibraryIndex(db, pick, clusters)
+            val index = LibraryIndex(db, pick, clusters)
+            // Older rows get today's names; a failure here only leaves them as they were.
+            runCatching { index.lock.withLock { index.tidyStoredNamesLocked() } }
+                .onSuccess { if (it > 0) Logger.i(TAG, "tidied the names of $it stored files") }
+                .onFailure { Logger.w(TAG, "tidying stored names failed", it) }
+            return index
         }
 
         private fun connect(path: String): SQLiteConnection {
@@ -1293,11 +1513,6 @@ class LibraryIndex private constructor(
 
         private fun lyricsName(name: String): String = name.trim().lowercase(Locale.ROOT)
 
-        private fun letterOf(first: String): Char {
-            val c = first.firstOrNull() ?: return '#'
-            return if (!c.isSurrogate() && c.isLetter()) c.uppercaseChar() else '#'
-        }
-
         /** Text from a column, empty when the file holds NULL there. */
         private fun text(s: SQLiteStatement, i: Int): String = if (s.isNull(i)) "" else s.getText(i)
 
@@ -1308,6 +1523,7 @@ class LibraryIndex private constructor(
             t.chatId, t.messageId, t.fileId, t.uniqueId, t.fileName, t.mime, t.sizeBytes, t.dateSec, t.title,
             t.artist, t.album, t.albumArtist, t.year, t.trackNumber, t.discNumber, t.durationMs, t.format.name,
             t.bitrateKbps, t.sampleRate, t.bitDepth, t.tagState.name, t.thumbFileId, t.coverKey, base, t.variant,
+            t.channels,
         )
 
         private fun readTrack(s: SQLiteStatement) = Track(
@@ -1336,6 +1552,7 @@ class LibraryIndex private constructor(
             coverKey = text(s, 22),
             groupKey = text(s, 23),
             variant = text(s, 24),
+            channels = s.getLong(25).toInt(),
         )
 
         private fun readSong(s: SQLiteStatement) = Song(

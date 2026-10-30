@@ -2,6 +2,7 @@ package com.tmplayer.music.data
 
 import com.tmplayer.music.library.AudioKinds
 import com.tmplayer.music.library.ChatPick
+import com.tmplayer.music.library.ClipRules
 import com.tmplayer.music.lyrics.Lyrics
 import com.tmplayer.music.lyrics.LyricsParser
 import com.tmplayer.music.library.LibraryIndex
@@ -23,6 +24,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,34 +71,134 @@ object Library {
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready.asStateFlow()
 
-    private val paused = MutableStateFlow(false)
+    // What the app tells the library about the device, and the user's choices it keeps.
+
+    /** The connection, from Android; metered until it says otherwise (the safe default). */
+    private val net = MutableStateFlow(NetState.Metered)
+    private val foreground = MutableStateFlow(false)
+    private val playing = MutableStateFlow(false)
+
+    /**
+     * The user's choices kept across restarts (the Pause, mobile data, the clip switches, the data
+     * used, each chat page's order). In memory until [start] is given the app's store.
+     */
+    var choices: LibraryChoices = LibraryChoices(MemoryKeyValues())
+        private set
+
+    private val paused get() = choices.paused
+
+    /** The tag reader's policy of the moment ([TagPolicy]). */
+    lateinit var policy: StateFlow<ReadPolicy>
+        private set
 
     @Volatile
     private var started = false
 
-    fun start(folder: File) {
+    /**
+     * Starts the library in [folder], with the user's choices kept in [store] (a paused library
+     * starts paused). [lowRam] makes the tag reader's batches smaller.
+     */
+    fun start(folder: File, store: KeyValues = MemoryKeyValues(), lowRam: Boolean = false) {
         synchronized(this) {
             if (started) return
             started = true
         }
+        choices = LibraryChoices(store)
         dir = folder.apply { mkdirs() }
-        index = LibraryIndex.open(File(dir, "library.db").path)
+        index = LibraryIndex.open(File(dir, "library.db").path).also { it.hiddenMask = choices.hiddenMask }
         scanner = LibraryScanner(IndexScanStore(), ::fetchPage, scope)
+        if (choices.paused.value) scanner.pause()
+        policy = combine(net, choices.mobileAllowed, foreground, playing, choices.paused) { n, mobile, front, play, held ->
+            TagPolicy.policy(n, mobile, front || play, held)
+        }.stateIn(scope, SharingStarted.Eagerly, TagPolicy.policy(net.value, choices.mobileAllowed.value, false, choices.paused.value))
         enricher = TagEnricher(
             IndexTagStore(),
             TdFileBytes,
             DiskCovers(File(dir, "covers")),
             scope,
             lyrics = DiskCovers(File(dir, "lyrics")),
-            paused = paused,
+            paused = choices.paused,
             online = Td.connected,
             work = lowPriority,
+            policy = policy,
+            onBytes = { n -> choices.addTagBytes(n) },
+            batchSize = if (lowRam) TagEnricher.SMALL_BATCH else TagEnricher.BATCH,
         )
         scope.launch {
             Td.auth.map { it is AuthState.Ready }.distinctUntilChanged().collect { signedIn ->
                 if (signedIn) onSignedIn() else _ready.value = false
             }
         }
+        // A policy that allows more (Wi-Fi came, the app came back, the user said yes) starts the reader.
+        scope.launch {
+            policy.drop(1).collect { if (it.documents || it.trickle) enricher.kick() }
+        }
+    }
+
+    /** The connection Android reports now. */
+    fun setNetwork(state: NetState) {
+        net.value = state
+    }
+
+    /** Whether one of the app's screens is on screen; leaving saves the data used count. */
+    fun setForeground(on: Boolean) {
+        foreground.value = on
+        if (!on) choices.flush()
+    }
+
+    /** Whether the player is playing. */
+    fun setPlaying(on: Boolean) {
+        playing.value = on
+    }
+
+    /** The user's answer about mobile data, from the one time question or Settings. */
+    fun setMobileAllowed(allowed: Boolean) {
+        choices.setMobileAllowed(allowed)
+    }
+
+    /** The Settings switches for short clips and voice files; the open lists read again. */
+    fun setShowClips(showShort: Boolean = choices.showShort.value, showVoice: Boolean = choices.showVoice.value) {
+        choices.setShowShort(showShort)
+        choices.setShowVoice(showVoice)
+        val mask = choices.hiddenMask
+        runCatching { index.hiddenMask = mask }
+        // Open chat pages keep their rows and filter them again on this change.
+        _changes.value++
+    }
+
+    /**
+     * True while the one time "Read track details on mobile data too?" question should be asked: on
+     * mobile data, never answered, files waiting.
+     */
+    fun askMobile(): Flow<Boolean> =
+        combine(net, choices.mobileAsked, enricher.status) { n, asked, tags -> TagPolicy.shouldAsk(n, asked, tags.counts.pending) }
+            .distinctUntilChanged()
+
+    // Chat pages
+
+    private val loaders = object : java.util.LinkedHashMap<Pair<Long, ChatOrder>, ChatLoader>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<Long, ChatOrder>, ChatLoader>?) = size > MAX_LOADERS
+    }
+
+    /**
+     * The page of one chat in [order], kept for the last few chats opened, so turning the phone or
+     * coming back to the chat shows what was loaded where it was scrolled to.
+     */
+    fun chatLoader(chatId: Long, order: ChatOrder): ChatLoader = synchronized(loaders) {
+        loaders.getOrPut(chatId to order) {
+            ChatLoader(
+                chatId = chatId,
+                order = order,
+                store = IndexChatStore,
+                feedOf = { o, onWait -> ChatFeed(o, { pass, from, offset, limit -> fetchChatPage(chatId, pass, from, offset, limit) }, onWait) },
+                online = Td.connected,
+                hiddenMask = { choices.hiddenMask },
+            )
+        }
+    }
+
+    private fun dropLoaders(chatId: Long? = null) = synchronized(loaders) {
+        if (chatId == null) loaders.clear() else loaders.keys.removeAll { it.first == chatId }
     }
 
     /** The index, once the account check is done. */
@@ -140,7 +244,10 @@ object Library {
     suspend fun pick(chats: List<ChatPick>) {
         val before = index().pickedChats().map { it.chatId }.toSet()
         val after = chats.map { it.chatId }.toSet()
-        (before - after).forEach(scanner::forget)
+        (before - after).forEach {
+            scanner.forget(it)
+            dropLoaders(it)
+        }
         index().setPicked(chats)
         _changes.value++
         scanner.scan(after.toList())
@@ -150,6 +257,7 @@ object Library {
     suspend fun removeChat(chatId: Long) {
         scanner.forget(chatId)
         index().removeChat(chatId)
+        dropLoaders(chatId)
         _changes.value++
     }
 
@@ -158,31 +266,36 @@ object Library {
         scanner.scan(index().pickedChats().map { it.chatId })
     }
 
+    /** Pauses the scan and the tag reader, until Resume, across restarts. */
     fun pause() {
-        paused.value = true
+        choices.setPaused(true)
         scanner.pause()
     }
 
     fun resume() {
-        paused.value = false
+        choices.setPaused(false)
         scanner.resume()
         enricher.kick()
     }
 
     /** True while the user paused the scan and the tag reader. */
-    val isPaused: StateFlow<Boolean> = paused.asStateFlow()
+    val isPaused: StateFlow<Boolean> get() = choices.paused
 
     /**
      * What the banner and Settings say, at most twice a second: the scanner and the tag reader
      * change their status far more often than anyone can read. Quiet while nothing changes.
      */
     fun view(): Flow<LibraryView> =
-        combine(scanner.status, enricher.status, paused, Td.connected) { scan, tags, held, online ->
-            LibraryStatus.view(scan, tags, held, online)
+        combine(scanner.status, enricher.status, paused, Td.connected, wifiHold()) { scan, tags, held, online, wifi ->
+            LibraryStatus.view(scan, tags, held, online, heldForWifi = wifi)
         }.distinctUntilChanged().conflate().transform {
             emit(it)
             delay(VIEW_GAP_MS)
         }
+
+    /** True while the background reading waits for Wi-Fi: on mobile data without the user's yes. */
+    private fun wifiHold(): Flow<Boolean> =
+        combine(net, choices.mobileAllowed) { n, mobile -> n == NetState.Metered && !mobile }.distinctUntilChanged()
 
     /** Puts the files whose tags could not be read back in the queue and starts reading. */
     suspend fun retryFailedTags() {
@@ -242,8 +355,9 @@ object Library {
         File(dir, "covers").deleteRecursively()
         File(dir, "lyrics").deleteRecursively()
         lyricsCache.evictAll()
+        dropLoaders()
         File(dir, ACCOUNT_FILE).delete()
-        index = LibraryIndex.open(File(dir, "library.db").path)
+        index = LibraryIndex.open(File(dir, "library.db").path).also { it.hiddenMask = choices.hiddenMask }
         _changes.value++
     }
 
@@ -297,6 +411,8 @@ object Library {
 
         override suspend fun pendingAmong(ids: Collection<TrackId>): List<Track> = index().pendingAmong(ids)
 
+        override suspend fun pendingDocuments(limit: Int): List<Track> = index().pendingDocuments(limit)
+
         override suspend fun applyTags(results: List<TagResult>) {
             if (results.isEmpty()) return
             index().applyTags(results)
@@ -304,6 +420,48 @@ object Library {
         }
 
         override suspend fun counts(): TagCounts = index().tagCounts()
+    }
+
+    private object IndexChatStore : ChatStore {
+        override suspend fun scanDone(chatId: Long): Boolean? =
+            index().pickedChat(chatId)?.scan?.let { it.audio.done && it.documents.done }
+
+        override suspend fun indexPage(chatId: Long, oldestFirst: Boolean, after: Long?, limit: Int): List<Track> =
+            index().chatTracks(chatId, oldestFirst, after, limit)
+
+        override suspend fun byIds(chatId: Long, messageIds: Collection<Long>): Map<Long, Track> =
+            index().chatTracksByIds(chatId, messageIds)
+
+        override suspend fun addMissing(tracks: List<Track>) {
+            FileIds.prime(tracks)
+            if (index().upsertMissing(tracks) > 0) notifyChangedSoon()
+        }
+    }
+
+    /**
+     * One page of a chat page's audio or document search, mapped: newest first from [from] with
+     * [offset] 0, or the page after [from] with a negative [offset] (oldest first). A flood wait is
+     * handed back for [ChatFeed] to wait out.
+     */
+    private suspend fun fetchChatPage(chatId: Long, pass: ScanPass, from: Long, offset: Int, limit: Int): PageResult {
+        val td: TdlClient = withTimeoutOrNull(CHAT_CONNECT_MS) { Td.awaitAuthorizedSession().client }
+            ?: return PageResult.Failed(L_NOT_CONNECTED)
+        val filter = if (pass == ScanPass.Audio) SearchMessagesFilterAudio() else SearchMessagesFilterDocument()
+        val result = withTimeoutOrNull(PAGE_TIMEOUT_MS) {
+            td.searchChatMessages(chatId, null, "", null, from, offset, limit, filter)
+        } ?: return PageResult.Failed("timeout")
+        return when (result) {
+            is TdlResult.Success -> {
+                val messages = result.result.messages.toList()
+                PageResult.Page(
+                    messageIds = messages.map { it.id },
+                    items = messages.mapNotNull { runCatching { TrackMapper.fromMessage(it) }.getOrNull() },
+                    nextFromMessageId = result.result.nextFromMessageId,
+                )
+            }
+            is TdlResult.Failure -> Failures.floodWaitSeconds(result.message)?.let { PageResult.FloodWait(it) }
+                ?: PageResult.Failed(result.message)
+        }
     }
 
     /** One page of a chat's audio or document search, mapped. */
@@ -333,6 +491,8 @@ object Library {
     private const val ACCOUNT_FILE = "account"
     private const val PAGE_TIMEOUT_MS = 30_000L
     private const val L_NOT_CONNECTED = "NETWORK_ERROR"
+    private const val CHAT_CONNECT_MS = 20_000L
+    private const val MAX_LOADERS = 4
 }
 
 /** A held answer, so "no lyrics" is remembered too. */

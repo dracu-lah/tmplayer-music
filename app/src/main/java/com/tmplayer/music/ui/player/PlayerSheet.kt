@@ -126,6 +126,14 @@ class PlayerSheetController internal constructor() {
      * composited again on every frame of the seek bar's wave for nothing).
      */
     internal var covering by mutableStateOf(false)
+
+    /** Counts requests to open Now Playing from outside the sheet (the Continue card on Home). */
+    internal var expandRequests by mutableIntStateOf(0)
+
+    /** Opens Now Playing, as a tap on the mini-player does. Nothing happens without a queue. */
+    fun expand() {
+        expandRequests++
+    }
 }
 
 val LocalPlayerSheet = staticCompositionLocalOf<PlayerSheetController?> { null }
@@ -222,6 +230,14 @@ private fun PlayerSheet(
         SideEffect { controller.covering = covering }
         DisposableEffect(controller) { onDispose { controller.covering = false } }
         val expandedOrGoing = sheet.targetValue == SheetValue.Expanded || sheet.settledValue == SheetValue.Expanded
+        // A request from outside (the Continue card); the count only moves on a tap, so this is idle.
+        var handledExpand by remember { mutableIntStateOf(controller.expandRequests) }
+        LaunchedEffect(controller.expandRequests) {
+            if (controller.expandRequests != handledExpand) {
+                handledExpand = controller.expandRequests
+                runCatching { sheet.animateTo(SheetValue.Expanded, spatial) }
+            }
+        }
 
         // Swiped away (paused only): stop and clear. The host snaps the sheet back once the queue is gone.
         LaunchedEffect(sheet.settledValue) {

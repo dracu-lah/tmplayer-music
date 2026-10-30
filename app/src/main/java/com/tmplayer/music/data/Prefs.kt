@@ -4,8 +4,12 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.tmplayer.music.data.CachePolicy
 
-/** The few flags the app keeps outside the library: has the user seen Welcome, picked chats once. */
-class Prefs(context: Context) {
+/**
+ * The few flags the app keeps outside the library (has the user seen Welcome, picked chats once),
+ * and the store the library keeps the user's choices in ([LibraryChoices]: the Pause, mobile data,
+ * the clip switches, the data used, each chat page's order).
+ */
+class Prefs(context: Context) : KeyValues {
     private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences("app", Context.MODE_PRIVATE)
 
     var welcomed: Boolean
@@ -26,6 +30,18 @@ class Prefs(context: Context) {
     fun cacheCeiling(weakDevice: Boolean): Long = prefs.getLong(CACHE_CEILING, CachePolicy.defaultCeiling(weakDevice))
 
     fun setCacheCeiling(bytes: Long) = prefs.edit().putLong(CACHE_CEILING, bytes).apply()
+
+    override fun getBoolean(key: String, default: Boolean): Boolean = prefs.getBoolean(key, default)
+
+    override fun putBoolean(key: String, value: Boolean) = prefs.edit().putBoolean(key, value).apply()
+
+    override fun getLong(key: String, default: Long): Long = prefs.getLong(key, default)
+
+    override fun putLong(key: String, value: Long) = prefs.edit().putLong(key, value).apply()
+
+    override fun getString(key: String): String? = prefs.getString(key, null)
+
+    override fun putString(key: String, value: String) = prefs.edit().putString(key, value).apply()
 
     private companion object {
         const val CACHE_CEILING = "cache_ceiling"

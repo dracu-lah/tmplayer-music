@@ -84,13 +84,36 @@ object SheetLogic {
 /**
  * When the wavy seek bar moves. It waves only while music plays, Now Playing is open and on screen,
  * the app is in the foreground, and motion is allowed. Paused, or with no known length, it is a flat
- * line, so nothing animates while idle.
+ * line, so nothing animates while idle. On a low memory phone or with Battery Saver on it keeps its
+ * shape but stands still.
  */
 object WaveLogic {
 
-    /** The wave's crest travels along the bar (an animation runs every frame). */
-    fun travels(playing: Boolean, resumed: Boolean, visible: Boolean, reducedMotion: Boolean, lengthKnown: Boolean): Boolean =
-        playing && resumed && visible && !reducedMotion && lengthKnown
+    /**
+     * Time between two steps of the travelling crest: about 15 a second. Each step redraws the
+     * window, and at 30 a second the wave cost about 57% of a core on a phone (2026-10-30); a crest
+     * moving a wavelength a second looks the same at 15.
+     */
+    const val STEP_MS = 66L
+
+    /** The wave's crest travels along the bar (a timed step runs every [STEP_MS]). */
+    fun travels(
+        playing: Boolean,
+        resumed: Boolean,
+        visible: Boolean,
+        reducedMotion: Boolean,
+        lengthKnown: Boolean,
+        stillDevice: Boolean = false,
+    ): Boolean = playing && resumed && visible && !reducedMotion && lengthKnown && !stillDevice
+
+    /** A phone that should not keep the wave moving: low on memory, or saving battery. */
+    fun stillDevice(lowRam: Boolean, powerSave: Boolean): Boolean = lowRam || powerSave
+
+    /** The crest's phase (0 to 1, one wavelength) after [elapsedMs]: one wavelength a second. */
+    fun nextPhase(phase: Float, elapsedMs: Long): Float {
+        val next = (phase + elapsedMs.coerceAtLeast(0) / 1_000f) % 1f
+        return if (next.isFinite() && next >= 0f) next else 0f
+    }
 
     /** The wave's height, 0 (flat) to 1. Drawn wavy while playing even when it may not travel. */
     fun amplitude(playing: Boolean, lengthKnown: Boolean, seeking: Boolean): Float =

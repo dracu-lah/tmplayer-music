@@ -117,6 +117,8 @@ data class Track(
     val groupKey: String = "",
     /** "live", "remix" and the like when the title says it is a different recording, blank otherwise. */
     val variant: String = "",
+    /** Audio channels from the tags (1 mono, 2 stereo), 0 when not known; for the voice file rule. */
+    val channels: Int = 0,
 ) {
     /** The row's identity in the index. */
     val id: TrackId get() = TrackId(chatId, messageId)

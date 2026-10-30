@@ -3,7 +3,16 @@ package com.tmplayer.music.data
 import com.tmplayer.music.i18n.L
 
 /** What the library is doing, in the order the banner and Settings name it. */
-enum class LibraryPhase { Scanning, Reading, Paused, Waiting, UpToDate }
+enum class LibraryPhase {
+    Scanning,
+    Reading,
+    Paused,
+    Waiting,
+
+    /** Track details wait for Wi-Fi (mobile data without the user's yes); no banner, Settings says so. */
+    WaitingWifi,
+    UpToDate,
+}
 
 /**
  * What the banner and the Settings state line show. [line] is the banner's sentence, [sub] a quieter
@@ -16,7 +25,7 @@ data class LibraryView(
     val progress: Float?,
 ) {
     /** The banner is hidden once everything is read and nothing runs. */
-    val showBanner: Boolean get() = phase != LibraryPhase.UpToDate
+    val showBanner: Boolean get() = phase != LibraryPhase.UpToDate && phase != LibraryPhase.WaitingWifi
 
     /** The short state for Settings. */
     val state: String
@@ -25,18 +34,22 @@ data class LibraryView(
             LibraryPhase.Reading -> L.settingsStateReading
             LibraryPhase.Paused -> L.settingsStatePaused
             LibraryPhase.Waiting -> L.settingsStateWaiting
+            LibraryPhase.WaitingWifi -> L.chatfirstStateWaitingWifi
             LibraryPhase.UpToDate -> L.settingsStateUpToDate
         }
 }
 
 /**
  * Decides the words from the scanner's and the tag reader's status: plain logic, so it is tested
- * without a screen. [paused] is the user's Pause, [online] whether Telegram is connected.
+ * without a screen. [paused] is the user's Pause, [online] whether Telegram is connected, and
+ * [heldForWifi] whether the background reading waits for Wi-Fi. Reading only what is on screen or
+ * about to play ([EnrichStatus.background] false) is too small to announce.
  */
 object LibraryStatus {
-    fun view(scan: ScanStatus, tags: EnrichStatus, paused: Boolean, online: Boolean): LibraryView {
+    fun view(scan: ScanStatus, tags: EnrichStatus, paused: Boolean, online: Boolean, heldForWifi: Boolean = false): LibraryView {
         val counts = tags.counts
-        val busy = scan.running || tags.running
+        val reading = tags.running && tags.background
+        val busy = scan.running || reading
         val tagProgress = if (counts.total > 0) counts.finished.toFloat() / counts.total else null
         return when {
             paused && (busy || counts.pending > 0) -> LibraryView(
@@ -56,10 +69,16 @@ object LibraryStatus {
                     scan.chatsDone.toFloat() / total,
                 )
             }
-            tags.running -> LibraryView(
+            reading -> LibraryView(
                 LibraryPhase.Reading,
                 L.scanReading(counts.finished, counts.total),
                 L.scanKeepListening,
+                tagProgress,
+            )
+            heldForWifi && counts.pending > 0 -> LibraryView(
+                LibraryPhase.WaitingWifi,
+                L.chatfirstHeldForWifi(counts.pending),
+                null,
                 tagProgress,
             )
             else -> LibraryView(LibraryPhase.UpToDate, L.settingsStateUpToDate, null, null)

@@ -12,7 +12,7 @@ import androidx.sqlite.execSQL
 internal object IndexSchema {
 
     /** Raised whenever a table or an index changes; [MIGRATIONS] carries an older file forward. */
-    const val VERSION = 2
+    const val VERSION = 3
 
     /**
      * Steps from one version to the next, keyed by the version they start from. Each step commits
@@ -30,6 +30,7 @@ internal object IndexSchema {
             }
         },
         1 to ::splitArtistsV2,
+        2 to ::clipsV3,
     )
 
     /** Tracks the version 2 step reads per transaction, so 100,000 tracks are 50 short commits. */
@@ -331,6 +332,72 @@ internal object IndexSchema {
             setVersion(db, 2)
         }
     }
+
+    /**
+     * Version 3: short clips and voice style files ([ClipRules]). `tracks.channels` keeps the channel
+     * count the tags give, and `songs.hide` the song's [ClipRules] bits, so the lists filter with a
+     * mask read at query time and never rewrite a table when a switch changes. Adding a column with
+     * a default touches no row; the bits of the songs already stored are filled in batches of
+     * [ARTIST_BATCH] in key order (only songs of known duration can have any), each batch its own
+     * transaction, and the last one sets the version. Safe to run twice: a column already there is
+     * left alone.
+     */
+    private fun clipsV3(db: SQLiteConnection) {
+        inTransaction(db) {
+            if (!hasColumn(db, "tracks", "channels")) db.execSQL("ALTER TABLE tracks ADD COLUMN channels INTEGER NOT NULL DEFAULT 0")
+            if (!hasColumn(db, "songs", "hide")) db.execSQL("ALTER TABLE songs ADD COLUMN hide INTEGER NOT NULL DEFAULT 0")
+        }
+        val read = db.prepare(
+            "SELECT s.song_key, s.duration_ms, t.file_name, t.format, t.bitrate_kbps FROM songs s " +
+                "LEFT JOIN tracks t ON t.chat_id = s.default_chat_id AND t.message_id = s.default_message_id " +
+                "WHERE s.song_key > ? AND s.duration_ms > 0 ORDER BY s.song_key LIMIT $ARTIST_BATCH",
+        )
+        val write = db.prepare("UPDATE songs SET hide = ? WHERE song_key = ?")
+        try {
+            var after = ""
+            while (true) {
+                var count = 0
+                inTransaction(db) {
+                    read.reset()
+                    read.bindText(1, after)
+                    val bits = ArrayList<Pair<String, Int>>()
+                    while (read.step()) {
+                        count++
+                        val key = read.getText(0)
+                        after = key
+                        val duration = read.getLong(1)
+                        val name = if (read.isNull(2)) "" else read.getText(2)
+                        val format = if (read.isNull(3)) "" else read.getText(3)
+                        val kbps = if (read.isNull(4)) 0 else read.getLong(4).toInt()
+                        val audio = AudioFormat.entries.firstOrNull { it.name == format } ?: AudioFormat.OTHER
+                        val value = (if (ClipRules.isShort(duration)) ClipRules.SHORT else 0) or
+                            (if (ClipRules.isVoiceStyle(name, audio, duration, kbps, 0)) ClipRules.VOICE else 0)
+                        if (value != 0) bits += key to value
+                    }
+                    read.reset()
+                    for ((key, value) in bits) {
+                        write.reset()
+                        write.bindLong(1, value.toLong())
+                        write.bindText(2, key)
+                        write.step()
+                    }
+                    write.reset()
+                }
+                if (count < ARTIST_BATCH) break
+            }
+        } finally {
+            runCatching { read.close() }
+            runCatching { write.close() }
+        }
+        inTransaction(db) { setVersion(db, 3) }
+    }
+
+    private fun hasColumn(db: SQLiteConnection, table: String, column: String): Boolean =
+        db.prepare("PRAGMA table_info($table)").use { s ->
+            var found = false
+            while (s.step()) if (s.getText(1) == column) found = true
+            found
+        }
 
     private class StoredCredit(
         val chatId: Long,

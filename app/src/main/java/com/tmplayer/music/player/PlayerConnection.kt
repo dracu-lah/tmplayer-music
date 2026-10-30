@@ -33,6 +33,13 @@ data class PlayerState(
 }
 
 /**
+ * Which song the lists mark as playing: its key and whether it plays or is paused. It changes only
+ * when the song or play and pause do, never with the position, so a list that watches it is not
+ * redrawn while a track plays.
+ */
+data class PlayingMark(val songKey: String, val playing: Boolean)
+
+/**
  * The app's one connection to [PlaybackService]. The screens send commands through it and read
  * [state]; the service does the rest, so playback goes on when the screens are gone.
  */
@@ -44,6 +51,11 @@ object PlayerConnection {
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
+
+    private val _mark = MutableStateFlow<PlayingMark?>(null)
+
+    /** The song the lists mark; null with an empty queue. */
+    val mark: StateFlow<PlayingMark?> = _mark.asStateFlow()
 
     /** The queue's items, read when the queue screen asks. */
     fun queue(): List<MediaItem> = controller?.let { c -> (0 until c.mediaItemCount).map { c.getMediaItemAt(it) } }.orEmpty()
@@ -84,6 +96,11 @@ object PlayerConnection {
             hasNext = p.hasNextMediaItem(),
             hasPrevious = p.hasPreviousMediaItem() || p.currentPosition > 3_000,
         )
+        // StateFlow drops an equal value, so only a new song or play and pause reach the lists.
+        _mark.value = p.currentMediaItem?.mediaId
+            ?.let { MediaIds.item(it)?.songKey }
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { PlayingMark(it, p.isPlaying || (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING)) }
     }
 
     /** An item the service resolves by id from the index (see [PlaybackService]). */
