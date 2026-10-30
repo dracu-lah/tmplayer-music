@@ -26,7 +26,9 @@ export const SOFTWARE_APP = {
   applicationCategory: 'MultimediaApplication',
   operatingSystem: 'Android 6.0 or later',
   image: `${ORIGIN}/icon-512.png`,
-  // At launch: add softwareVersion, downloadUrl (the GitHub release APK) and screenshot.
+  softwareVersion: '0.1.0',
+  downloadUrl: 'https://github.com/dracu-lah/tmplayer-music/releases/latest',
+  screenshot: `${ORIGIN}/screenshots/home.webp`,
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
   author: { '@type': 'Person', name: 'dracu-lah', url: 'https://github.com/dracu-lah' },
   license: 'https://www.gnu.org/licenses/gpl-3.0.html',

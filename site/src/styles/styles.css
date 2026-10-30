@@ -177,6 +177,8 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .home .mark { margin-bottom: 1.5rem; }
 .home .chip-in { max-width: 40rem; }
+.home .features { max-width: 40rem; margin-top: 2.5rem; }
+.home .features ul { padding-left: 1.25rem; display: grid; gap: .5rem; }
 
 /* The sibling app's card: one flat surface, no border, the logo at its source size. */
 .sibling { margin: 3.5rem 0 1rem; max-width: 40rem; }
