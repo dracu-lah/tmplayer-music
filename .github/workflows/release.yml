@@ -149,7 +149,7 @@ jobs:
           ls -la "$(dirname "$SRC")"
           SIGN="$("$BT/apksigner" verify --print-certs "$SRC" 2>&1 || true)"
           echo "$SIGN" | grep -vE '^WARNING' | head -n 20
-          if ! echo "$SIGN" | grep -qE '^Signer #1 certificate (DN|SHA-256)'; then
+          if ! echo "$SIGN" | grep -qE 'Signer.*certificate (DN|SHA-256)'; then
             echo "::error::The APK is not signed with the release key (apksigner output above)"
             exit 1
           fi
