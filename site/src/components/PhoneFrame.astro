@@ -5,8 +5,7 @@
 // or a parent; 280px when unset).
 //
 // The images are the ones scripts/prepare-screenshots.py writes to public/screenshots/: each screen
-// at 1080 x 2400 and 540 x 1200, in light and dark. theme="auto" follows prefers-color-scheme with a
-// <source>; the gallery's toggle flips that source's media (see index.astro), nothing else.
+// at 1080 x 2400 and 540 x 1200, in the app's one pure black look.
 //
 // scripts/prepare-screenshots.py reads this <style> block to draw the README's framed phones, so
 // keep the class names (.pf, .pf-body, .pf-screen, .pf-cam, .pf-btn) and plain selectors.
@@ -15,7 +14,6 @@ interface Props {
   screen: string;
   /** what the screenshot shows, for screen readers */
   alt: string;
-  theme?: 'auto' | 'light' | 'dark';
   /** the hero's phones: loaded at once instead of lazily */
   eager?: boolean;
   /** the hero's front phone: fetched first */
@@ -25,29 +23,24 @@ interface Props {
   class?: string;
   style?: string;
 }
-const { screen, alt, theme = 'auto', eager = false, priority = false, sizes = '280px', class: className, style } = Astro.props;
-const set = (t: string) => `/screenshots/${screen}-${t}-540.webp 540w, /screenshots/${screen}-${t}.webp 1080w`;
-const base = theme === 'dark' ? 'dark' : 'light';
+const { screen, alt, eager = false, priority = false, sizes = '280px', class: className, style } = Astro.props;
 ---
 <div class:list={['pf', className]} style={style}>
   <div class="pf-body">
     <span class="pf-btn pf-btn-power" aria-hidden="true"></span>
     <span class="pf-btn pf-btn-vol" aria-hidden="true"></span>
     <div class="pf-screen">
-      <picture>
-        {theme === 'auto' && <source media="(prefers-color-scheme: dark)" srcset={set('dark')} sizes={sizes} data-pf-dark />}
-        <img
-          src={`/screenshots/${screen}-${base}-540.webp`}
-          srcset={set(base)}
-          sizes={sizes}
-          width="1080"
-          height="2400"
-          alt={alt}
-          loading={eager ? 'eager' : 'lazy'}
-          fetchpriority={priority ? 'high' : 'auto'}
-          decoding="async"
-        />
-      </picture>
+      <img
+        src={`/screenshots/${screen}-540.webp`}
+        srcset={`/screenshots/${screen}-540.webp 540w, /screenshots/${screen}.webp 1080w`}
+        sizes={sizes}
+        width="1080"
+        height="2400"
+        alt={alt}
+        loading={eager ? 'eager' : 'lazy'}
+        fetchpriority={priority ? 'high' : 'auto'}
+        decoding="async"
+      />
       <span class="pf-cam" aria-hidden="true"></span>
     </div>
   </div>

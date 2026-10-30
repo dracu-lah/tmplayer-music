@@ -141,6 +141,8 @@ SOFTWARE.
      (its export looks like an SVG Repo file, as TMPlayer's player mark is) and credit it here and in
      the README if it is not original. -->
 - The app icon and `art/logo.svg`: source to be confirmed.
+- The Buy Me a Coffee cup on the site (`site/public/brand/bmc-cup-on-yellow.svg`) is Buy Me a
+  Coffee's official artwork, used under their brand guidelines for the support links.
 
 ## Licence texts
 

@@ -33,25 +33,13 @@ until you pick the chat.
 ## Screenshots
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/readme-home-dark.webp" />
-    <img src="docs/screenshots/readme-home-light.webp" width="200" alt="Home" />
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/readme-albums-dark.webp" />
-    <img src="docs/screenshots/readme-albums-light.webp" width="200" alt="Albums" />
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/readme-nowplaying-dark.webp" />
-    <img src="docs/screenshots/readme-nowplaying-light.webp" width="200" alt="Now Playing" />
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/readme-queue-dark.webp" />
-    <img src="docs/screenshots/readme-queue-light.webp" width="200" alt="Queue" />
-  </picture>
+  <img src="docs/screenshots/readme-home.webp" width="200" alt="Home" />
+  <img src="docs/screenshots/readme-albums.webp" width="200" alt="Albums" />
+  <img src="docs/screenshots/readme-nowplaying.webp" width="200" alt="Now Playing" />
+  <img src="docs/screenshots/readme-lyrics.webp" width="200" alt="Lyrics" />
 </p>
 
-<p align="center"><sub>Home, Albums, Now Playing and the Queue, in your system's light or dark theme. The screenshots use demo data: every track, album and artist name in them is invented.</sub></p>
+<p align="center"><sub>Home, Albums, Now Playing and Lyrics. The screenshots use demo data: every track, album and artist name in them is invented.</sub></p>
 
 <!-- Made by scripts/prepare-screenshots.py from the captures of scripts/screenshots.sh. -->
 
@@ -145,7 +133,7 @@ A release build (`./gradlew :app:assembleRelease`) is signed only when a `keysto
 
 ## Read more
 
-- [Screenshots](#screenshots): Home, Albums, Now Playing and the Queue, light and dark.
+- [Screenshots](#screenshots): Home, Albums, Now Playing and Lyrics.
 - [Install guide](INSTALL.md): installing the APK, updating, troubleshooting.
 - [Contributing](CONTRIBUTING.md): setup, ground rules, style, how to report an issue.
 - [Security policy](SECURITY.md): how to report a security problem privately.

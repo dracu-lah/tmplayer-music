@@ -39,14 +39,14 @@ Cloudflare account wrangler is logged in to (`npx wrangler whoami`; `npx wrangle
 | `astro.config.mjs` | the build, and `tmHeaders`, which writes `dist/_headers` (security headers, caching, X-Robots-Tag) |
 | `src/layouts/Base.astro` | `<html>` and the whole `<head>`: canonical, robots, Open Graph, Twitter, icons, manifest |
 | `src/pages/index.astro`, `src/pages/support/index.astro`, `src/pages/404.astro` | the pages: home (with a small Chip in block), Support (English only, as tmplayer.org's) and 404 |
-| `src/components/PhoneFrame.astro` | a phone drawn in CSS (graphite body, punch hole, side buttons, shadow) around a screenshot, light and dark by `prefers-color-scheme`; `--pf-w` sets its width |
-| `public/screenshots/` | `<screen>-<light\|dark>.webp` (1080 x 2400) and `-540.webp`, written by `../scripts/prepare-screenshots.py` (below) |
+| `src/components/PhoneFrame.astro` | a phone drawn in CSS (graphite body, punch hole, side buttons, shadow) around one screenshot (srcset 540 and 1080); `--pf-w` sets its width |
+| `public/screenshots/` | `<screen>.webp` (1080 x 2400) and `<screen>-540.webp`, written by `../scripts/prepare-screenshots.py` (below) |
 | `src/components/Footer.astro`, `src/components/CoffeeButton.astro`, `src/lib/support.ts` | the footer and the support links: Buy Me a Coffee first in its own yellow (`public/brand/`, their official cup), GitHub Sponsors beside it |
 | `src/pages/sitemap.xml.ts`, `src/pages/robots.txt.ts` | the sitemap and robots.txt, both following `INDEXABLE` |
 | `src/lib/app-ld.ts` | the JSON-LD: `WebSite` always, `SoftwareApplication` only when indexable |
 | `src/components/JsonLd.astro` | writes a JSON-LD block |
 | `src/data/lastmod.json` | each page's sitemap entry; move `lastmod` when the page's content changes |
-| `src/styles/styles.css` | the stylesheet |
+| `src/styles/styles.css` | the stylesheet: one look, pure black with white text, as the app |
 | `public/` | served as is: icons (from the launcher icon), `og.png`, `site.webmanifest`, fonts, the IndexNow key file |
 | `../scripts/indexnow-site.py`, `../.github/workflows/indexnow.yml` | IndexNow, ready but idle until launch (below) |
 
@@ -56,19 +56,22 @@ Change `og.png` and bump `?v=` in `Base.astro`.
 
 ## Screenshots
 
-The hero's three phones and the gallery come from the debug build's demo library (invented names
-only). To redo them:
+The hero's three phones (Albums, Home in front, Now Playing) and the gallery come from the debug
+build's demo library (invented names only), in the app's one pure black look. To redo them:
 
 ```sh
-scripts/screenshots.sh /tmp/shots                     # the raw PNGs from a device, light and dark
-python3 scripts/prepare-screenshots.py /tmp/shots     # clean status bar, WebP q88, README frames
+scripts/screenshots.sh /tmp/shots                     # the raw <screen>.png captures from a device
+python3 scripts/prepare-screenshots.py /tmp/shots     # WebP q88 for the site, and the README frames
 ```
 
-`prepare-screenshots.py` replaces the top 120 px of each capture with a clean status bar (12:00,
-Wi-Fi, signal, full battery, in the theme's ink), writes `public/screenshots/` at two sizes, and
-renders `docs/screenshots/readme-*.webp` (the framed phones in the repository's README) with
-headless Chromium from the `<style>` of `PhoneFrame.astro`. WebP quality 88 is the only lossy
-step. Only the hero's phones load eagerly; the gallery's are lazy.
+The captures already have a clean status bar (12:00, Wi-Fi, full battery), so the script does not
+touch them: it writes `public/screenshots/<screen>.webp` (1080 x 2400) and `<screen>-540.webp`
+(540 x 1200), and renders `docs/screenshots/readme-<screen>.webp` (Home, Albums, Now Playing and
+Lyrics, the framed phones in the repository's README) with headless Chromium from the `<style>` of
+`PhoneFrame.astro`, on a transparent background. WebP quality 88 is the only lossy step. Settings,
+Artist and Playlist are captured but not used. Only the hero's phones load eagerly; the gallery's
+are lazy. The gallery scrolls sideways with snap points and Previous and Next buttons, and never
+moves by itself.
 
 ## Attaching music.tmplayer.org (once, in the dashboard)
 
