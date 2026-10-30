@@ -1,8 +1,8 @@
 ---
-// The placeholder home page: what the app is in one line, the unofficial notice, the links, three
-// framed phones in the hero, a sideways gallery of screenshots, a small "Chip in" block (Buy Me a
-// Coffee first, as tmplayer.org has it), a card for the sibling app TMPlayer and the footer. No download button and no feature list
-// until there is a release to point at. It is noindex while INDEXABLE in site.config.mjs is false.
+// The home page: what the app is in one line, the unofficial notice, the links with a download
+// button for the latest release, three framed phones in the hero, a sideways gallery of screenshots,
+// a small "Chip in" block (Buy Me a Coffee first, as tmplayer.org has it), a card for the sibling app
+// TMPlayer and the footer. It is noindex while INDEXABLE in site.config.mjs is false.
 //
 // The screenshots come from scripts/prepare-screenshots.py (demo data, invented names), in the app's
 // one pure black look. The gallery scrolls sideways with snap points and has Previous and Next
@@ -33,8 +33,8 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
 ---
 <Base
   path="/"
-  title="TMPlayer Music: coming soon"
-  description="TMPlayer Music is a player for the audio files already in your own Telegram chats. It is still being built. Unofficial, not affiliated with Telegram."
+  title="TMPlayer Music: audio files from your Telegram chats"
+  description="TMPlayer Music is a player for the audio files already in your own Telegram chats. Free and open source for Android 6.0 and up. Unofficial, not affiliated with Telegram."
 >
   <Fragment slot="head">
     <JsonLd data={WEBSITE} />
@@ -45,12 +45,13 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
     <section class="hero" aria-labelledby="title">
       <div class="hero-text">
         <img class="mark" src="/favicon.svg" width="96" height="96" alt="">
-        <p class="eyebrow">Coming soon</p>
+        <p class="eyebrow">Version 0.1.0 for Android</p>
         <h1 id="title">TMPlayer Music</h1>
-        <p class="lede">A player for the audio files already in your own Telegram chats. It is still being built; below is how it looks so far.</p>
+        <p class="lede">A player for the audio files already in your own Telegram chats. Free and open source, for Android 6.0 and newer. Below is how it looks.</p>
         <p class="notice">Unofficial, not affiliated with Telegram.</p>
         <nav class="links" aria-label="Links">
-          <a class="link-primary" href={REPO}><Icon name="github" />Source on GitHub</a>
+          <a class="link-primary" href={`${REPO}/releases/latest`}><Icon name="download" />Download the APK</a>
+          <a href={REPO}><Icon name="github" />Source on GitHub</a>
           <a href="https://tmplayer.org/legal/"><Icon name="legal" />Legal</a>
           <a href="https://tmplayer.org/"><Icon name="play" />TMPlayer, for the videos in your chats</a>
         </nav>

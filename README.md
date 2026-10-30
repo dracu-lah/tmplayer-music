@@ -95,8 +95,8 @@ Keep offline.
 ## Install
 
 TMPlayer Music is not in any store yet. Builds are published on the
-[Releases](https://github.com/dracu-lah/tmplayer-music/releases) page; the first ones are test
-versions (`vX.Y.Z-beta.N`). On the phone, download `TMPlayerMusic-<version>.apk`, open it and allow
+[Releases](https://github.com/dracu-lah/tmplayer-music/releases) page; `vX.Y.Z` is a release and
+`vX.Y.Z-beta.N` a test version. On the phone, download `TMPlayerMusic-<version>.apk`, open it and allow
 the install. [INSTALL.md](INSTALL.md) has every step and what to do when something goes wrong.
 
 ## Build it yourself
