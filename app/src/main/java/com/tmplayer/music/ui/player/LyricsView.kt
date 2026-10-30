@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.diagnostics.rememberSendLogs
 import com.tmplayer.music.i18n.L
@@ -80,7 +81,8 @@ internal fun LyricsPanel(state: PlayerState, visible: Boolean) {
     val id = item?.id
     val songKey = item?.songKey.orEmpty()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val lifecycleState by lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+    // Not collectAsStateWithLifecycle: that stops collecting at the stop and could keep STARTED for good.
+    val lifecycleState by lifecycle.currentStateAsState()
     val shown = visible && lifecycleState.isAtLeast(Lifecycle.State.STARTED)
 
     val choices = LyricsOnline.choices

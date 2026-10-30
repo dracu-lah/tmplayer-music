@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.media3.common.MediaItem
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.player.PlaybackErrors
@@ -50,18 +51,26 @@ import com.tmplayer.music.ui.common.MusicIcons
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** The playing position, read from the player twice a second while it plays and not at all otherwise. */
+/**
+ * The playing position, read from the player twice a second while it plays and the app is on screen,
+ * and not at all otherwise.
+ */
 @Composable
 fun rememberPosition(state: PlayerState): Long = rememberPositionState(state).value
 
 /**
  * The same position as a [State], for callers that read it only where it is shown (a time Text, a
  * progress line drawn from a lambda), so a tick recomposes or redraws that alone, never its parent.
+ * Off screen (the activity stopped) it does not tick, so nothing recomposes in the background; it
+ * reads the position once again on coming back.
  */
 @Composable
 fun rememberPositionState(state: PlayerState): State<Long> {
     val position = remember { mutableLongStateOf(PlayerConnection.position()) }
-    LaunchedEffect(state.isPlaying, state.item?.mediaId, state.index) {
+    val lifecycle by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val started = lifecycle.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+    LaunchedEffect(state.isPlaying, state.item?.mediaId, state.index, started) {
+        if (!started) return@LaunchedEffect
         position.longValue = PlayerConnection.position()
         while (state.isPlaying) {
             delay(500)

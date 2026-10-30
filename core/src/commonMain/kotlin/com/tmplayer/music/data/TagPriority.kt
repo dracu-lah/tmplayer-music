@@ -33,9 +33,12 @@ data class ReadPolicy(
  *   bounded, and without them a paused library shows initials instead of covers.
  * - On-demand reads (on screen, about to play) are small and run on any connection.
  * - Documents with no known length run on Wi-Fi, and on mobile data up to [METERED_DOCUMENTS] files
- *   per app session unless the user said yes to mobile data.
+ *   per app session unless the user said yes to mobile data; only while the app is on screen.
  * - The background trickle runs only on an unmetered connection (or on mobile data after the user's
- *   yes), and only while the app is on screen or playing.
+ *   yes), and only while the app is on screen.
+ * - With the app off screen only the on-demand reads run, even while it plays: the paced trickle
+ *   still held 15 to 25% of a core there (TDLib's threads), for hours on a large library, and kept
+ *   running after a pause (Pixel, Android 17, 2026-10-30).
  * - Offline nothing is read; the reader waits for the connection as it always did, and starts again
  *   when the connection comes back.
  */
@@ -49,7 +52,7 @@ object TagPolicy {
         val cheap = net == NetState.Unmetered || mobileAllowed
         return ReadPolicy(
             onDemand = true,
-            documents = true,
+            documents = active,
             trickle = cheap && active,
             documentsCap = if (cheap) Int.MAX_VALUE else METERED_DOCUMENTS,
         )

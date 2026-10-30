@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG && intent?.getBooleanExtra(EXTRA_SUPPORT_REMINDER, false) == true) SupportReminder.forced = true
     }
 
-    // The tag reader's background trickle runs only while the app is on screen or playing.
+    // The tag reader's background reading (documents, trickle) runs only while the app is on screen.
     override fun onStart() {
         super.onStart()
         Library.setForeground(true)

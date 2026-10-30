@@ -63,7 +63,8 @@ class TagPolicyTest {
         assertEquals(Int.MAX_VALUE, yes.documentsCap)
 
         val background = TagPolicy.policy(NetState.Unmetered, mobileAllowed = false, active = false, paused = false)
-        assertFalse("the trickle runs only in the foreground or while playing", background.trickle)
+        assertFalse("the trickle runs only while the app is on screen", background.trickle)
+        assertFalse("documents are read only while the app is on screen", background.documents)
         assertTrue(background.onDemand)
 
         val offline = TagPolicy.policy(NetState.Offline, mobileAllowed = true, active = true, paused = false)

@@ -29,6 +29,7 @@ class MusicApp : Application() {
         Logger.sink = AndroidLogSink
         // The bounded log file and the crash record for Send logs; first, so later lines are kept.
         Diagnostics.install(this)
+        stopContentCapture()
         com.tmplayer.music.platform.HapticSetting.start(Prefs(this))
         // A debug build's demo library starts in place of the app (app/src/debug); never in a release.
         if (BuildHooks.startInstead(this)) return
@@ -44,5 +45,18 @@ class MusicApp : Application() {
         Storage.chosenCeiling = Prefs(this).cacheCeiling(weakDevice())
         // The once a day sponsor reminder job, only while its switch is on (off by default).
         SupportChecks.schedule(this)
+    }
+
+    /**
+     * Turns off Compose's content capture (the text on screen handed to the system's on-device
+     * intelligence service, where the phone has one). After each change of what is on screen it
+     * walks the whole semantics tree, the library under the player included, and the playing time
+     * changes it twice a second: on a Pixel (Android 17, 2026-10-30) that was a third of the main
+     * thread on Now Playing. It also keeps chat names and titles out of that service.
+     * Accessibility (TalkBack) is a separate path and is not touched.
+     */
+    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+    private fun stopContentCapture() {
+        androidx.compose.ui.contentcapture.ContentCaptureManager.isEnabled = false
     }
 }

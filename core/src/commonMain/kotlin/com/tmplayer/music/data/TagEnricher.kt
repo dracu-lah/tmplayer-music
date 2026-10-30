@@ -217,8 +217,9 @@ class TagEnricher(
                 // Read before the requests below, so one that comes while this round runs is not missed.
                 val seen = wake.value
                 val held = paused.value
+                val planned = policy.value
                 // The Pause stops the background only; what is on screen or about to play is still read.
-                val allowed = policy.value.let { if (held) it.copy(documents = false, trickle = false) else it }
+                val allowed = planned.let { if (held) it.copy(documents = false, trickle = false) else it }
                 val wanted = preferred
                 preferred = emptyList()
                 val next = upcoming
@@ -294,8 +295,11 @@ class TagEnricher(
                 results.forEach { attempts.remove(it.id) }
                 refreshCounts()
                 val restMs = if (background == 0) gapMs else TricklePacing.restAfter(clock() - startedAt, background, lowRam, gapMs)
-                // A request for what is on screen or about to play ends the rest at once.
-                withTimeoutOrNull(restMs) { wake.first { it != seen } }
+                // A request for what is on screen or about to play ends the rest at once, and so does a
+                // change of policy or Pause (the app left the screen), so the next plan can stop the reader.
+                withTimeoutOrNull(restMs) {
+                    combine(wake, policy, paused) { w, p, h -> w != seen || p != planned || h != held }.first { it }
+                }
             }
         } finally {
             withContext(NonCancellable) {

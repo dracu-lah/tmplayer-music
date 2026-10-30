@@ -116,8 +116,9 @@ object Library {
         index = LibraryIndex.open(File(dir, "library.db").path).also { it.hiddenMask = choices.hiddenMask }
         scanner = LibraryScanner(IndexScanStore(), ::fetchPage, scope)
         if (choices.paused.value) scanner.pause()
-        policy = combine(net, choices.mobileAllowed, foreground, playing, choices.paused) { n, mobile, front, play, held ->
-            TagPolicy.policy(n, mobile, front || play, held)
+        // Only the app on screen counts: playing in the background reads only what is about to play.
+        policy = combine(net, choices.mobileAllowed, foreground, choices.paused) { n, mobile, front, held ->
+            TagPolicy.policy(n, mobile, front, held)
         }.stateIn(scope, SharingStarted.Eagerly, TagPolicy.policy(net.value, choices.mobileAllowed.value, false, choices.paused.value))
         enricher = TagEnricher(
             IndexTagStore(),
