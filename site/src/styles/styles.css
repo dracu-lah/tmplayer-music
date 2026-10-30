@@ -1,6 +1,7 @@
-/* The placeholder page's whole stylesheet. Colours are the app icon's: near black #0E0E12,
-   off-white #EDEDF2 and coral #FF6B57 in the dark scheme; on white the deeper coral #B23A26 carries
-   text at 4.5:1 or more, as the app's light scheme does. */
+/* The placeholder page's whole stylesheet. Colours are the app icon's neutrals, with no coloured
+   accent, as the app does: near black #0E0E12, off-white #EDEDF2 and a soft white accent #F4F4F8 in
+   the dark scheme; on white the accent mirrors to the icon's near black #1E1E28. Links keep their
+   underline, since the accent is close to the text colour. */
 
 @font-face {
   font-family: "Poppins";
@@ -21,7 +22,7 @@
   --bg: #FFFFFF;
   --fg: #0E0E12;
   --muted: #4A4A56;
-  --accent: #B23A26;
+  --accent: #1E1E28;
   --line: #DCDCE3;
   color-scheme: light dark;
 }
@@ -30,7 +31,7 @@
     --bg: #0E0E12;
     --fg: #EDEDF2;
     --muted: #A9A9B6;
-    --accent: #FF6B57;
+    --accent: #F4F4F8;
     --line: #2C2C38;
   }
 }
@@ -107,7 +108,7 @@ h1 {
 h2 { margin: 2rem 0 .5rem; font-weight: 600; font-size: 1.25rem; line-height: 1.3; }
 section { width: 100%; }
 section p { margin: 0 0 1rem; }
-section p a { color: var(--accent); }
+section p a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: .2em; }
 .links-inline { border-top: 0; padding-top: 0; }
 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 

@@ -298,7 +298,7 @@ private fun DialCard(item: DialItem, size: Dp, playing: Boolean?, onTap: () -> U
         if (item.partlyPlayed) {
             val fraction = if (item.durationMs > 0) WaveLogic.fraction(item.positionMs, item.durationMs) else 0f
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.3f))) {
-                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
+                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(Color.White))
             }
         }
         if (playing != null) {

@@ -443,7 +443,8 @@ fun LibraryChips(
             }
         }
         if (grid != null) {
-            IconButton(onClick = { onGrid(!grid) }) {
+            // Kept clear of the screen edge; the scrolling chips end before it.
+            IconButton(onClick = { onGrid(!grid) }, modifier = Modifier.padding(end = 4.dp)) {
                 Icon(
                     if (grid) MusicIcons.ListRows else MusicIcons.Grid,
                     contentDescription = if (grid) L.libraryShowList else L.libraryShowGrid,

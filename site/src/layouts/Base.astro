@@ -22,7 +22,7 @@ interface Props {
 const { path, title, socialTitle = title, description, imageAlt = 'The TMPlayer Music icon', notFound = false } = Astro.props;
 const url = ORIGIN + path;
 // Bump ?v= whenever og.png changes, so the social sites fetch the new one.
-const OG_IMAGE = `${ORIGIN}/og.png?v=1`;
+const OG_IMAGE = `${ORIGIN}/og.png?v=2`;
 const robots = INDEXABLE ? 'index, follow, max-image-preview:large, max-snippet:-1' : 'noindex, nofollow';
 ---
 <!DOCTYPE html>

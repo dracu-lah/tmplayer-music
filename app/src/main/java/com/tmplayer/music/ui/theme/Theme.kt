@@ -26,7 +26,8 @@ val LocalReducedMotion = staticCompositionLocalOf { false }
 
 /**
  * The app's theme. It follows the device: dark or light as the system is, and on Android 12 and up
- * the wallpaper's (dynamic) colours. Android 11 and below get [FallbackDark] or [FallbackLight], made
+ * the wallpaper's (dynamic) surfaces, with neutral accents in place of the wallpaper's accent
+ * ([neutralAccents]). Android 11 and below get [FallbackDark] or [FallbackLight], made
  * from the icon's colours. Motion is Material's expressive spring scheme ([ExpressiveMotion]), or snaps when the system
  * animator scale is 0 (read again each time the app comes back, as the user may have changed it).
  */
@@ -40,7 +41,7 @@ fun MusicTheme(
     val preview = LocalInspectionMode.current
     val colors = when {
         dynamic && !preview && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            (if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)).neutralAccents()
         dark -> FallbackDark
         else -> FallbackLight
     }

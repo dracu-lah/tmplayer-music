@@ -124,6 +124,9 @@ internal object DemoMode {
         app.getSharedPreferences("app_demo", Context.MODE_PRIVATE).edit().clear().commit()
         Storage.cacheDir = File(root, "cache").apply { mkdirs() }
         Library.start(folder, MemoryKeyValues())
+        // No "Waiting for Telegram" banner over the shots: the demo never connects, so its reading
+        // progress would sit on Home and Library for good. Only the in-memory demo choices change.
+        Library.choices.setShowProgress(false)
         scope.launch {
             DemoLibrary.fill(File(folder, "covers"))
             holdReady()

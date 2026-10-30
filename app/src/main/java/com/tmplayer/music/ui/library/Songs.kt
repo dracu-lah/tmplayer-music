@@ -247,6 +247,7 @@ fun SongRow(
                     song.title,
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (mark != null) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified,
+                    fontWeight = if (mark != null) androidx.compose.ui.text.font.FontWeight.SemiBold else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

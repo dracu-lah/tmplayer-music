@@ -4,9 +4,9 @@
     <item name="ic_launcher" type="mipmap" tools:ignore="ReferenceType">@drawable/ic_launcher_legacy</item>
     <!--
       The icon's tile, a touch lighter than TMPlayer's #1E1E28 so its edge still shows on a dark
-      wallpaper, and the progress fill's warm coral, which keeps the two icons apart at a glance
-      and stays far from TMPlayer's (and Telegram's) blue.
+      wallpaper, and the progress fill's soft light grey: no coloured accent (user, 2026-10-30), so
+      the icon is all neutrals, white on dark, and stays far from TMPlayer's (and Telegram's) blue.
     -->
     <color name="ic_launcher_tile">#22222D</color>
-    <color name="ic_launcher_accent">#FF6B57</color>
+    <color name="ic_launcher_accent">#C4C4CE</color>
 </resources>

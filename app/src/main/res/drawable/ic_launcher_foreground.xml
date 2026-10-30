@@ -6,7 +6,7 @@
     android:viewportHeight="108">
     <!--
       TMPlayer's layout with the screen swapped for a rounded album tile holding a beamed pair of
-      eighth notes, over the same progress bar with a coral fill. Every shape stays inside a circle
+      eighth notes, over the same progress bar with a light grey fill. Every shape stays inside a circle
       of radius 31 around the centre of the 108 unit canvas: a round launcher mask keeps only the
       middle 66 units and the Android 12 splash roughly the middle 65, so anything further out
       loses a corner. The tile's edge is lighter than TMPlayer's frame so it shows on a dark
@@ -33,6 +33,6 @@
         android:fillColor="#3A3A46"
         android:pathData="M67.3,70 H71.5 A2.5,2.5 0 0 1 71.5,75 H67.3 A2.5,2.5 0 0 1 67.3,70 Z" />
     <path
-        android:fillColor="#E2E2E8"
+        android:fillColor="#EDEDF2"
         android:pathData="M57.6,72.5 A4.4,4.4 0 1 1 66.4,72.5 A4.4,4.4 0 1 1 57.6,72.5 Z" />
 </vector>

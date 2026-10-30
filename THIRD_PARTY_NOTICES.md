@@ -110,7 +110,8 @@ Hugeicons icons, <https://hugeicons.com>, taken as SVG path data from
 <https://github.com/hugeicons/hugeicons> and kept in
 `app/src/main/java/com/tmplayer/music/ui/common/MusicIcons.kt`. Only free icons are used; no Hugeicons
 Pro icon is included. Some are adapted: the filled heart is the favourite outline filled in, and the
-paused playing indicator is the audio wave with every line cut to the shortest.
+paused playing indicator is the audio wave with every line cut to the shortest. The list view toggle
+is our own drawing in the same style.
 
 ```
 MIT License
