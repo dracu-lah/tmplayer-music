@@ -164,6 +164,9 @@ object MusicIcons {
     /** tick-02: done, scanned. */
     val Check = icon("Check", "M5 14L8.5 17.5L19 6.5")
 
+    /** add-01: add more (chats). */
+    val Plus = icon("Plus", "M12 4V20M20 12H4")
+
     /** refresh: a new code, try again. */
     val Refresh = icon(
         "Refresh",

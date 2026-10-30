@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -45,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.data.ChatLoader
@@ -61,6 +65,7 @@ import com.tmplayer.music.library.Track
 import com.tmplayer.music.ui.common.Cover
 import com.tmplayer.music.ui.common.Format
 import com.tmplayer.music.ui.common.MusicIcons
+import com.tmplayer.music.ui.theme.MusicTheme
 import com.tmplayer.music.ui.theme.Pill
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -94,7 +99,8 @@ private const val PLAY_DEBOUNCE_MS = 1_500L
 
 /**
  * The Chats tab: the chosen chats with the tracks the index holds for each, a Play button that plays
- * the chat in its own order, and Add more chats. Tap a chat for its page.
+ * the chat in its own order, and Add chats as the last item, centred after the last chat (or under the
+ * empty text when there are none). Tap a chat for its page.
  */
 @Composable
 fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit) {
@@ -117,12 +123,9 @@ fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit)
     val listState = rememberLazyListState()
     RestoreScroll(listState, ready = chats != null)
     ScrollToTopOnReselect(listState)
+    // The body sits above the mini-player and the bottom bar (the shell's spacer keeps that room),
+    // so this padding is only breathing room under the last item.
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
-        item(key = "add") {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                FilledTonalButton(onClick = onAdd, shape = Pill) { Text(L.chatfirstChatsAdd) }
-            }
-        }
         error?.let { message ->
             item(key = "error") {
                 Column(Modifier.padding(horizontal = 16.dp)) {
@@ -187,8 +190,60 @@ fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit)
                 }
             }
         }
+        // One Add chats button, the last item (so TalkBack reaches it last): after the last chat, or
+        // under the empty text when there are none. Hidden only while the first load is running and
+        // nothing has failed, so it does not flash in above rows that are about to arrive.
+        if (list != null || error != null) {
+            item(key = "add") { AddChatsButton(onAdd) }
+        }
     }
 }
+
+/** Add chats, centred under the list with room above it; a 48 dp touch target at least. */
+@Composable
+private fun AddChatsButton(onAdd: () -> Unit) {
+    Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 24.dp), contentAlignment = Alignment.Center) {
+        FilledTonalButton(onClick = onAdd, shape = Pill, modifier = Modifier.heightIn(min = 48.dp)) {
+            Icon(MusicIcons.Plus, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+            Text(L.chatfirstChatsAdd)
+        }
+    }
+}
+
+// The end of the Chats list in light, dark and at font scale 1.3: placeholder rows, then the button.
+@Composable
+private fun ChatsEndSample(dark: Boolean) {
+    MusicTheme(dark = dark, dynamic = false) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                listOf("Chat one", "Chat two").forEach { title ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Cover(name = title, fileId = 0, round = true, size = 48.dp)
+                        Text(title, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                AddChatsButton(onAdd = {})
+            }
+        }
+    }
+}
+
+@Preview(name = "Chats end, light", widthDp = 400)
+@Composable
+private fun ChatsEndLight() = ChatsEndSample(dark = false)
+
+@Preview(name = "Chats end, dark", widthDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun ChatsEndDark() = ChatsEndSample(dark = true)
+
+@Preview(name = "Chats end, font 1.3", widthDp = 360, fontScale = 1.3f)
+@Composable
+private fun ChatsEndLargeText() = ChatsEndSample(dark = false)
 
 /**
  * A chat as a playlist in message order (`plan/MVP-REVISION.md` decision h): Oldest first or Newest
