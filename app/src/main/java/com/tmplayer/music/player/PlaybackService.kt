@@ -79,6 +79,7 @@ class PlaybackService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
         player.addListener(Watcher(player))
+        SleepTimer.attach(player, scope)
         val open = PendingIntent.getActivity(
             this,
             0,

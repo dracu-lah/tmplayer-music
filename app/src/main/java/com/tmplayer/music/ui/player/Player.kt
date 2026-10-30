@@ -43,7 +43,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import com.tmplayer.music.player.SleepSetting
+import com.tmplayer.music.player.SleepTimer
+import com.tmplayer.music.ui.common.Artwork
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -179,8 +186,14 @@ fun NowPlaying(onClose: () -> Unit, onQueue: () -> Unit) {
     val position = rememberPosition(state)
     var seeking by remember { mutableStateOf<Float?>(null) }
     val title = state.metadata.title?.toString().orEmpty()
+    var sleepOpen by remember { mutableStateOf(false) }
+    val tint = rememberCoverTint(state.item)
     LaunchedEffect(state.count) { if (state.count == 0) onClose() }
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    val background = MaterialTheme.colorScheme.background
+    Surface(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(tint?.copy(alpha = 0.55f) ?: background, background))),
+        color = Color.Transparent,
+    ) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -188,6 +201,7 @@ fun NowPlaying(onClose: () -> Unit, onQueue: () -> Unit) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(MusicIcons.Down, contentDescription = L.playerClose) }
                 Spacer(Modifier.weight(1f))
+                SleepButton { sleepOpen = true }
                 IconButton(onClick = onQueue) { Icon(MusicIcons.Queue, contentDescription = L.playerQueue) }
             }
             Spacer(Modifier.weight(0.5f))
@@ -256,6 +270,86 @@ fun NowPlaying(onClose: () -> Unit, onQueue: () -> Unit) {
             Spacer(Modifier.weight(1f))
         }
     }
+    if (sleepOpen) SleepSheet(onDismiss = { sleepOpen = false })
+}
+
+/** The tint of the playing track's cover, once its picture is in the memory cache. */
+@Composable
+private fun rememberCoverTint(item: MediaItem?): Color? {
+    val uri = item?.mediaMetadata?.artworkUri ?: return null
+    var tint by remember(uri) { mutableStateOf<Color?>(null) }
+    LaunchedEffect(uri) {
+        val image = when (uri.scheme) {
+            "file" -> uri.path?.let { Artwork.file(java.io.File(it), 96) }
+            TD_SCHEME -> uri.authority?.toIntOrNull()?.let { Artwork.thumbnail(it, 96) }
+            else -> null
+        } ?: return@LaunchedEffect
+        tint = Artwork.tint(uri.toString(), image)
+    }
+    return tint
+}
+
+@Composable
+private fun SleepButton(onClick: () -> Unit) {
+    val setting by SleepTimer.setting.collectAsStateWithLifecycle()
+    TextButton(onClick = onClick) {
+        Text(
+            when (setting) {
+                SleepSetting.Off -> L.sleepTitle
+                SleepSetting.EndOfTrack -> L.sleepEndOfTrackShort
+                is SleepSetting.At -> L.sleepOn
+            },
+            color = if (setting == SleepSetting.Off) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+/** Pick a sleep timer: minutes, the end of this track, or off. Shows the time left while set. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SleepSheet(onDismiss: () -> Unit) {
+    val setting by SleepTimer.setting.collectAsStateWithLifecycle()
+    var left by remember { mutableLongStateOf(SleepTimer.remainingMs()) }
+    LaunchedEffect(setting) {
+        // Ticks only while the sheet is open and a minutes timer runs.
+        while (setting is SleepSetting.At) {
+            left = SleepTimer.remainingMs()
+            delay(1_000)
+        }
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(bottom = 24.dp)) {
+            Text(L.sleepTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            if (setting is SleepSetting.At) {
+                Text(L.sleepLeft(Format.duration(left)), color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 20.dp))
+            }
+            for (minutes in listOf(15, 30, 45, 60, 90)) {
+                SheetLine(L.sleepMinutes(minutes)) {
+                    SleepTimer.minutes(minutes)
+                    onDismiss()
+                }
+            }
+            SheetLine(L.sleepEndOfTrack) {
+                SleepTimer.endOfTrack()
+                onDismiss()
+            }
+            if (setting != SleepSetting.Off) {
+                SheetLine(L.sleepOff) {
+                    SleepTimer.off()
+                    onDismiss()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetLine(text: String, onClick: () -> Unit) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+    )
 }
 
 /**

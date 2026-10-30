@@ -141,6 +141,15 @@
   "shell": {
     "log_out": "Log out"
   },
+  "sleep": {
+    "end_of_track": "At the end of this track",
+    "end_of_track_short": "End of track",
+    "left": "Pauses in {time}",
+    "minutes": "{count, plural, one {# minute} other {# minutes}}",
+    "off": "Turn off",
+    "on": "Sleep timer on",
+    "title": "Sleep timer"
+  },
   "sort": {
     "added": "Recently added",
     "album": "Album",

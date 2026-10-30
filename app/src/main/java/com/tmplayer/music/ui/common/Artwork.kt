@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -50,6 +51,33 @@ object Artwork {
     private val gate = Semaphore(4)
 
     fun cached(key: String): ImageBitmap? = memory.get(key)
+
+    private val tints = LruCache<String, Int>(256)
+
+    /**
+     * A colour for tinting behind a cover: its average over an 8 by 8 copy, made richer, computed
+     * once per cover and remembered. Null for a picture that is nearly grey, so the theme stays.
+     */
+    fun tint(key: String, image: ImageBitmap): Color? {
+        tints.get(key)?.let { return if (it == 0) null else Color(it) }
+        val argb = runCatching {
+            val small = android.graphics.Bitmap.createScaledBitmap(image.asAndroidBitmap(), 8, 8, true)
+            var r = 0L
+            var g = 0L
+            var b = 0L
+            for (y in 0 until 8) for (x in 0 until 8) {
+                val p = small.getPixel(x, y)
+                r += (p shr 16) and 0xFF
+                g += (p shr 8) and 0xFF
+                b += p and 0xFF
+            }
+            val hsv = FloatArray(3)
+            android.graphics.Color.RGBToHSV((r / 64).toInt(), (g / 64).toInt(), (b / 64).toInt(), hsv)
+            if (hsv[1] < 0.12f) 0 else android.graphics.Color.HSVToColor(floatArrayOf(hsv[0], maxOf(hsv[1], 0.45f), 0.55f))
+        }.getOrDefault(0)
+        tints.put(key, argb)
+        return if (argb == 0) null else Color(argb)
+    }
 
     suspend fun thumbnail(fileId: Int, sizePx: Int): ImageBitmap? {
         if (fileId == 0) return null
