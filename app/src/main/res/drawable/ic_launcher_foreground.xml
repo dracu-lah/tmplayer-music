@@ -1,14 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A placeholder until the real icon (step V6): a play triangle with a note inside. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!--
+      The TMPlayer mark with the play triangle swapped for a beamed pair of eighth notes, so the
+      two apps sit side by side as a pair. Every shape stays inside a circle of radius 31 around
+      the centre of the 108 unit canvas: a round launcher mask keeps only the middle 66 units and
+      the Android 12 splash roughly the middle 65, so anything further out loses a corner.
+      The note is one outline (heads, stems and beam traced together), centred on the screen.
+    -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M38,30 L80,54 L38,78 Z" />
+        android:fillColor="#3A3A46"
+        android:pathData="M36,33 H72 A5,5 0 0 1 77,38 V60 A5,5 0 0 1 72,65 H36 A5,5 0 0 1 31,60 V38 A5,5 0 0 1 36,33 Z" />
     <path
-        android:fillColor="#1E1B2E"
-        android:pathData="M52,44 L60,42 L60,46 L54,47.5 L54,60 A4,4 0 1,1 52,56.6 Z" />
+        android:fillColor="#0E0E12"
+        android:pathData="M36,34.5 H72 A3.5,3.5 0 0 1 75.5,38 V60 A3.5,3.5 0 0 1 72,63.5 H36 A3.5,3.5 0 0 1 32.5,60 V38 A3.5,3.5 0 0 1 36,34.5 Z" />
+    <path
+        android:fillColor="#EDEDF2"
+        android:pathData="M49.09,41.98 L65.11,39.28 L65.11,52.05 A4.41,3.24 -22 1,1 62.77,49.46 L62.77,43.81 L51.43,45.73 L51.43,54.75 A4.41,3.24 -22 1,1 49.09,52.16 Z" />
+    <path
+        android:fillColor="#2AABEE"
+        android:pathData="M36.5,70 H55.5 A2.5,2.5 0 0 1 55.5,75 H36.5 A2.5,2.5 0 0 1 36.5,70 Z" />
+    <path
+        android:fillColor="#3A3A46"
+        android:pathData="M66.5,70 H71.5 A2.5,2.5 0 0 1 71.5,75 H66.5 A2.5,2.5 0 0 1 66.5,70 Z" />
+    <path
+        android:fillColor="#EDEDF2"
+        android:pathData="M56.5,72.5 A5.5,5.5 0 1 1 67.5,72.5 A5.5,5.5 0 1 1 56.5,72.5 Z" />
 </vector>

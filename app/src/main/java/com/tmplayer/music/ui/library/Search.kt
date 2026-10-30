@@ -113,7 +113,7 @@ fun SearchScreen(actions: SongActions, onAlbum: (Album) -> Unit, onArtist: (Arti
                 if (found.albums.isNotEmpty()) {
                     item(key = "albumsHead") { Section(L.tabAlbums) }
                     items(found.albums, key = { "a:${it.key}" }) { album ->
-                        Line(album.title, album.artist, album.thumbFileId, album.coverKey) {
+                        Line(album.title, album.artist, album = album) {
                             remember()
                             onAlbum(album)
                         }
@@ -122,7 +122,7 @@ fun SearchScreen(actions: SongActions, onAlbum: (Album) -> Unit, onArtist: (Arti
                 if (found.artists.isNotEmpty()) {
                     item(key = "artistsHead") { Section(L.tabArtists) }
                     items(found.artists, key = { "r:${it.key}" }) { artist ->
-                        Line(artist.name.ifBlank { L.libraryUnknownArtist }, L.librarySongs(artist.songCount), 0, "", round = true) {
+                        Line(artist.name.ifBlank { L.libraryUnknownArtist }, L.librarySongs(artist.songCount), round = true) {
                             remember()
                             onArtist(artist)
                         }
@@ -139,13 +139,13 @@ private fun Section(title: String) {
 }
 
 @Composable
-private fun Line(title: String, subtitle: String, fileId: Int, coverKey: String, round: Boolean = false, onClick: () -> Unit) {
+private fun Line(title: String, subtitle: String, album: com.tmplayer.music.library.Album? = null, round: Boolean = false, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Cover(name = title, fileId = fileId, coverPath = Library.coverFile(coverKey)?.path.orEmpty(), round = round)
+        if (album != null) AlbumCover(album, 48.dp) else Cover(name = title, fileId = 0, round = round)
         Column(Modifier.weight(1f)) {
             Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (subtitle.isNotBlank()) {

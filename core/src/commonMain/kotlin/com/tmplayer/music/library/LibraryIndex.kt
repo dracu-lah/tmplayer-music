@@ -166,9 +166,14 @@ class LibraryIndex private constructor(
      */
     suspend fun upsert(tracks: List<Track>): Int = io {
         if (tracks.isEmpty()) return@io 0
+        tx { upsertRows(tracks) }
+    }
+
+    /** The body of [upsert]; the caller holds the lock and the transaction. */
+    private fun upsertRows(tracks: List<Track>): Int {
         val touched = Touched()
         var stored = 0
-        tx {
+        run {
             val pickedCache = HashMap<Long, Boolean>()
             for (track in tracks.associateBy { it.id }.values) {
                 val picked = pickedCache.getOrPut(track.chatId) {
@@ -193,7 +198,7 @@ class LibraryIndex private constructor(
             }
             rebuild(touched)
         }
-        stored
+        return stored
     }
 
     /** Removes the given files (deleted messages) and rebuilds what they were part of. */
@@ -375,40 +380,88 @@ class LibraryIndex private constructor(
      * songs, albums and artists it touches are rebuilt. Null [tags] marks the file failed, so it is
      * not read again, and changes nothing else.
      */
-    suspend fun applyTags(id: TrackId, tags: Tags?, coverKey: String) {
-        val track = track(id) ?: return
-        if (tags == null) {
-            io {
-                exec(
-                    "UPDATE tracks SET tag_state = ? WHERE chat_id = ? AND message_id = ?",
-                    TagState.Failed.name, id.chatId, id.messageId,
-                )
+    suspend fun applyTags(id: TrackId, tags: Tags?, coverKey: String) = applyTags(listOf(TagResult(id, tags, coverKey)))
+
+    /**
+     * [applyTags] for a batch, in one transaction with one rebuild of what the batch touched, so a
+     * batch of the tag reader costs one write instead of one per file.
+     */
+    suspend fun applyTags(results: List<TagResult>) = io {
+        if (results.isEmpty()) return@io
+        tx {
+            val updated = ArrayList<Track>(results.size)
+            for (result in results.associateBy { it.id }.values) {
+                val track = query(
+                    "SELECT $TRACK_COLUMNS FROM tracks WHERE chat_id = ? AND message_id = ? LIMIT 1",
+                    result.id.chatId, result.id.messageId, map = ::readTrack,
+                ).firstOrNull() ?: continue
+                val tags = result.tags
+                if (tags == null) {
+                    exec(
+                        "UPDATE tracks SET tag_state = ? WHERE chat_id = ? AND message_id = ?",
+                        TagState.Failed.name, result.id.chatId, result.id.messageId,
+                    )
+                } else {
+                    updated += withTags(track, tags, result.coverKey)
+                }
             }
-            return
+            upsertRows(updated)
         }
+    }
+
+    /** How many files wait for their tags, have them, and could not be read. */
+    suspend fun tagCounts(): TagCounts = io {
+        var pending = 0
+        var read = 0
+        var failed = 0
+        query("SELECT tag_state, COUNT(*) FROM tracks GROUP BY tag_state") { text(it, 0) to it.getLong(1).toInt() }
+            .forEach { (state, n) ->
+                when (state) {
+                    TagState.TelegramOnly.name -> pending += n
+                    TagState.Read.name -> read += n
+                    else -> failed += n
+                }
+            }
+        TagCounts(pending = pending, read = read, failed = failed)
+    }
+
+    /** Puts every file whose tags could not be read back in the queue; returns how many. */
+    suspend fun retryFailedTags(): Int = io {
+        val n = count("SELECT COUNT(*) FROM tracks WHERE tag_state = ?", TagState.Failed.name)
+        if (n > 0) exec("UPDATE tracks SET tag_state = ? WHERE tag_state = ?", TagState.TelegramOnly.name, TagState.Failed.name)
+        n
+    }
+
+    /** The files among [ids] still waiting for their tags, for reading what is on screen first. */
+    suspend fun pendingAmong(ids: Collection<TrackId>): List<Track> = io {
+        ids.take(MAX_PAGE).mapNotNull { id ->
+            query(
+                "SELECT $TRACK_COLUMNS FROM tracks WHERE chat_id = ? AND message_id = ? AND tag_state = ? LIMIT 1",
+                id.chatId, id.messageId, TagState.TelegramOnly.name, map = ::readTrack,
+            ).firstOrNull()
+        }
+    }
+
+    private fun withTags(track: Track, tags: Tags, coverKey: String): Track {
         val (artist, title) = TitleFallback.display(tags.title, tags.artist, track.title, track.artist, track.fileName)
         val duration = tags.durationMs.takeIf { it > 0 } ?: track.durationMs
-        upsert(
-            listOf(
-                track.copy(
-                    title = title,
-                    artist = artist,
-                    album = tags.album.ifBlank { track.album },
-                    albumArtist = tags.albumArtist.ifBlank { track.albumArtist },
-                    year = tags.year.takeIf { it > 0 } ?: track.year,
-                    trackNumber = tags.trackNumber.takeIf { it > 0 } ?: track.trackNumber,
-                    discNumber = tags.discNumber.takeIf { it > 0 } ?: track.discNumber,
-                    durationMs = duration,
-                    format = tags.format.takeIf { it != AudioFormat.OTHER } ?: track.format,
-                    bitrateKbps = tags.bitrateKbps.takeIf { it > 0 } ?: track.bitrateKbps,
-                    sampleRate = tags.sampleRate.takeIf { it > 0 } ?: track.sampleRate,
-                    bitDepth = tags.bitDepth.takeIf { it > 0 } ?: track.bitDepth,
-                    tagState = TagState.Read,
-                    coverKey = coverKey.ifBlank { track.coverKey },
-                    groupKey = GroupKey.of(title, artist, duration),
-                    variant = GroupKey.variantOf(title),
-                ),
-            ),
+        return track.copy(
+            title = title,
+            artist = artist,
+            album = tags.album.ifBlank { track.album },
+            albumArtist = tags.albumArtist.ifBlank { track.albumArtist },
+            year = tags.year.takeIf { it > 0 } ?: track.year,
+            trackNumber = tags.trackNumber.takeIf { it > 0 } ?: track.trackNumber,
+            discNumber = tags.discNumber.takeIf { it > 0 } ?: track.discNumber,
+            durationMs = duration,
+            format = tags.format.takeIf { it != AudioFormat.OTHER } ?: track.format,
+            bitrateKbps = tags.bitrateKbps.takeIf { it > 0 } ?: track.bitrateKbps,
+            sampleRate = tags.sampleRate.takeIf { it > 0 } ?: track.sampleRate,
+            bitDepth = tags.bitDepth.takeIf { it > 0 } ?: track.bitDepth,
+            tagState = TagState.Read,
+            coverKey = coverKey.ifBlank { track.coverKey },
+            groupKey = GroupKey.of(title, artist, duration),
+            variant = GroupKey.variantOf(title),
         )
     }
 
@@ -441,6 +494,15 @@ class LibraryIndex private constructor(
     suspend fun album(key: String): Album? = io {
         if (key.isEmpty()) return@io null
         query("SELECT $ALBUM_COLUMNS FROM albums WHERE album_key = ? LIMIT 1", key, map = ::readAlbum).firstOrNull()
+    }
+
+    /** A track of album [key] that has Telegram's cover thumbnail, so the tile can ask for it by message. */
+    suspend fun albumThumbTrack(key: String): TrackId? = io {
+        if (key.isEmpty()) return@io null
+        query(
+            "SELECT chat_id, message_id FROM tracks WHERE album_key = ? AND thumb_file_id <> 0 LIMIT 1",
+            key,
+        ) { TrackId(it.getLong(0), it.getLong(1)) }.firstOrNull()
     }
 
     /** One artist by key, for "Go to artist"; null when the key is blank or the artist has no songs left. */

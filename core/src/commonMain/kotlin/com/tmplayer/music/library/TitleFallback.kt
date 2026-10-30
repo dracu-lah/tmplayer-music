@@ -67,7 +67,7 @@ object TitleFallback {
         fileName: String?,
     ): Pair<String, String> {
         var title = TextFold.trimField(tagTitle).ifEmpty { TextFold.trimField(tgTitle) }
-        var artist = TextFold.trimField(tagArtist).ifEmpty { TextFold.trimField(tgPerformer) }
+        var artist = realArtist(tagArtist).ifEmpty { realArtist(tgPerformer) }
         val name = TextFold.trimField(fileName)
         if ((title.isEmpty() || artist.isEmpty()) && name.isNotEmpty()) {
             val (nameArtist, nameTitle) = fromFileName(name)
@@ -81,6 +81,15 @@ object TitleFallback {
         if (title.isEmpty()) title = name
         return TextFold.trimField(artist) to TextFold.trimField(title)
     }
+
+    /**
+     * Words taggers and phones write when they do not know the artist ("<unknown>" is Android's own).
+     * They mean nothing, so they count as blank and the next source is asked.
+     */
+    private val PLACEHOLDER_ARTISTS = setOf("<unknown>", "unknown", "unknown artist", "[unknown]", "artist", "n/a")
+
+    private fun realArtist(value: String?): String =
+        TextFold.trimField(value).takeUnless { it.lowercase() in PLACEHOLDER_ARTISTS }.orEmpty()
 
     private fun stripTrackNumber(text: String): String {
         val match = TRACK_NUMBER.find(text) ?: return text

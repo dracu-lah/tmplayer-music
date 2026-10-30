@@ -3,7 +3,8 @@ package com.tmplayer.music.ui.player
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -95,15 +96,16 @@ private fun ItemCover(item: MediaItem?, size: Dp, name: String) {
     val uri: Uri? = item?.mediaMetadata?.artworkUri
     Cover(
         name = name,
-        fileId = if (uri?.scheme == TD_SCHEME) uri.authority?.toIntOrNull() ?: 0 else 0,
+        fileId = 0,
         coverPath = if (uri?.scheme == "file") uri.path.orEmpty() else "",
+        track = if (uri?.scheme == TD_SCHEME) com.tmplayer.music.player.tdTrackOf(uri) else null,
         size = size,
     )
 }
 
 /**
  * The bar above the bottom edge on every library screen while something is in the queue. Tap opens
- * Now Playing; a swipe left or right skips. A track that could not play says so here.
+ * Now Playing, and so does a swipe up; a swipe left or right skips. A track that could not play says so here.
  */
 @Composable
 fun MiniPlayer(onOpen: () -> Unit) {
@@ -130,6 +132,16 @@ fun MiniPlayer(onOpen: () -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onOpen)
+                    .pointerInput(Unit) {
+                        var up = 0f
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (up < -threshold / 2) onOpen()
+                                up = 0f
+                            },
+                            onDragCancel = { up = 0f },
+                        ) { _, amount -> up += amount }
+                    }
                     .pointerInput(Unit) {
                         detectHorizontalDragGestures(
                             onDragEnd = {
@@ -178,7 +190,7 @@ private fun PlayPause(state: PlayerState, size: Dp, filled: Boolean = false) {
 }
 
 /**
- * Now Playing: the big cover, the title and artist, a seek bar with times (an unknown length shows
+ * Now Playing (swipe down to close): the big cover, the title and artist, a seek bar with times (an unknown length shows
  * no bar to seek in), previous, play, next, shuffle and repeat, and the queue.
  */
 @Composable
@@ -193,9 +205,30 @@ fun NowPlaying(onClose: () -> Unit, onQueue: () -> Unit) {
     val tint = rememberCoverTint(state.item)
     LaunchedEffect(state.count) { if (state.count == 0) onClose() }
     val background = MaterialTheme.colorScheme.background
+    val closeAt = with(LocalDensity.current) { 120.dp.toPx() }
+    var pull by remember { mutableFloatStateOf(0f) }
     Surface(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(tint?.copy(alpha = 0.55f) ?: background, background))),
+        Modifier
+            .fillMaxSize()
+            // Swipe down anywhere outside the seek bar and the lyrics to close, as other players do.
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = {
+                        if (pull > closeAt) onClose()
+                        pull = 0f
+                    },
+                    onDragCancel = { pull = 0f },
+                ) { change, amount ->
+                    change.consume()
+                    pull = (pull + amount).coerceAtLeast(0f)
+                }
+            }
+            .graphicsLayer { translationY = pull / 2 }
+            .background(Brush.verticalGradient(listOf(tint?.copy(alpha = 0.55f) ?: background, background))),
         color = Color.Transparent,
+        // A transparent surface has no content colour of its own: without this the title and the
+        // times were drawn in the default black, invisible on the dark theme.
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp, vertical = 12.dp),
@@ -390,7 +423,7 @@ private fun rememberCoverTint(item: MediaItem?): Color? {
     LaunchedEffect(uri) {
         val image = when (uri.scheme) {
             "file" -> uri.path?.let { Artwork.file(java.io.File(it), 96) }
-            TD_SCHEME -> uri.authority?.toIntOrNull()?.let { Artwork.thumbnail(it, 96) }
+            TD_SCHEME -> com.tmplayer.music.player.tdTrackOf(uri)?.let { Artwork.thumbnail(0, 96, it) }
             else -> null
         } ?: return@LaunchedEffect
         tint = Artwork.tint(uri.toString(), image)
@@ -461,9 +494,12 @@ private fun SheetLine(text: String, onClick: () -> Unit) {
     )
 }
 
+/** How far across a queue row has to be swiped to remove it, as a share of its width. */
+private const val SWIPE_REMOVE = 0.35f
+
 /**
- * The queue: what plays next. Tap jumps to a track; hold a row and drag to move it; the cross
- * removes it; Clear empties the queue and stops.
+ * The queue: what plays next. Tap jumps to a track; drag a row by its handle to move it; swipe
+ * a row sideways or tap the cross to remove it; Clear empties the queue and stops.
  */
 @Composable
 fun QueueScreen(onClose: () -> Unit) {
@@ -490,11 +526,28 @@ fun QueueScreen(onClose: () -> Unit) {
                 itemsIndexed(items, key = { i, item -> "$i:${item.mediaId}" }) { i, item ->
                     val current = i == state.index
                     val moving = i == dragging
+                    var swipe by remember(i, item.mediaId) { mutableFloatStateOf(0f) }
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .height(64.dp)
-                            .graphicsLayer { if (moving) translationY = dragOffset }
+                            .pointerInput(i, item.mediaId) {
+                                detectHorizontalDragGestures(
+                                    onDragEnd = {
+                                        if (kotlin.math.abs(swipe) > size.width * SWIPE_REMOVE) PlayerConnection.remove(i)
+                                        swipe = 0f
+                                    },
+                                    onDragCancel = { swipe = 0f },
+                                ) { change, amount ->
+                                    change.consume()
+                                    swipe += amount
+                                }
+                            }
+                            .graphicsLayer {
+                                if (moving) translationY = dragOffset
+                                translationX = swipe
+                                alpha = 1f - (kotlin.math.abs(swipe) / size.width).coerceIn(0f, 0.6f)
+                            }
                             .background(if (moving) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.background)
                             .clickable { PlayerConnection.skipTo(i) }
                             .padding(horizontal = 8.dp),
@@ -508,7 +561,7 @@ fun QueueScreen(onClose: () -> Unit) {
                                 .size(40.dp)
                                 .padding(8.dp)
                                 .pointerInput(i) {
-                                    detectDragGesturesAfterLongPress(
+                                    detectDragGestures(
                                         onDragStart = {
                                             dragging = i
                                             dragOffset = 0f

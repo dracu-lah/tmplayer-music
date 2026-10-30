@@ -7,7 +7,8 @@ import com.tmplayer.music.lyrics.LyricsParser
 import com.tmplayer.music.library.LibraryIndex
 import com.tmplayer.music.library.LyricsFile
 import com.tmplayer.music.library.ScanCursor
-import com.tmplayer.music.library.Tags
+import com.tmplayer.music.library.TagCounts
+import com.tmplayer.music.library.TagResult
 import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.platform.JobFailures
@@ -17,7 +18,12 @@ import dev.g000sha256.tdl.TdlResult
 import dev.g000sha256.tdl.dto.SearchMessagesFilterAudio
 import dev.g000sha256.tdl.dto.SearchMessagesFilterDocument
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -25,6 +31,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -73,7 +80,16 @@ object Library {
         dir = folder.apply { mkdirs() }
         index = LibraryIndex.open(File(dir, "library.db").path)
         scanner = LibraryScanner(IndexScanStore(), ::fetchPage, scope)
-        enricher = TagEnricher(IndexTagStore(), TdFileBytes, DiskCovers(File(dir, "covers")), scope, lyrics = DiskCovers(File(dir, "lyrics")), paused = paused)
+        enricher = TagEnricher(
+            IndexTagStore(),
+            TdFileBytes,
+            DiskCovers(File(dir, "covers")),
+            scope,
+            lyrics = DiskCovers(File(dir, "lyrics")),
+            paused = paused,
+            online = Td.connected,
+            work = lowPriority,
+        )
         scope.launch {
             Td.auth.map { it is AuthState.Ready }.distinctUntilChanged().collect { signedIn ->
                 if (signedIn) onSignedIn() else _ready.value = false
@@ -87,6 +103,37 @@ object Library {
     /** Tells open lists the index changed outside the scan (a play, a favourite, a playlist edit). */
     fun notifyChanged() {
         _changes.value++
+    }
+
+    private val bumpLock = Any()
+    private var lastBumpAt = 0L
+    private var bumpPending = false
+
+    /**
+     * The scan and the tag reader change the index many times a second. Every bump makes each open
+     * list, the Home rows and the counts query the index again, so theirs are spread out: the first
+     * after a quiet spell goes at once, the rest are folded into one at most every [BUMP_GAP_MS].
+     */
+    private fun notifyChangedSoon() {
+        val wait: Long
+        synchronized(bumpLock) {
+            if (bumpPending) return
+            val now = System.currentTimeMillis()
+            wait = (lastBumpAt + BUMP_GAP_MS - now).coerceAtLeast(0)
+            if (wait == 0L) lastBumpAt = now else bumpPending = true
+        }
+        if (wait == 0L) {
+            _changes.value++
+            return
+        }
+        scope.launch {
+            delay(wait)
+            synchronized(bumpLock) {
+                bumpPending = false
+                lastBumpAt = System.currentTimeMillis()
+            }
+            _changes.value++
+        }
     }
 
     /** The user's new choice of chats: removed ones are purged, new ones scanned. */
@@ -122,6 +169,38 @@ object Library {
         enricher.kick()
     }
 
+    /** True while the user paused the scan and the tag reader. */
+    val isPaused: StateFlow<Boolean> = paused.asStateFlow()
+
+    /**
+     * What the banner and Settings say, at most twice a second: the scanner and the tag reader
+     * change their status far more often than anyone can read. Quiet while nothing changes.
+     */
+    fun view(): Flow<LibraryView> =
+        combine(scanner.status, enricher.status, paused, Td.connected) { scan, tags, held, online ->
+            LibraryStatus.view(scan, tags, held, online)
+        }.distinctUntilChanged().conflate().transform {
+            emit(it)
+            delay(VIEW_GAP_MS)
+        }
+
+    /** Puts the files whose tags could not be read back in the queue and starts reading. */
+    suspend fun retryFailedTags() {
+        index().retryFailedTags()
+        enricher.kick()
+    }
+
+    /**
+     * Two low priority threads for parsing tags, so the reader never competes with the screen or
+     * the player for a core.
+     */
+    private val lowPriority = java.util.concurrent.Executors.newFixedThreadPool(2) { runnable ->
+        Thread(runnable, "TagReader").apply {
+            isDaemon = true
+            priority = Thread.MIN_PRIORITY
+        }
+    }.asCoroutineDispatcher()
+
     /** Where a cover saved from tags lives, or null. */
     fun coverFile(key: String): File? = if (key.isBlank()) null else File(File(dir, "covers"), key).takeIf { it.isFile }
 
@@ -149,7 +228,8 @@ object Library {
     private suspend fun lrcInChat(track: Track): Lyrics? {
         val file = index().lyricsFor(track.chatId, AudioKinds.baseName(track.fileName)) ?: return null
         if (file.sizeBytes > LyricsParser.MAX_BYTES) return null
-        val bytes = TdFileBytes.read(file.fileId, 0, file.sizeBytes.coerceAtMost(LyricsParser.MAX_BYTES.toLong()).toInt().coerceAtLeast(1))
+        val fileId = FileIds.of(TrackId(file.chatId, file.messageId))?.fileId ?: return null
+        val bytes = TdFileBytes.read(fileId, 0, file.sizeBytes.coerceAtMost(LyricsParser.MAX_BYTES.toLong()).toInt().coerceAtLeast(1))
             ?: return null
         return LyricsParser.parse(bytes)
     }
@@ -200,12 +280,14 @@ object Library {
         }
 
         override suspend fun addTracks(tracks: List<Track>) {
+            FileIds.prime(tracks)
             index().upsert(tracks)
-            _changes.value++
+            notifyChangedSoon()
             enricher.kick()
         }
 
         override suspend fun addLyrics(files: List<LyricsFile>) {
+            FileIds.primeLyrics(files)
             index().upsertLyricsFiles(files)
         }
     }
@@ -213,10 +295,15 @@ object Library {
     private class IndexTagStore : TagStore {
         override suspend fun pendingTags(limit: Int): List<Track> = index().pendingTags(limit)
 
-        override suspend fun applyTags(id: TrackId, tags: Tags?, coverKey: String) {
-            index().applyTags(id, tags, coverKey)
-            _changes.value++
+        override suspend fun pendingAmong(ids: Collection<TrackId>): List<Track> = index().pendingAmong(ids)
+
+        override suspend fun applyTags(results: List<TagResult>) {
+            if (results.isEmpty()) return
+            index().applyTags(results)
+            notifyChangedSoon()
         }
+
+        override suspend fun counts(): TagCounts = index().tagCounts()
     }
 
     /** One page of a chat's audio or document search, mapped. */
@@ -241,6 +328,8 @@ object Library {
         }
     }
 
+    private const val BUMP_GAP_MS = 2_000L
+    private const val VIEW_GAP_MS = 500L
     private const val ACCOUNT_FILE = "account"
     private const val PAGE_TIMEOUT_MS = 30_000L
     private const val L_NOT_CONNECTED = "NETWORK_ERROR"
@@ -271,16 +360,32 @@ private class LyricsCache {
 private object TdFileBytes : FileBytes {
     private suspend fun td() = withTimeoutOrNull(60_000) { Td.awaitAuthorizedSession().client }
 
+    override suspend fun fileIdOf(track: Track): Int? = FileIds.of(track.id)?.fileId
+
     override suspend fun read(fileId: Int, offset: Long, length: Int): ByteArray? {
         val td = td() ?: return null
         if (length <= 0 || offset < 0) return null
+        // A file the player is fetching: a second request with other bounds would stall both.
+        val file = td.getFile(fileId).valueOrNull
+        if (file?.local?.isDownloadingActive == true) return null
         val done = withTimeoutOrNull(READ_TIMEOUT_MS) { td.downloadFile(fileId, 1, offset, length.toLong(), true) }
-        if (done !is TdlResult.Success) return null
-        return td.readFilePart(fileId, offset, length.toLong()).valueOrNull?.data
+        if (done !is TdlResult.Success) {
+            Logger.w("TdFileBytes", "download of $fileId failed: ${(done as? TdlResult.Failure)?.message ?: "timeout"}")
+            return null
+        }
+        val part = td.readFilePart(fileId, offset, length.toLong())
+        if (part is TdlResult.Failure) Logger.w("TdFileBytes", "reading $fileId failed: ${part.message}")
+        return part.valueOrNull?.data
     }
 
-    override suspend fun isComplete(fileId: Int): Boolean =
-        td()?.getFile(fileId)?.valueOrNull?.local?.isDownloadingCompleted == true
+    /**
+     * True when the file is on the device in full, or in part for someone else (the player streams
+     * it, or streamed it): its bytes are not the tag reader's to delete.
+     */
+    override suspend fun isComplete(fileId: Int): Boolean {
+        val local = td()?.getFile(fileId)?.valueOrNull?.local ?: return false
+        return local.isDownloadingCompleted || local.isDownloadingActive || local.downloadedSize > 0
+    }
 
     override suspend fun forget(fileId: Int) {
         val td = td() ?: return
@@ -288,7 +393,8 @@ private object TdFileBytes : FileBytes {
         runCatching { td.deleteFile(fileId) }
     }
 
-    private const val READ_TIMEOUT_MS = 60_000L
+    /** A tag read that takes longer is given up and tried later, so one stuck file does not hold a batch. */
+    private const val READ_TIMEOUT_MS = 20_000L
 }
 
 /**

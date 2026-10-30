@@ -54,7 +54,7 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Cover(name = album.title, fileId = album.thumbFileId, coverPath = Library.coverFile(album.coverKey)?.path.orEmpty(), size = 56.dp)
+        AlbumCover(album, 56.dp)
         Column(Modifier.weight(1f)) {
             Text(album.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
@@ -85,7 +85,7 @@ fun ArtistsTab(onArtist: (Artist) -> Unit, header: @Composable () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(artist.name.ifBlank { L.libraryUnknownArtist }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        listOf(L.librarySongs(artist.songCount), L.libraryAlbums(artist.albumCount)).joinToString("  ·  "),
+                        listOfNotNull(L.librarySongs(artist.songCount), artist.albumCount.takeIf { it > 0 }?.let(L::libraryAlbums)).joinToString("  ·  "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -103,7 +103,7 @@ fun AlbumScreen(album: Album, actions: SongActions) {
     DetailList(
         title = album.title,
         subtitle = listOfNotNull(album.artist.ifBlank { null }, album.year.takeIf { it > 0 }?.toString()).joinToString("  ·  "),
-        cover = { Cover(name = album.title, fileId = album.thumbFileId, coverPath = Library.coverFile(album.coverKey)?.path.orEmpty(), size = 120.dp) },
+        cover = { AlbumCover(album, 120.dp) },
         songs = songs,
         actions = actions,
     )
@@ -126,7 +126,7 @@ fun ArtistScreen(artist: Artist, actions: SongActions, onAlbum: (Album) -> Unit)
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(list, key = { it.key }) { album ->
                         Column(Modifier.width(120.dp).clickable { onAlbum(album) }) {
-                            Cover(name = album.title, fileId = album.thumbFileId, coverPath = Library.coverFile(album.coverKey)?.path.orEmpty(), size = 120.dp)
+                            AlbumCover(album, 120.dp)
                             Text(album.title, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
@@ -190,4 +190,17 @@ private fun DetailList(
             }
         }
     }
+}
+
+/**
+ * An album's cover: the one saved from its tags, else Telegram's thumbnail of one of its tracks,
+ * looked up by message because a saved file id belongs to the session that scanned it.
+ */
+@Composable
+fun AlbumCover(album: Album, size: androidx.compose.ui.unit.Dp) {
+    val path = Library.coverFile(album.coverKey)?.path.orEmpty()
+    val track by androidx.compose.runtime.produceState<com.tmplayer.music.library.TrackId?>(null, album.key, path) {
+        if (path.isEmpty() && album.thumbFileId != 0) value = runCatching { Library.index().albumThumbTrack(album.key) }.getOrNull()
+    }
+    Cover(name = album.title, fileId = 0, coverPath = path, size = size, track = track)
 }

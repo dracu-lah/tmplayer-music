@@ -18,6 +18,8 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
@@ -251,18 +253,91 @@ object Td {
         replay()
     }
 
+    /**
+     * When the last flood wait Telegram put on a sign in request ends, in wall clock milliseconds;
+     * zero when there is none. The screen counts it down and holds its button until then, rather
+     * than offer a press that would fail the same way.
+     */
+    private val _signInWaitUntil = MutableStateFlow(0L)
+    val signInWaitUntil: StateFlow<Long> = _signInWaitUntil.asStateFlow()
+
+    private fun noteWait(message: String) {
+        val seconds = Failures.floodWaitSeconds(message) ?: return
+        _signInWaitUntil.value = System.currentTimeMillis() + seconds.coerceIn(0, MAX_WAIT_SECONDS) * 1000L
+    }
+
+    /**
+     * The number request still with TDLib, and the client and number it was for. TDLib keeps a
+     * request it cannot send yet, so after the screen gave up waiting ([SUBMIT_TIMEOUT_MS]) a Try
+     * again for the same number waits on that one rather than asking Telegram for a second code.
+     */
+    private var pendingPhone: Triple<TdlClient, String, Deferred<TdlResult<*>>>? = null
+
     /** Sends the phone number Telegram should send a code to. Null on success, an error otherwise. */
     suspend fun submitPhoneNumber(phoneNumber: String): String? {
         val td = current ?: return L.errorsNotConnected
-        val result = withTimeoutOrNull(SUBMIT_TIMEOUT_MS) { td.setAuthenticationPhoneNumber(phoneNumber.trim()) }
-            ?: return L.errorsNoAnswer
+        val number = phoneNumber.trim()
+        val call = synchronized(this) {
+            pendingPhone?.takeIf { (client, asked, job) -> client === td && asked == number && job.isActive }?.third
+                ?: scope.async<TdlResult<*>> { td.setAuthenticationPhoneNumber(number) }
+                    .also { pendingPhone = Triple(td, number, it) }
+        }
+        val result = withTimeoutOrNull(SUBMIT_TIMEOUT_MS) { call.await() } ?: return L.errorsNoAnswer
         return when (result) {
             is TdlResult.Success -> null
             is TdlResult.Failure -> {
-                _auth.value = AuthState.Phone(wrong = true)
-                if (result.message.contains("PHONE_NUMBER_INVALID")) L.errorsPhoneInvalid else Failures.humanise(result.message)
+                noteWait(result.message)
+                // A number changed from the code step that Telegram refused leaves TDLib on that
+                // step, so the screen stays there too, with the number being corrected.
+                if (_auth.value is AuthState.Phone) _auth.value = AuthState.Phone(wrong = true)
+                when {
+                    result.message.contains("PHONE_NUMBER_INVALID") -> L.errorsPhoneInvalid
+                    result.message.contains("PHONE_NUMBER_BANNED") -> L.signinErrorPhoneBanned
+                    else -> Failures.humanise(result.message)
+                }
             }
         }
+    }
+
+    /**
+     * Every country Telegram takes numbers from, in its own spelling and the app's language, or
+     * empty when TDLib has not answered within [LOOKUP_TIMEOUT_MS] (it asks Telegram the first
+     * time, so with no line it waits). The screen then keeps the list shipped with the app.
+     */
+    suspend fun countries(): List<Country> {
+        val td = current ?: return emptyList()
+        val answer = withTimeoutOrNull(LOOKUP_TIMEOUT_MS) { td.getCountries() }?.valueOrNull ?: return emptyList()
+        return PhoneCountries.from(answer.countries.toList())
+    }
+
+    /** The ISO code Telegram guesses from the address it sees, blank if it will not guess. */
+    suspend fun guessedCountryCode(): String {
+        val td = current ?: return ""
+        return withTimeoutOrNull(LOOKUP_TIMEOUT_MS) { td.getCountryCode() }?.valueOrNull?.text.orEmpty()
+    }
+
+    /**
+     * TDLib's layout for a national number being typed after [dial]: separators where its country
+     * puts them and a "-" for each digit to come ([PhoneFormat]). Null when it has none. Answered
+     * from TDLib's own tables, before sign in and with no line to Telegram.
+     */
+    suspend fun formatPhone(dial: String, national: String): String? {
+        val td = current ?: return null
+        if (dial.isEmpty()) return null
+        return withTimeoutOrNull(LOOKUP_TIMEOUT_MS) { td.getPhoneNumberInfo("+$dial$national") }?.valueOrNull
+            ?.takeIf { it.countryCallingCode == dial }
+            ?.formattedPhoneNumber
+            ?.takeIf { it.isNotBlank() && it.length <= MAX_PATTERN }
+    }
+
+    /**
+     * The country TDLib places a number in, by its area code where a calling code is shared
+     * ("+1 204..." is Canada, "+44 1534..." Jersey). Blank when it cannot tell.
+     */
+    suspend fun phoneCountry(digits: String): String {
+        val td = current ?: return ""
+        if (digits.isEmpty()) return ""
+        return withTimeoutOrNull(LOOKUP_TIMEOUT_MS) { td.getPhoneNumberInfo("+$digits") }?.valueOrNull?.country?.countryCode.orEmpty()
     }
 
     /** Submits the login code Telegram sent. Null on success, an error otherwise. */
@@ -275,6 +350,7 @@ object Td {
         return when (result) {
             is TdlResult.Success -> null
             is TdlResult.Failure -> {
+                noteWait(result.message)
                 _auth.value = asked.copy(wrong = true)
                 when {
                     result.message.contains("PHONE_CODE_INVALID") -> L.errorsWrongCode
@@ -288,9 +364,13 @@ object Td {
     /** Asks Telegram to send the code again, by whatever route it has decided is next. */
     suspend fun resendCode(): String? {
         val td = current ?: return L.errorsNotConnected
-        return when (val result = td.resendAuthenticationCode()) {
+        val result = withTimeoutOrNull(SUBMIT_TIMEOUT_MS) { td.resendAuthenticationCode() } ?: return L.errorsNoAnswer
+        return when (result) {
             is TdlResult.Success -> null
-            is TdlResult.Failure -> Failures.humanise(result.message)
+            is TdlResult.Failure -> {
+                noteWait(result.message)
+                if (result.message.contains("SEND_CODE_UNAVAILABLE")) L.signinErrorCodeUnavailable else Failures.humanise(result.message)
+            }
         }
     }
 
@@ -337,6 +417,7 @@ object Td {
         return when (result) {
             is TdlResult.Success -> null
             is TdlResult.Failure -> {
+                noteWait(result.message)
                 _auth.value = asked.copy(wrong = true)
                 if (result.message == "PASSWORD_HASH_INVALID") L.errorsWrongPassword else Failures.humanise(result.message)
             }
@@ -437,12 +518,22 @@ object Td {
             .filterNotNull()
             .first()
 
+    /** The generation of the client of the moment, or null when there is none; file ids belong to it. */
+    fun currentGeneration(): Long? = _session.value?.generation
+
     internal fun isCurrent(session: TdSession): Boolean =
         current === session.client && generation.get() == session.generation && _auth.value is AuthState.Ready
 
     private const val SIGN_IN_STALL_MS = 20_000L
     private const val SUBMIT_TIMEOUT_MS = 30_000L
     private const val RESTART_TIMEOUT_MS = 10_000L
+    private const val LOOKUP_TIMEOUT_MS = 10_000L
+
+    /** A wait longer than a day is shown as a day; the screen asks again after it anyway. */
+    private const val MAX_WAIT_SECONDS = 86_400
+
+    /** A layout longer than any number is not one, and is ignored. */
+    private const val MAX_PATTERN = 32
 }
 
 /** A client plus its identity, so late work from a logged-out client cannot update the UI. */

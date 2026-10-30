@@ -124,6 +124,15 @@ data class Track(
 
 data class TrackId(val chatId: Long, val messageId: Long)
 
+/** What the tag reader found in one file: [tags] null marks it unreadable; [coverKey] blank when none was saved. */
+data class TagResult(val id: TrackId, val tags: Tags?, val coverKey: String = "")
+
+/** How far the tag reader is through the library: files waiting, read, and unreadable. */
+data class TagCounts(val pending: Int = 0, val read: Int = 0, val failed: Int = 0) {
+    val total: Int get() = pending + read + failed
+    val finished: Int get() = read + failed
+}
+
 /**
  * One row of Songs: every version of one recording folded together, shown with the fields of the
  * version that plays by default.

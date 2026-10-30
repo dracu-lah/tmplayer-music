@@ -173,7 +173,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            ScanBar()
+            if (page != Page.Settings) ScanBar(onOpen = { stack += Page.Settings })
             when (page) {
                 null -> {
                     PrimaryScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 8.dp) {
@@ -191,7 +191,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
                             })
                         }
                     }
-                    when (tab) {
+                    RefreshBox { when (tab) {
                         LibraryTab.Home -> HomeTab(actions, onShuffleAll = { scope.launch { runCatching { actions.shuffle(allSongs()) } } })
                         LibraryTab.Playlists -> PlaylistsTab(onPlaylist = { stack += Page.PlaylistPage(it) })
                         LibraryTab.Songs -> SongsTab(sort, actions) {
@@ -202,7 +202,7 @@ fun LibraryHome(onLogOut: () -> Unit) {
                         }
                         LibraryTab.Albums -> AlbumsTab(onAlbum = { stack += Page.AlbumPage(it) }) {}
                         LibraryTab.Artists -> ArtistsTab(onArtist = { stack += Page.ArtistPage(it) }) {}
-                    }
+                    } }
                 }
                 is Page.AlbumPage -> AlbumScreen(page.album, actions)
                 is Page.ArtistPage -> ArtistScreen(page.artist, actions, onAlbum = { stack += Page.AlbumPage(it) })
@@ -250,6 +250,33 @@ fun LibraryHome(onLogOut: () -> Unit) {
         )
     }
     playlistFor?.let { song -> AddToPlaylistSheet(song, onDismiss = { playlistFor = null }) }
+}
+
+/**
+ * Pull down on a library tab to check the chosen chats for new tracks, as other players refresh.
+ * The spinner shows from the pull until the scan it started has ended; nothing runs otherwise.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RefreshBox(content: @Composable () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val scan by Library.scanner.status.collectAsStateWithLifecycle()
+    var pulled by remember { mutableStateOf(false) }
+    LaunchedEffect(pulled, scan.running) {
+        if (pulled && !scan.running) {
+            // The scan starts a moment after the call; give it that moment before calling it done.
+            kotlinx.coroutines.delay(800)
+            if (!Library.scanner.status.value.running) pulled = false
+        }
+    }
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = pulled,
+        onRefresh = {
+            pulled = true
+            scope.launch { runCatching { Library.refresh() }.onFailure { pulled = false } }
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) { content() }
 }
 
 /** What can be done with one song: play it next, add it to the queue, see its versions. */
@@ -404,32 +431,33 @@ private fun sortName(sort: SongSort): String = when (sort) {
 }
 
 /**
- * The scan's status while it runs: chats done of total, tracks found, a wait Telegram asked for,
- * and Pause. The tag reading shows here too. Gone when nothing runs.
+ * What the library is doing while the scan or the tag reader runs: what and how far ("N of M"),
+ * that listening goes on, and Pause or Resume. The bar is still (determinate), so nothing animates,
+ * and the words change at most twice a second. Tap it for the Library section of Settings. Gone
+ * when everything is up to date.
  */
 @Composable
-private fun ScanBar() {
-    val scan by Library.scanner.status.collectAsStateWithLifecycle()
-    val tags by Library.enricher.status.collectAsStateWithLifecycle()
-    if (!scan.running && !tags.running) return
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+private fun ScanBar(onOpen: () -> Unit) {
+    val flow = remember { Library.view() }
+    val view by flow.collectAsStateWithLifecycle(initialValue = null)
+    val paused by Library.isPaused.collectAsStateWithLifecycle()
+    val shown = view?.takeIf { it.showBanner } ?: return
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    when {
-                        scan.paused -> L.scanPaused
-                        scan.waitingSeconds > 0 -> L.scanWaiting(scan.waitingSeconds)
-                        scan.running -> L.scanRunning(minOf(scan.chatsDone + 1, scan.chatsTotal), scan.chatsTotal, scan.found)
-                        else -> L.scanTags(tags.done)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { if (scan.paused) Library.resume() else Library.pause() }) {
-                    Text(if (scan.paused) L.scanResume else L.scanPause)
+                Column(Modifier.weight(1f)) {
+                    Text(shown.line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    shown.sub?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                }
+                TextButton(onClick = { if (paused) Library.resume() else Library.pause() }) {
+                    Text(if (paused) L.scanResume else L.scanPause)
                 }
             }
-            if (!scan.paused) LinearProgressIndicator(Modifier.fillMaxWidth())
+            shown.progress?.let { fraction ->
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), drawStopIndicator = {})
+            }
         }
     }
 }

@@ -9,6 +9,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,6 +55,12 @@ import com.tmplayer.music.library.PickReason
 import com.tmplayer.music.ui.common.Cover
 import com.tmplayer.music.ui.common.Format
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import androidx.compose.runtime.snapshotFlow
+import com.tmplayer.music.data.TagEnricher
 
 /** Songs: every song of every chosen chat in one list, repeats folded into versions. */
 @Composable
@@ -60,47 +72,96 @@ fun SongsTab(sort: SongSort, actions: SongActions, header: @Composable () -> Uni
         load = { after, limit -> Library.index().songs(sort, after, limit) },
         cursorOf = { SongCursor.of(it, sort) },
     )
-    Box(Modifier.fillMaxSize()) {
-        SongList(pager, state, actions, header)
-        if (sort != SongSort.Added) LetterBar(sort, pager, state, Modifier.align(Alignment.CenterEnd))
+    // The bar has its own column, so it never covers a row's title or format badge.
+    Row(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { SongList(pager, state, actions, header) }
+        if (sort != SongSort.Added) LetterBar(sort, pager, state, Modifier.fillMaxHeight())
     }
 }
 
 /**
- * The A to Z bar at the edge of Songs: each first letter in the list, tap one to go there. The
- * rows up to that letter are read first (keyset pages), so a jump to the end of a long list waits
- * for them; the bar hides itself when the list has fewer than [LETTER_BAR_MIN] rows.
+ * The A to Z bar at the edge of Songs: each first letter in the list. Tap a letter, or drag along
+ * the bar, to go there. When more letters exist than fit (Latin plus another script), an even
+ * sample is shown, the first and last always. The rows up to that letter are read first (keyset
+ * pages), so a jump to the end of a long list waits for them; the bar hides itself when the list
+ * has fewer than [LETTER_BAR_MIN] rows.
  */
 @Composable
 private fun LetterBar(sort: SongSort, pager: Pager<SongCursor, Song>, state: LazyListState, modifier: Modifier) {
     val changes by Library.changes.collectAsStateWithLifecycle()
     var letters by remember { mutableStateOf<List<Pair<Char, Int>>>(emptyList()) }
-    val scope = rememberCoroutineScope()
     LaunchedEffect(sort, changes) {
         letters = runCatching { Library.index().letterIndex(sort) }.getOrDefault(letters)
     }
     val total = letters.lastOrNull()?.second ?: 0
     if (letters.size < 2 || total < LETTER_BAR_MIN) return
-    Column(modifier.padding(end = 2.dp), verticalArrangement = Arrangement.Center) {
-        for ((letter, position) in letters) {
-            Text(
-                letter.toString(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clickable {
-                        scope.launch {
-                            pager.ensure(position)
-                            // +1 for the header row above the songs.
-                            state.scrollToItem((position + 1).coerceAtMost(pager.items.size))
-                        }
-                    }
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
-            )
+    // One jump at a time; a drag that moves on cancels the jump it left behind.
+    val target = remember { kotlinx.coroutines.flow.MutableStateFlow<Int?>(null) }
+    LaunchedEffect(pager, state) {
+        target.collectLatest { position ->
+            if (position == null) return@collectLatest
+            pager.ensure(position)
+            // +1 for the header row above the songs.
+            state.scrollToItem((position + 1).coerceAtMost(pager.items.size))
+        }
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.width(LETTER_BAR_WIDTH)) {
+        val fit = (maxHeight / LETTER_HEIGHT).toInt().coerceAtLeast(2)
+        val shown = remember(letters, fit) { sampleLetters(letters, fit) }
+        val heightPx = with(androidx.compose.ui.platform.LocalDensity.current) { LETTER_HEIGHT.toPx() }
+        val top = (maxHeight - LETTER_HEIGHT * shown.size) / 2
+        val topPx = with(androidx.compose.ui.platform.LocalDensity.current) { top.toPx() }
+        fun jump(y: Float) {
+            val i = ((y - topPx) / heightPx).toInt().coerceIn(0, shown.lastIndex)
+            target.value = shown[i].second
+        }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(shown) {
+                    detectTapGestures { jump(it.y) }
+                }
+                .pointerInput(shown) {
+                    detectVerticalDragGestures { change, _ -> jump(change.position.y) }
+                },
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            for ((letter, _) in shown) {
+                Box(Modifier.height(LETTER_HEIGHT), contentAlignment = Alignment.Center) {
+                    Text(letter.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
+            }
         }
     }
 }
 
+/**
+ * At most [fit] of [letters] in their order: '#' and A to Z first, as they are what most lists are
+ * jumped by, and the letters of other scripts evenly spread over the slots left.
+ */
+internal fun sampleLetters(letters: List<Pair<Char, Int>>, fit: Int): List<Pair<Char, Int>> {
+    if (letters.size <= fit) return letters
+    val latin = letters.filter { it.first == '#' || it.first in 'A'..'Z' }
+    val others = letters - latin.toSet()
+    if (latin.size >= fit) {
+        val step = (latin.size - 1).toDouble() / (fit - 1)
+        return (0 until fit).map { latin[Math.round(it * step).toInt().coerceIn(0, latin.lastIndex)] }.distinct()
+    }
+    val room = fit - latin.size
+    val picked = if (room <= 0 || others.isEmpty()) {
+        emptyList()
+    } else if (room == 1) {
+        listOf(others.first())
+    } else {
+        val step = (others.size - 1).toDouble() / (room - 1)
+        (0 until room).map { others[Math.round(it * step).toInt().coerceIn(0, others.lastIndex)] }.distinct()
+    }
+    return (latin + picked).sortedBy { it.second }
+}
+
+private val LETTER_HEIGHT = 18.dp
+private val LETTER_BAR_WIDTH = 28.dp
 private const val LETTER_BAR_MIN = 40
 
 /** What a tap and a hold on a song do, from any list, and Shuffle all. */
@@ -114,6 +175,7 @@ fun SongList(
     header: @Composable () -> Unit = {},
     empty: @Composable () -> Unit = { EmptyLibrary() },
 ) {
+    ReadVisibleFirst(pager, state)
     LazyColumn(state = state, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "header") { header() }
         items(pager.items, key = { it.groupKey }) { song ->
@@ -125,6 +187,26 @@ fun SongList(
         }
     }
 }
+
+/**
+ * While the tag reader runs, the rows on screen go to the front of its queue, once the scroll has
+ * settled, so what the user looks at gets its real title and cover first. Nothing runs otherwise.
+ */
+@Composable
+private fun ReadVisibleFirst(pager: Pager<SongCursor, Song>, state: LazyListState) {
+    val flow = remember { Library.enricher.status.map { it.running && !it.paused }.distinctUntilChanged() }
+    val reading by flow.collectAsStateWithLifecycle(initialValue = false)
+    if (!reading) return
+    LaunchedEffect(pager, state) {
+        snapshotFlow { state.firstVisibleItemIndex }.distinctUntilChanged().collectLatest { first ->
+            delay(VISIBLE_SETTLE_MS)
+            val from = (first - 1).coerceAtLeast(0)
+            Library.enricher.prefer(pager.items.toList().drop(from).take(TagEnricher.BATCH).map { it.defaultTrack })
+        }
+    }
+}
+
+private const val VISIBLE_SETTLE_MS = 400L
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -147,7 +229,7 @@ fun SongRow(
         if (leading != null) {
             leading()
         } else {
-            Cover(name = song.title, fileId = song.thumbFileId, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty())
+            Cover(name = song.title, fileId = 0, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), track = song.defaultTrack.takeIf { song.thumbFileId != 0 })
         }
         Column(Modifier.weight(1f)) {
             Text(song.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -173,7 +255,7 @@ fun Badge(text: String) {
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.extraSmall) {
         Text(
             text,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
         )

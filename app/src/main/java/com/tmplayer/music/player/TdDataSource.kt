@@ -11,7 +11,9 @@ import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import android.content.Context
+import com.tmplayer.music.data.FileIds
 import com.tmplayer.music.data.Storage
+import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.data.Td
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
@@ -23,15 +25,37 @@ import java.io.InterruptedIOException
 // From TMPlayer (GPL-3.0), app/src/main/java/com/tmplayer/player/TdDataSource.kt, adapted for
 // audio: the container hint is the file's audio mime type, and reads ahead in smaller steps.
 
-/** The URI the player is handed for a Telegram file: `tdfile://<fileId>?type=<mime>`. */
-fun tdFileUri(fileId: Int, type: String? = null): Uri {
+/**
+ * The URI the player is handed for a Telegram file: `tdfile://<fileId>?type=<mime>&chat=..&msg=..`.
+ * With [track] the file id is asked again from the message when the URI is opened, because the id
+ * saved in the index belongs to the session that scanned it; [thumb] picks the cover thumbnail.
+ */
+fun tdFileUri(fileId: Int, type: String? = null, track: TrackId? = null, thumb: Boolean = false): Uri {
     val builder = Uri.Builder().scheme(TD_SCHEME).authority(fileId.toString())
     if (!type.isNullOrBlank()) builder.appendQueryParameter(TYPE_PARAM, type)
+    if (track != null) {
+        builder.appendQueryParameter(CHAT_PARAM, track.chatId.toString())
+        builder.appendQueryParameter(MESSAGE_PARAM, track.messageId.toString())
+        if (thumb) builder.appendQueryParameter(THUMB_PARAM, "1")
+    }
     return builder.build()
 }
 
+/** The message a `tdfile` URI names, or null for a bare file id. */
+fun tdTrackOf(uri: Uri): TrackId? {
+    val chat = uri.getQueryParameter(CHAT_PARAM)?.toLongOrNull() ?: return null
+    val message = uri.getQueryParameter(MESSAGE_PARAM)?.toLongOrNull() ?: return null
+    return TrackId(chat, message)
+}
+
+/** True when a `tdfile` URI asks for the message's cover thumbnail rather than its audio. */
+fun tdIsThumb(uri: Uri): Boolean = uri.getQueryParameter(THUMB_PARAM) == "1"
+
 const val TD_SCHEME = "tdfile"
 private const val TYPE_PARAM = "type"
+private const val CHAT_PARAM = "chat"
+private const val MESSAGE_PARAM = "msg"
+private const val THUMB_PARAM = "thumb"
 
 /**
  * Reads a Telegram file for the player through [TdByteWindow], TDLib's partial download: it asks for
@@ -60,8 +84,12 @@ class TdDataSource : BaseDataSource(true) {
         val startedAt = SystemClock.elapsedRealtime()
         transferInitializing(dataSpec)
         uri = dataSpec.uri
-        val fileId = dataSpec.uri.authority?.toIntOrNull()
+        val stored = dataSpec.uri.authority?.toIntOrNull()
             ?: throw IOException("Not a Telegram file URI: ${dataSpec.uri}")
+        val fileId = tdTrackOf(dataSpec.uri)?.let { track ->
+            val current = blocking(OPEN_TIMEOUT_MS) { FileIds.of(track) } ?: throw IOException("File not found")
+            (if (tdIsThumb(dataSpec.uri)) current.thumbFileId else current.fileId).takeIf { it != 0 } ?: throw IOException("File not found")
+        } ?: stored
         headers = dataSpec.uri.getQueryParameter(TYPE_PARAM)?.let { mapOf("Content-Type" to listOf(it)) } ?: emptyMap()
         position = dataSpec.position
         aheadAt = -1L

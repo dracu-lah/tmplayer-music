@@ -1,22 +1,23 @@
+// Adapted from TMPlayer (GPL-3.0), app/src/main/java/com/tmplayer/ui/auth/LoginScreen.kt.
 package com.tmplayer.music.ui.auth
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -26,22 +27,27 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.zxing.BarcodeFormat
@@ -49,167 +55,174 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.common.BitMatrix
 import com.google.zxing.qrcode.QRCodeWriter
 import com.tmplayer.music.data.AuthState
-import com.tmplayer.music.data.CodeDelivery
-import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.SignInMethod
+import com.tmplayer.music.data.SignInWords
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.i18n.L
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 
 /**
- * The sign in, one pane per TDLib question: choose a route, scan a QR code, or type a number, the
- * code, and the two-step password; an email address and its code for accounts Telegram signs in by
- * email. A smaller take on TMPlayer's LoginScreen (GPL-3.0), phone only. Password recovery and the
- * account reset are not offered yet: Start over is the way out of the password step for now.
+ * The sign in, one step per screen, each with one main action: choose a way in, then either scan
+ * a QR code, or the number ([PhoneStep]), the code ([CodeStep]) and the two-step password; an
+ * email address and its code for accounts Telegram signs in by email. Every request goes through
+ * [SignInRunner], so a rotation or a double tap never sends a second one. Password recovery and
+ * the account reset are not offered yet: Start over is the way out of the password step.
  */
 @Composable
 fun SignInScreen(auth: AuthState) {
+    // "Wrong number? Edit" on the code step. TDLib takes a different number while it waits for a
+    // code, so this is a change of screen and nothing more.
+    var changingNumber by rememberSaveable { mutableStateOf(false) }
+    val isCode = auth is AuthState.Code
+    LaunchedEffect(isCode) { if (!isCode) changingNumber = false }
+    // A new number taken is the end of changing it, even when Telegram's answer is the same code
+    // step as before. Counted rather than signalled, so a rotation in between does not miss it.
+    val success by SignInRunner.lastSuccess.collectAsStateWithLifecycle()
+    var seenSuccess by rememberSaveable { mutableLongStateOf(SignInRunner.lastSuccess.value?.id ?: 0L) }
+    LaunchedEffect(success) {
+        val done = success ?: return@LaunchedEffect
+        if (done.id == seenSuccess) return@LaunchedEffect
+        seenSuccess = done.id
+        if (done.task == SignInTask.Phone) changingNumber = false
+    }
+    val startOver = { SignInRunner.fire { Td.restartSignIn() } }
+
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .safeDrawingPadding()
-                .imePadding()
-                .verticalScroll(rememberScrollState()),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                Modifier.widthIn(max = 420.dp).fillMaxWidth().padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(L.appName, style = MaterialTheme.typography.headlineMedium)
-                when (auth) {
-                    AuthState.Connecting -> ConnectingPane()
-                    AuthState.ChooseMethod -> ChoosePane()
-                    is AuthState.Qr -> QrPane(auth)
-                    is AuthState.Phone -> PhonePane()
-                    is AuthState.Code -> CodePane(auth)
-                    is AuthState.Password -> PasswordPane(auth)
-                    is AuthState.EmailAddress -> EmailAddressPane()
-                    is AuthState.EmailCode -> EmailCodePane(auth)
-                    // Not reachable yet: this app never starts a password recovery.
-                    is AuthState.PasswordRecovery -> ConnectingPane()
-                    is AuthState.Failed -> FailedPane(auth)
-                    AuthState.Ready -> Unit
+        when (auth) {
+            AuthState.Connecting -> ConnectingStep()
+            AuthState.ChooseMethod -> ChooseStep()
+            is AuthState.Qr -> QrStep(auth)
+            is AuthState.Phone -> PhoneStep(
+                state = auth,
+                initial = null,
+                onBack = { SignInRunner.fire { Td.cancelPhoneEntry() } },
+                onUseQr = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Qr) } },
+            )
+            is AuthState.Code ->
+                if (changingNumber) {
+                    PhoneStep(
+                        state = auth,
+                        initial = auth.phoneNumber,
+                        onBack = { changingNumber = false },
+                        onUseQr = { SignInRunner.fire { Td.restartSignIn(SignInMethod.Qr) } },
+                    )
+                } else {
+                    CodeStep(auth, onChangeNumber = { changingNumber = true }, onStartOver = startOver)
                 }
-                Text(
-                    L.appUnofficial,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
+            is AuthState.Password -> PasswordStep(auth, startOver)
+            is AuthState.EmailAddress -> EmailAddressStep(auth, startOver)
+            is AuthState.EmailCode -> EmailCodeStep(auth, startOver)
+            // Not reachable yet: this app never starts a password recovery.
+            is AuthState.PasswordRecovery -> ConnectingStep()
+            is AuthState.Failed -> FailedStep(auth, startOver)
+            AuthState.Ready -> Unit
+        }
+    }
+}
+
+@Composable
+private fun ConnectingStep() {
+    val stalled by Td.signInStalled.collectAsStateWithLifecycle()
+    SignInFrame(onBack = null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
+            Spacer(Modifier.width(16.dp))
+            StepBody(L.loginConnecting)
+        }
+        if (stalled) {
+            StepBody(L.loginStalled)
+            Button(onClick = { SignInRunner.fire { Td.retryConnecting() } }, modifier = Modifier.fillMaxWidth()) {
+                Text(L.commonRetry)
             }
         }
     }
 }
 
 /**
- * Runs one sign in request from a button. Its own failure is caught and shown, never thrown:
- * the requests return their error as text, and anything else that escapes is humanised here.
+ * The first step. The number comes first: on a phone the Telegram app is most often on this same
+ * phone, and a QR code needs a second device to scan it with.
  */
-private class Submitter {
-    var busy by mutableStateOf(false)
-    var error by mutableStateOf<String?>(null)
+@Composable
+private fun ChooseStep() {
+    SignInFrame(onBack = null) {
+        Text(L.appName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        StepTitle(L.loginChooseTitle)
+        StepBody(L.loginChooseBody)
+        Button(
+            onClick = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Phone) } },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(L.loginChoosePhone) }
+        OutlinedButton(
+            onClick = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Qr) } },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(L.loginChooseQr) }
+    }
+}
 
-    suspend fun run(block: suspend () -> String?) {
-        if (busy) return
-        busy = true
-        error = null
-        error = try {
-            block()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Failures.humanise(e)
-        } finally {
-            busy = false
+@Composable
+private fun QrStep(auth: AuthState.Qr) {
+    val back = { SignInRunner.fire { Td.restartSignIn() } }
+    BackHandler(onBack = back)
+    SignInFrame(onBack = back) {
+        StepTitle(L.loginQrTitle)
+        QrStepLine(1, L.signinQrStepOpen)
+        QrStepLine(2, L.signinQrStepDevices)
+        QrStepLine(3, L.signinQrStepLink)
+        val matrix = remember(auth.link) { runCatching { qrMatrix(auth.link) }.getOrNull() }
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            if (matrix != null) {
+                QrCode(matrix)
+            } else {
+                CircularProgressIndicator()
+            }
         }
+        StepBody(L.signinQrNote)
+        OutlinedButton(onClick = { SignInRunner.fire { Td.refreshQrCode() } }, modifier = Modifier.fillMaxWidth()) {
+            Text(L.loginQrRefresh)
+        }
+        Button(
+            onClick = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Phone) } },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(L.signinUsePhone) }
     }
 }
 
 @Composable
-private fun rememberSubmitter() = remember { Submitter() }
-
-@Composable
-private fun Title(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-}
-
-@Composable
-private fun Body(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
-}
-
-@Composable
-private fun ErrorLine(text: String?) {
-    if (text != null) Text(text, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-}
-
-@Composable
-private fun StartOver() {
-    val scope = rememberCoroutineScope()
-    TextButton(onClick = { scope.launch { runCatching { Td.restartSignIn() } } }) { Text(L.commonStartOver) }
-}
-
-@Composable
-private fun ConnectingPane() {
-    val stalled by Td.signInStalled.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
-    CircularProgressIndicator()
-    Body(L.loginConnecting)
-    if (stalled) {
-        Body(L.loginStalled)
-        Button(onClick = { scope.launch { runCatching { Td.retryConnecting() } } }) { Text(L.commonRetry) }
-    }
-}
-
-@Composable
-private fun ChoosePane() {
-    val scope = rememberCoroutineScope()
-    Title(L.loginChooseTitle)
-    Body(L.loginChooseBody)
-    Button(
-        onClick = { scope.launch { runCatching { Td.chooseSignInMethod(SignInMethod.Qr) } } },
-        modifier = Modifier.fillMaxWidth(),
-    ) { Text(L.loginChooseQr) }
-    OutlinedButton(
-        onClick = { scope.launch { runCatching { Td.chooseSignInMethod(SignInMethod.Phone) } } },
-        modifier = Modifier.fillMaxWidth(),
-    ) { Text(L.loginChoosePhone) }
-}
-
-@Composable
-private fun QrPane(auth: AuthState.Qr) {
-    val scope = rememberCoroutineScope()
-    Title(L.loginQrTitle)
-    Body(L.loginQrBody)
-    val matrix = remember(auth.link) { runCatching { qrMatrix(auth.link) }.getOrNull() }
-    if (matrix != null) QrCode(matrix)
-    TextButton(onClick = { scope.launch { runCatching { Td.refreshQrCode() } } }) { Text(L.loginQrRefresh) }
-    OutlinedButton(onClick = { scope.launch { runCatching { Td.chooseSignInMethod(SignInMethod.Phone) } } }) {
-        Text(L.loginChoosePhone)
+private fun QrStepLine(number: Int, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .sizeIn(minWidth = 28.dp, minHeight = 28.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(horizontal = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("$number", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Spacer(Modifier.width(16.dp))
+        Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
 private fun qrMatrix(link: String): BitMatrix =
     QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.MARGIN to 0))
 
-/** Black on white whatever the theme, with a quiet zone, so every phone camera reads it. */
+/**
+ * Black on white whatever the theme, with a quiet zone, so every phone camera reads it. The only
+ * fixed colours in the sign in: a scanner needs this contrast, not the theme's.
+ */
 @Composable
 private fun QrCode(matrix: BitMatrix) {
+    val description = L.signinQrDescription
     Box(
         Modifier
-            .size(260.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .widthIn(max = 280.dp)
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(MaterialTheme.shapes.large)
             .background(Color.White)
-            .padding(16.dp),
+            .padding(16.dp)
+            .semantics { contentDescription = description },
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val cell = size.width / matrix.width
@@ -220,136 +233,175 @@ private fun QrCode(matrix: BitMatrix) {
     }
 }
 
+/** Two-step verification: the password with show and hide, the account's own hint. */
 @Composable
-private fun PhonePane() {
-    val scope = rememberCoroutineScope()
-    val submit = rememberSubmitter()
-    var number by rememberSaveable { mutableStateOf("+") }
-    val send = { scope.launch { submit.run { Td.submitPhoneNumber(number) } } }
-    Title(L.loginPhoneTitle)
-    Body(L.loginPhoneBody)
-    OutlinedTextField(
-        value = number,
-        onValueChange = { typed -> number = typed.filter { it.isDigit() || it == '+' || it == ' ' }.take(24) },
-        label = { Text(L.loginPhoneLabel) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { send() }),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    ErrorLine(submit.error)
-    Button(onClick = { send() }, enabled = !submit.busy && number.count(Char::isDigit) >= 5, modifier = Modifier.fillMaxWidth()) {
-        Text(L.commonContinue)
-    }
-    TextButton(onClick = { scope.launch { runCatching { Td.cancelPhoneEntry() } } }) { Text(L.commonBack) }
-}
-
-@Composable
-private fun CodePane(auth: AuthState.Code) {
-    val scope = rememberCoroutineScope()
-    val submit = rememberSubmitter()
-    var code by rememberSaveable(auth.phoneNumber) { mutableStateOf("") }
-    val send = { scope.launch { submit.run { Td.submitCode(code) } } }
-    Title(L.loginCodeTitle)
-    Body(if (auth.delivery == CodeDelivery.TelegramApp) L.loginCodeBodyApp else L.loginCodeBody(auth.phoneNumber))
-    OutlinedTextField(
-        value = code,
-        onValueChange = { typed -> code = typed.filter(Char::isLetterOrDigit).take(32) },
-        label = { Text(L.loginCodeLabel) },
-        singleLine = true,
-        isError = auth.wrong,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { send() }),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    ErrorLine(submit.error)
-    Button(onClick = { send() }, enabled = !submit.busy && code.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-        Text(L.commonContinue)
-    }
-    if (auth.canResend) {
-        TextButton(onClick = { scope.launch { submit.run { Td.resendCode() } } }) { Text(L.loginResend) }
-    }
-    StartOver()
-}
-
-@Composable
-private fun PasswordPane(auth: AuthState.Password) {
-    val scope = rememberCoroutineScope()
-    val submit = rememberSubmitter()
+private fun PasswordStep(auth: AuthState.Password, onStartOver: () -> Unit) {
+    // Not saved across a rotation on purpose: a password is not written into the saved state.
     var password by remember { mutableStateOf("") }
-    val send = { scope.launch { submit.run { Td.submitPassword(password) } } }
-    Title(L.loginPasswordTitle)
-    if (auth.hint.isNotBlank()) Body(L.loginPasswordHint(auth.hint))
-    OutlinedTextField(
-        value = password,
-        onValueChange = { password = it },
-        label = { Text(L.loginPasswordLabel) },
-        singleLine = true,
-        isError = auth.wrong,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { send() }),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    ErrorLine(submit.error)
-    Button(onClick = { send() }, enabled = !submit.busy && password.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-        Text(L.commonContinue)
+    var shown by rememberSaveable { mutableStateOf(false) }
+    val busyTask by SignInRunner.busy.collectAsStateWithLifecycle()
+    val failure by SignInRunner.failure.collectAsStateWithLifecycle()
+    val floodLeft = rememberFloodWait()
+    val field = remember { FocusRequester() }
+    val send = {
+        if (password.isNotEmpty() && floodLeft <= 0) {
+            val typed = password
+            SignInRunner.run(SignInTask.Password) { Td.submitPassword(typed) }
+        }
     }
-    StartOver()
+    BackHandler(onBack = onStartOver)
+    SignInFrame(onBack = onStartOver) {
+        StepTitle(L.loginPasswordTitle)
+        StepBody(L.signinPasswordBlurb)
+        if (auth.hint.isNotBlank()) StepBody(L.loginPasswordHint(auth.hint))
+        OutlinedTextField(
+            value = password,
+            onValueChange = {
+                password = it.take(MAX_PASSWORD)
+                SignInRunner.clearFailure()
+            },
+            label = { Text(L.loginPasswordLabel) },
+            singleLine = true,
+            isError = auth.wrong && failure?.task == SignInTask.Password,
+            visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                TextButton(onClick = { shown = !shown }) {
+                    Text(if (shown) L.signinHidePassword else L.signinShowPassword, maxLines = 1)
+                }
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = if (shown) KeyboardType.Text else KeyboardType.Password,
+                imeAction = ImeAction.Done,
+                autoCorrectEnabled = false,
+            ),
+            keyboardActions = KeyboardActions(onDone = { send() }),
+            modifier = Modifier.fillMaxWidth().focusRequester(field),
+        )
+        StepError(failure?.takeIf { it.task == SignInTask.Password }?.message)
+        MainAction(
+            label = if (floodLeft > 0) L.signinTryAgainIn(SignInWords.clock(floodLeft)) else L.signinSignIn,
+            busyLabel = L.signinSigningIn,
+            busy = busyTask == SignInTask.Password,
+            enabled = password.isNotEmpty() && floodLeft <= 0 && busyTask == null,
+            onClick = { send() },
+        )
+        TextButton(onClick = onStartOver, enabled = busyTask == null, modifier = Modifier.fillMaxWidth()) {
+            Text(L.commonStartOver)
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { field.requestFocus() } }
 }
 
 @Composable
-private fun EmailAddressPane() {
-    val scope = rememberCoroutineScope()
-    val submit = rememberSubmitter()
+private fun EmailAddressStep(auth: AuthState.EmailAddress, onStartOver: () -> Unit) {
     var address by rememberSaveable { mutableStateOf("") }
-    val send = { scope.launch { submit.run { Td.submitEmailAddress(address) } } }
-    Title(L.loginEmailAddressTitle)
-    OutlinedTextField(
-        value = address,
-        onValueChange = { address = it.take(254) },
-        label = { Text(L.loginEmailAddressLabel) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { send() }),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    ErrorLine(submit.error)
-    Button(onClick = { send() }, enabled = !submit.busy && '@' in address, modifier = Modifier.fillMaxWidth()) {
-        Text(L.commonContinue)
+    val busyTask by SignInRunner.busy.collectAsStateWithLifecycle()
+    val failure by SignInRunner.failure.collectAsStateWithLifecycle()
+    val ok = '@' in address && address.trim().length >= 3
+    val send = {
+        if (ok) {
+            val typed = address
+            SignInRunner.run(SignInTask.EmailAddress) { Td.submitEmailAddress(typed) }
+        }
     }
-    StartOver()
+    BackHandler(onBack = onStartOver)
+    SignInFrame(onBack = onStartOver) {
+        StepTitle(L.loginEmailAddressTitle)
+        OutlinedTextField(
+            value = address,
+            onValueChange = {
+                address = it.take(MAX_EMAIL)
+                SignInRunner.clearFailure()
+            },
+            label = { Text(L.loginEmailAddressLabel) },
+            singleLine = true,
+            isError = auth.wrong && failure?.task == SignInTask.EmailAddress,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+            keyboardActions = KeyboardActions(onDone = { send() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        StepError(failure?.takeIf { it.task == SignInTask.EmailAddress }?.message)
+        MainAction(
+            label = L.commonContinue,
+            busyLabel = L.signinSendingCode,
+            busy = busyTask == SignInTask.EmailAddress,
+            enabled = ok && busyTask == null,
+            onClick = { send() },
+        )
+        TextButton(onClick = onStartOver, enabled = busyTask == null, modifier = Modifier.fillMaxWidth()) {
+            Text(L.commonStartOver)
+        }
+    }
 }
 
 @Composable
-private fun EmailCodePane(auth: AuthState.EmailCode) {
-    val scope = rememberCoroutineScope()
-    val submit = rememberSubmitter()
+private fun EmailCodeStep(auth: AuthState.EmailCode, onStartOver: () -> Unit) {
     var code by rememberSaveable(auth.pattern) { mutableStateOf("") }
-    val send = { scope.launch { submit.run { Td.submitEmailCode(code) } } }
-    Title(L.loginEmailCodeTitle)
-    Body(L.loginEmailCodeBody(auth.pattern))
-    OutlinedTextField(
-        value = code,
-        onValueChange = { typed -> code = typed.filter(Char::isLetterOrDigit).take(32) },
-        label = { Text(L.loginCodeLabel) },
-        singleLine = true,
-        isError = auth.wrong,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { send() }),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    ErrorLine(submit.error)
-    Button(onClick = { send() }, enabled = !submit.busy && code.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-        Text(L.commonContinue)
+    var submitted by rememberSaveable(auth.pattern) { mutableStateOf<String?>(null) }
+    val busyTask by SignInRunner.busy.collectAsStateWithLifecycle()
+    val failure by SignInRunner.failure.collectAsStateWithLifecycle()
+    val send = {
+        if (code.isNotEmpty()) {
+            val typed = code
+            if (SignInRunner.run(SignInTask.EmailCode) { Td.submitEmailCode(typed) }) submitted = typed
+        }
     }
-    StartOver()
+    BackHandler(onBack = onStartOver)
+    SignInFrame(onBack = onStartOver) {
+        StepTitle(L.loginEmailCodeTitle)
+        StepBody(L.loginEmailCodeBody(auth.pattern))
+        OutlinedTextField(
+            value = code,
+            onValueChange = {
+                code = it.filter(Char::isLetterOrDigit).take(32)
+                SignInRunner.clearFailure()
+            },
+            label = { Text(L.loginCodeLabel) },
+            singleLine = true,
+            isError = auth.wrong && code == submitted,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { send() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        StepError(failure?.takeIf { it.task == SignInTask.EmailCode }?.message)
+        MainAction(
+            label = L.signinSignIn,
+            busyLabel = L.signinSigningIn,
+            busy = busyTask == SignInTask.EmailCode,
+            enabled = code.isNotEmpty() && code != submitted && busyTask == null,
+            onClick = { send() },
+        )
+        TextButton(onClick = onStartOver, enabled = busyTask == null, modifier = Modifier.fillMaxWidth()) {
+            Text(L.commonStartOver)
+        }
+    }
 }
 
+/**
+ * A failure, with Try again; when Telegram said how long to wait, the wait counts down and Try
+ * again appears once it is over, rather than failing the same way at once. Telegram refusing to
+ * send a code without Premium leads straight to the QR code, the one way round it.
+ */
 @Composable
-private fun FailedPane(auth: AuthState.Failed) {
-    val scope = rememberCoroutineScope()
-    Title(L.loginFailedTitle)
-    Body(auth.message)
-    Button(onClick = { scope.launch { runCatching { Td.restartSignIn() } } }) { Text(L.commonRetry) }
+private fun FailedStep(auth: AuthState.Failed, onStartOver: () -> Unit) {
+    val left = rememberCountdown(auth.waitSeconds, auth)
+    val qr = SignInWords.offersQr(auth)
+    SignInFrame(onBack = null) {
+        StepTitle(L.loginFailedTitle)
+        StepBody(auth.message)
+        when {
+            left > 0 -> StepBody(L.signinTryAgainIn(SignInWords.clock(left)))
+            qr -> {
+                Button(
+                    onClick = { SignInRunner.fire { Td.restartSignIn(SignInMethod.Qr) } },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(L.loginChooseQr) }
+                TextButton(onClick = onStartOver, modifier = Modifier.fillMaxWidth()) { Text(L.commonStartOver) }
+            }
+            else -> Button(onClick = onStartOver, modifier = Modifier.fillMaxWidth()) { Text(L.commonRetry) }
+        }
+    }
 }
+
+private const val MAX_PASSWORD = 256
+private const val MAX_EMAIL = 254

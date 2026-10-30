@@ -47,6 +47,35 @@ class LibraryIndexTest {
     private fun LibraryIndex.pick(vararg ids: Long) = runBlocking { setPicked(ids.map { ChatPick(it, "Chat $it") }) }
 
     @Test
+    fun tagBatchIsWrittenTogetherAndCounted() = runBlocking {
+        val index = open()
+        index.pick(1)
+        index.upsert((1L..5L).map { track(1, it, title = "Track $it", artist = "") })
+        assertEquals(TagCounts(pending = 5), index.tagCounts())
+        val read = Tags(title = "Lumen Tide", artist = "Korvane", album = "Sand Hours", durationMs = 200_000)
+        index.applyTags(
+            listOf(
+                TagResult(TrackId(1, 1), read, "cover1"),
+                TagResult(TrackId(1, 2), read.copy(title = "Other"), ""),
+                TagResult(TrackId(1, 3), null),
+                TagResult(TrackId(9, 9), read),
+            ),
+        )
+        assertEquals(TagCounts(pending = 2, read = 2, failed = 1), index.tagCounts())
+        assertEquals("Lumen Tide", index.track(TrackId(1, 1))?.title)
+        assertEquals("Korvane", index.track(TrackId(1, 1))?.artist)
+        assertEquals("cover1", index.track(TrackId(1, 1))?.coverKey)
+        assertEquals(TagState.Failed, index.track(TrackId(1, 3))?.tagState)
+        assertEquals(1, index.albums(null, 10).size)
+        assertEquals(1, index.artists(null, 10).size)
+        assertEquals(listOf(5L, 4L), index.pendingTags(10).map { it.messageId })
+        assertEquals(listOf(4L), index.pendingAmong(listOf(TrackId(1, 4), TrackId(1, 1))).map { it.messageId })
+
+        assertEquals(1, index.retryFailedTags())
+        assertEquals(TagCounts(pending = 3, read = 2), index.tagCounts())
+    }
+
+    @Test
     fun upsertAndReadBack() = runBlocking {
         val index = open()
         index.pick(1)

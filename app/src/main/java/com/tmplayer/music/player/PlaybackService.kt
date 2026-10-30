@@ -263,7 +263,7 @@ class PlaybackService : MediaSessionService() {
 
         fun mediaItem(track: Track, songKey: String): MediaItem {
             val artwork: Uri? = Library.coverFile(track.coverKey)?.let(Uri::fromFile)
-                ?: track.thumbFileId.takeIf { it != 0 }?.let { tdFileUri(it) }
+                ?: track.thumbFileId.takeIf { it != 0 }?.let { tdFileUri(it, track = track.id, thumb = true) }
             val metadata = MediaMetadata.Builder()
                 .setTitle(track.title)
                 .setArtist(track.artist.ifBlank { L.libraryUnknownArtist })
@@ -277,7 +277,7 @@ class PlaybackService : MediaSessionService() {
                 .build()
             return MediaItem.Builder()
                 .setMediaId(MediaIds.of(track.id, songKey))
-                .setUri(tdFileUri(track.fileId, track.mime.ifBlank { null }))
+                .setUri(tdFileUri(track.fileId, track.mime.ifBlank { null }, track = track.id))
                 .setMediaMetadata(metadata)
                 .build()
         }

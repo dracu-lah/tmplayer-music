@@ -42,8 +42,11 @@ class Pager<C, T>(
     suspend fun reload() = guarded {
         val count = items.size.coerceIn(PAGE, MAX_RELOAD)
         val rows = load(null, count)
-        items.clear()
-        items.addAll(rows)
+        // Nothing moved on screen: leave the list alone instead of rebuilding every row.
+        if (rows != items.toList()) {
+            items.clear()
+            items.addAll(rows)
+        }
         end = rows.size < count
         loaded = true
     }

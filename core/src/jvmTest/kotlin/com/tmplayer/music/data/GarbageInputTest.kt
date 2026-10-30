@@ -167,4 +167,42 @@ class GarbageInputTest {
             recentSearchKey(text)
         }
     }
+
+    @Test
+    fun `phone numbers, codes and country rows that are garbage never crash`() {
+        val random = Random(17)
+        val countries = BundledCountries.all
+        val odd = listOf(
+            "", "+", "++", "00", "0000000000000000", "+" + "9".repeat(10_000), "(", ")", "-", "\u0000", "\uD800",
+            "+44 \u0000 7700", "٠٠٤٤", "+١٢", "+1 (242) 555-0100 ext. 12", "x".repeat(100_000),
+        )
+        repeat(3000) {
+            val alphabet = "+0123456789 ()-.٠١٢x\u0000"
+            val text = when {
+                it < odd.size -> odd[it]
+                it % 2 == 0 -> String(CharArray(random.nextInt(0, 300)) { alphabet[random.nextInt(alphabet.length)] })
+                else -> String(CharArray(random.nextInt(0, 300)) { random.nextInt(0, 0xFFFF).toChar() })
+            }
+            val entry = PhoneEntry().typeDial(text, countries).typeNational(text, countries)
+            assertTrue("dial ${entry.dial}", entry.dial.length <= PhoneCountries.MAX_DIAL_DIGITS && entry.dial.all { c -> c in '0'..'9' })
+            assertTrue("number ${entry.national}", entry.national.length <= PhoneRules.MAX_DIGITS && entry.national.all { c -> c in '0'..'9' })
+            entry.problem(PhoneRules.country(countries, entry.dial, text, text))
+            PhoneRules.splitInternational(text, countries)
+            PhoneCountries.splitInternational(text, emptyList())
+            PhoneFormat.format(PhoneRules.digits(text), text)
+            val formatted = PhoneFormat.format(entry.national, text.take(40))
+            PhoneFormat.toFormatted(random.nextInt(-5, 50), formatted)
+            PhoneFormat.toRaw(random.nextInt(-5, 50), formatted)
+            PhoneCountries.matches(countries[it % countries.size], text)
+            PhoneCountries.byIso(countries, text)
+            flagEmoji(text)
+            DeviceRegion.pick(text, text, text)
+            DeviceRegion.regionOf(listOf(text))
+            PhoneEntry.restore(listOf(text, text, text, text))
+            val code = CodeInput.clean(text, digits = true, length = random.nextInt(0, 9))
+            assertTrue("code $code", code.length <= 64 && code.all { c -> c in '0'..'9' })
+            CodeInput.clean(text, digits = false, length = 0)
+            PhoneCountries.fromRows(listOf(CountryRow(text, text, listOf(text, ""), hidden = false)))
+        }
+    }
 }

@@ -33,7 +33,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.tmplayer.music.BuildConfig
+import android.text.format.DateUtils
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.data.CachePolicy
+import com.tmplayer.music.data.Library
+import com.tmplayer.music.data.LibraryPhase
+import com.tmplayer.music.library.ChatRow
 import com.tmplayer.music.data.Prefs
 import com.tmplayer.music.data.Storage
 import com.tmplayer.music.i18n.L
@@ -41,7 +47,7 @@ import com.tmplayer.music.ui.common.Format
 import kotlinx.coroutines.launch
 
 /**
- * Settings: Storage (what the cache holds, what is free, the cache limit, Free up space) and About.
+ * Settings: Library (what the scan and the tag reader do, with Pause and Check now), Storage (what the cache holds, what is free, the cache limit, Free up space) and About.
  * Free up space asks first and says what happens: the songs stay, they stream again when played.
  */
 @Composable
@@ -61,6 +67,8 @@ fun SettingsScreen() {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+        LibrarySection()
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Section(L.settingsStorage)
         Line(L.settingsCacheUsed(if (used < 0) "…" else Format.size(used).ifEmpty { L.settingsNothing }))
         Line(L.settingsFree(Format.size(free)))
@@ -123,6 +131,125 @@ fun SettingsScreen() {
             dismissButton = { TextButton(onClick = { confirm = false }) { Text(L.commonCancel) } },
         )
     }
+}
+
+/**
+ * The Library section: what the scan and the tag reader are doing, the counts, when the chats were
+ * last checked, Pause or Resume, Check for new tracks now, files whose tags could not be read with
+ * Try again, and each chat with its state (a failed one with its reason and Try again).
+ */
+@Composable
+private fun LibrarySection() {
+    val scope = rememberCoroutineScope()
+    val flow = remember { Library.view() }
+    val view by flow.collectAsStateWithLifecycle(initialValue = null)
+    val paused by Library.isPaused.collectAsStateWithLifecycle()
+    val scan by Library.scanner.status.collectAsStateWithLifecycle()
+    val tags by Library.enricher.status.collectAsStateWithLifecycle()
+    val changes by Library.changes.collectAsStateWithLifecycle()
+    var chats by remember { mutableStateOf<List<ChatRow>>(emptyList()) }
+    var checking by remember { mutableStateOf(false) }
+    var retrying by remember { mutableStateOf(false) }
+
+    LaunchedEffect(changes) {
+        chats = runCatching { Library.index().pickedChats() }.getOrDefault(chats)
+        runCatching { Library.enricher.refreshCounts() }
+    }
+    // The button stays off from the tap until the scan it started has ended, so a double tap runs once.
+    LaunchedEffect(scan.running) {
+        if (!scan.running) checking = false
+    }
+
+    Section(L.settingsLibrary)
+    val current = view
+    if (current != null) {
+        Text(
+            current.state,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+        // The reading progress has its own line below; a scan or a wait says more than the state does.
+        if (current.phase == LibraryPhase.Scanning || current.phase == LibraryPhase.Waiting) Hint(current.line)
+    }
+    val counts = tags.counts
+    Line(L.settingsLibraryCounts(counts.total, chats.size))
+    if (counts.total > 0) Line(L.settingsDetails(counts.finished, counts.total))
+    val last = chats.maxOfOrNull { it.scan.lastScanAt } ?: 0L
+    Line(
+        if (last > 0 && System.currentTimeMillis() / 1000 - last < 60) {
+            L.settingsLastCheckedNow
+        } else if (last > 0) {
+            L.settingsLastChecked(
+                DateUtils.getRelativeTimeSpanString(last * 1000, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString(),
+            )
+        } else {
+            L.settingsLastNever
+        },
+    )
+    Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = { if (paused) Library.resume() else Library.pause() }) {
+            Text(if (paused) L.scanResume else L.scanPause)
+        }
+        TextButton(
+            enabled = !scan.running && !checking,
+            onClick = {
+                checking = true
+                scope.launch { runCatching { Library.refresh() }.onFailure { checking = false } }
+            },
+        ) { Text(L.scanCheckNow) }
+    }
+    if (counts.failed > 0) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(L.settingsDetailsFailed(counts.failed), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(
+                enabled = !retrying,
+                onClick = {
+                    retrying = true
+                    scope.launch {
+                        runCatching { Library.retryFailedTags() }
+                        runCatching { Library.enricher.refreshCounts() }
+                        retrying = false
+                    }
+                },
+            ) { Text(L.settingsRetryFailed) }
+        }
+    }
+    if (chats.isNotEmpty()) {
+        Text(L.settingsChats, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+        for (chat in chats) {
+            val failed = scan.failed[chat.chatId]
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(chat.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        when {
+                            failed != null -> failed
+                            chat.scan.audio.done && chat.scan.documents.done -> L.manageTracks(chat.trackCount)
+                            else -> L.manageScanning(chat.trackCount)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (failed != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (failed != null) {
+                    TextButton(onClick = { Library.scanner.scan(listOf(chat.chatId)) }) { Text(L.commonRetry) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Hint(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+    )
 }
 
 @Composable

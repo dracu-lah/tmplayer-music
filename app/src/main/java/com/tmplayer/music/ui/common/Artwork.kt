@@ -27,7 +27,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tmplayer.music.data.FileIds
 import com.tmplayer.music.data.Td
+import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.platform.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -79,10 +81,26 @@ object Artwork {
         return if (argb == 0) null else Color(argb)
     }
 
-    suspend fun thumbnail(fileId: Int, sizePx: Int): ImageBitmap? {
-        if (fileId == 0) return null
-        val key = "f$fileId@$sizePx"
+    /**
+     * The thumbnail of a message's audio file ([track]), with its id asked again in this session, or of
+     * a file id that is current already ([fileId], a chat photo just listed).
+     */
+    suspend fun thumbnail(fileId: Int, sizePx: Int, track: TrackId? = null): ImageBitmap? {
+        val key = keyOf(fileId, sizePx, track) ?: return null
         memory.get(key)?.let { return it }
+        val current = if (track != null) FileIds.of(track)?.thumbFileId ?: 0 else fileId
+        if (current == 0) return null
+        return download(key, current, sizePx)
+    }
+
+    /** The memory key of a thumbnail; null when there is none to show. */
+    fun keyOf(fileId: Int, sizePx: Int, track: TrackId?): String? = when {
+        track != null -> "t${track.chatId}:${track.messageId}@$sizePx"
+        fileId != 0 -> "f$fileId@$sizePx"
+        else -> null
+    }
+
+    private suspend fun download(key: String, fileId: Int, sizePx: Int): ImageBitmap? {
         return gate.withPermit {
             val path = withTimeoutOrNull(20_000) {
                 val td = Td.awaitAuthorizedSession().client
@@ -130,14 +148,20 @@ fun Cover(
     size: Dp = 48.dp,
     coverPath: String = "",
     round: Boolean = false,
+    /**
+     * The message whose thumbnail to show. A file id saved in the index belongs to the session
+     * that scanned it, so a stored thumbnail is always looked up by its message; [fileId] alone is
+     * only for ids that are current (a chat photo just listed).
+     */
+    track: TrackId? = null,
 ) {
     val px = with(LocalDensity.current) { size.roundToPx() }
-    val key = if (coverPath.isNotEmpty()) "p$coverPath@$px" else "f$fileId@$px"
+    val key = if (coverPath.isNotEmpty()) "p$coverPath@$px" else Artwork.keyOf(fileId, px, track) ?: "none"
     var image by remember(key) { mutableStateOf(Artwork.cached(key)) }
     LaunchedEffect(key) {
         if (image != null) return@LaunchedEffect
         image = try {
-            if (coverPath.isNotEmpty()) Artwork.file(File(coverPath), px) else Artwork.thumbnail(fileId, px)
+            if (coverPath.isNotEmpty()) Artwork.file(File(coverPath), px) else Artwork.thumbnail(fileId, px, track)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

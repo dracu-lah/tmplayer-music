@@ -103,7 +103,7 @@ private fun SongShelf(title: String, songs: List<Song>, actions: SongActions) {
                         onLongClick = { actions.menu(song) },
                     ),
                 ) {
-                    Cover(name = song.title, fileId = song.thumbFileId, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), size = 128.dp)
+                    Cover(name = song.title, fileId = 0, coverPath = Library.coverFile(song.coverKey)?.path.orEmpty(), size = 128.dp, track = song.defaultTrack.takeIf { song.thumbFileId != 0 })
                     Text(song.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         song.artist.ifBlank { L.libraryUnknownArtist },

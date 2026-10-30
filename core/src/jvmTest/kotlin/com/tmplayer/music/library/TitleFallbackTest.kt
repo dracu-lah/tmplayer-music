@@ -106,4 +106,11 @@ class TitleFallbackTest {
         assertEquals("" to ".flac", TitleFallback.display("", "", "", "", ".flac"))
         assertEquals("" to "", TitleFallback.display(null, null, null, null, null))
     }
+
+    @Test
+    fun `placeholder artists count as unknown`() {
+        assertEquals("Tg Artist" to "Tag Title", TitleFallback.display("Tag Title", "<unknown>", null, "Tg Artist", "x.mp3"))
+        assertEquals("" to "Tag Title", TitleFallback.display("Tag Title", "Unknown Artist", null, "unknown", "x.mp3"))
+        assertEquals("Nadia Okafor" to "Glass Harbour", TitleFallback.display("", "<unknown>", "", "", "Nadia Okafor - Glass Harbour.mp3"))
+    }
 }
