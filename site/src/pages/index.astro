@@ -1,13 +1,15 @@
 ---
-// The placeholder home page: what the app is in one line, the unofficial notice and the links.
+// The placeholder home page: what the app is in one line, the unofficial notice, the links, a
+// small "Chip in" block (Buy Me a Coffee first, as tmplayer.org has it) and the footer.
 // No download button, no screenshots and nothing about features until there is a release to
 // point at. It is noindex while INDEXABLE in site.config.mjs is false.
 import Base from '../layouts/Base.astro';
 import JsonLd from '../components/JsonLd.astro';
 import { INDEXABLE } from '../../site.config.mjs';
 import { SOFTWARE_APP, WEBSITE } from '../lib/app-ld';
-
-const REPO = 'https://github.com/dracu-lah/tmplayer-music';
+import CoffeeButton from '../components/CoffeeButton.astro';
+import Footer from '../components/Footer.astro';
+import { REPO_URL as REPO, SPONSORS_URL } from '../lib/support';
 ---
 <Base
   path="/"
@@ -30,5 +32,15 @@ const REPO = 'https://github.com/dracu-lah/tmplayer-music';
       <a href="https://tmplayer.org/legal/">Legal</a>
       <a href="https://tmplayer.org/">TMPlayer, for the videos in your chats</a>
     </nav>
+    <section class="chip-in" aria-labelledby="chip-in">
+      <h2 id="chip-in">Chip in, if you like</h2>
+      <p>TMPlayer Music is free and open source, with no ads of its own and no paid tier. A coffee or a sponsorship pays for the time that goes into it. It is voluntary and unlocks nothing.</p>
+      <div class="support-coffee">
+        <CoffeeButton />
+        <a class="support-alt" href={SPONSORS_URL} rel="noopener">Sponsor on GitHub</a>
+        <a class="support-alt" href="/support/">Other ways to help</a>
+      </div>
+    </section>
   </main>
+  <Footer />
 </Base>

@@ -99,3 +99,67 @@ h1 {
 }
 .links a:hover { border-color: var(--accent); color: var(--accent); }
 .links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Support: Buy Me a Coffee in its own yellow and ink, as tmplayer.org draws it, with GitHub
+   Sponsors as the quieter link beside it. */
+:root { --bmc-yellow: #FFDD00; --bmc-ink: #0D0C22; }
+
+h2 { margin: 2rem 0 .5rem; font-weight: 600; font-size: 1.25rem; line-height: 1.3; }
+section { width: 100%; }
+section p { margin: 0 0 1rem; }
+section p a { color: var(--accent); }
+.links-inline { border-top: 0; padding-top: 0; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.chip-in { margin-top: 2.5rem; }
+
+.btn-bmc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .625rem;
+  min-height: 3rem;
+  padding: .625rem 1.5rem;
+  border: 1px solid rgba(13, 12, 34, .08);
+  border-radius: 999px;
+  background: var(--bmc-yellow);
+  color: var(--bmc-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.btn-bmc:hover { box-shadow: 0 8px 24px rgba(204, 170, 0, .32); }
+.btn-bmc .bmc-cup { flex: none; width: 14px; height: 20px; }
+.btn-bmc-lg { min-height: 4rem; padding: 1rem 2.25rem; gap: .875rem; font-size: 1.125rem; }
+.btn-bmc-lg .bmc-cup { width: 20px; height: 28px; }
+
+.support-coffee { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.support-coffee-start { flex-direction: column; align-items: flex-start; }
+.support-alt {
+  display: inline-flex;
+  padding: .375rem .75rem;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: .9375rem;
+  text-decoration: none;
+}
+.support-alt:hover { color: var(--fg); background: var(--line); }
+
+/* A page under the home page: from the top, not centred. */
+.page { justify-content: flex-start; min-height: auto; }
+.back { margin-bottom: 2rem; color: var(--muted); font-size: .9375rem; text-decoration: none; }
+.back:hover { color: var(--accent); }
+
+.footer {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 2.5rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .875rem;
+}
+.footer-links { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; }
+.footer-links a { color: var(--muted); text-decoration: none; }
+.footer-links a:hover { color: var(--accent); }
+.footer-bmc { display: inline-flex; align-items: center; gap: .375rem; }
+.footer-bmc img { box-sizing: content-box; padding: 2px 3px; border-radius: 3px; background: var(--bmc-yellow); }
+.footer-note { margin: .75rem 0 0; }

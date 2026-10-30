@@ -1,13 +1,17 @@
 package com.tmplayer.music
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.tmplayer.music.data.Library
+import com.tmplayer.music.data.SupportChecks
+import com.tmplayer.music.data.SupportReminder
 import com.tmplayer.music.diagnostics.CrashOffer
 import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.ui.AppRoot
+import com.tmplayer.music.ui.library.SupportAskHost
 import com.tmplayer.music.ui.theme.MusicTheme
 
 class MainActivity : ComponentActivity() {
@@ -15,13 +19,31 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         PlayerConnection.connect(this)
+        if (savedInstanceState == null) handleLaunch(intent)
         setContent {
             // The device's theme: dark or light as the system is, wallpaper colours on Android 12+.
             MusicTheme {
                 AppRoot()
                 CrashOffer()
+                SupportAskHost()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLaunch(intent)
+    }
+
+    /**
+     * A press on the sponsor reminder opens the Buy Me a Coffee window once the library is free for
+     * it. A debug build can force the window, to check it by eye:
+     * `adb shell am start -n com.tmplayer.music/.MainActivity --ez support_reminder true`.
+     */
+    private fun handleLaunch(intent: Intent?) {
+        if (intent?.getStringExtra(SupportChecks.EXTRA_OPEN) == SupportChecks.OPEN_SUPPORT) SupportReminder.requestOpen()
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra(EXTRA_SUPPORT_REMINDER, false) == true) SupportReminder.forced = true
     }
 
     // The tag reader's background trickle runs only while the app is on screen or playing.
@@ -33,5 +55,10 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         Library.setForeground(false)
         super.onStop()
+    }
+
+    companion object {
+        /** Debug builds only: show the support window at the next chance. See [SupportReminder.forced]. */
+        const val EXTRA_SUPPORT_REMINDER = "support_reminder"
     }
 }

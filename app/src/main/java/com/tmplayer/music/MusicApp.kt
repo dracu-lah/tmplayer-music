@@ -8,6 +8,7 @@ import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.NetworkWatch
 import com.tmplayer.music.data.Prefs
 import com.tmplayer.music.data.Storage
+import com.tmplayer.music.data.SupportChecks
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.data.start
 import com.tmplayer.music.platform.Logger
@@ -32,5 +33,7 @@ class MusicApp : Application() {
         NetworkWatch.start(this)
         Storage.cacheDir = AndroidPaths(this).filesDir
         Storage.chosenCeiling = Prefs(this).cacheCeiling(weakDevice())
+        // The once a day sponsor reminder job, only while its switch is on (off by default).
+        SupportChecks.schedule(this)
     }
 }

@@ -14,6 +14,11 @@
   <img alt="Status" src="https://img.shields.io/badge/status-early%20test%20versions-orange" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/sponsors/dracu-lah"><img alt="Sponsor on GitHub" src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?logo=githubsponsors&logoColor=white" /></a>
+  <a href="https://buymeacoffee.com/nevil.dev"><img alt="Buy me a coffee" src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black" /></a>
+</p>
+
 ---
 
 TMPlayer Music plays the audio files you already have in your own Telegram chats: the tracks you
@@ -128,6 +133,13 @@ A release build (`./gradlew :app:assembleRelease`) is signed only when a `keysto
 - [Security policy](SECURITY.md): how to report a security problem privately.
 - [Code of conduct](CODE_OF_CONDUCT.md).
 - [Third-party notices](THIRD_PARTY_NOTICES.md): libraries, their licences and sources.
+
+## Support
+
+TMPlayer Music has no ads of its own and no paid tier. If it helps you,
+[sponsor it on GitHub](https://github.com/sponsors/dracu-lah) or
+[buy me a coffee](https://buymeacoffee.com/nevil.dev). Either way, a star helps the next person trust
+it. It is all voluntary: every feature is free for everyone.
 
 ## Legal
 

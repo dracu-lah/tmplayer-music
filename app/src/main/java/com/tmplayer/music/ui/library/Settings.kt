@@ -107,6 +107,7 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         AboutSection()
+        SupportSection()
     }
 
     if (confirm) {

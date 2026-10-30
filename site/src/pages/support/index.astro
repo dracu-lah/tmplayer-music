@@ -1,0 +1,49 @@
+---
+// /support/: English only, as tmplayer.org's /support/. Every way to help, all of it voluntary;
+// nothing in the app is locked behind any of it. Robots follow INDEXABLE through Base (noindex
+// while it is false), and src/data/lastmod.json lists it for the sitemap, which stays empty until then.
+import Base from '../../layouts/Base.astro';
+import CoffeeButton from '../../components/CoffeeButton.astro';
+import Footer from '../../components/Footer.astro';
+import { REPO_URL, SPONSORS_URL } from '../../lib/support';
+---
+<Base
+  path="/support/"
+  title="Support TMPlayer Music: sponsor, star or share it"
+  description="Ways to support TMPlayer Music: sponsor it, buy a coffee, star it on GitHub or tell a friend. All voluntary, and nothing is locked behind it."
+>
+  <main id="main" class="soon page">
+    <a class="back" href="/">TMPlayer Music</a>
+    <p class="eyebrow">Support the project</p>
+    <h1>Support TMPlayer Music</h1>
+    <p class="lede">TMPlayer Music is free and open source, with no ads of its own, no paid tier and no account of ours. Everything here is voluntary and unlocks nothing: every feature is free for everyone, whether or not you ever do any of it.</p>
+
+    <section id="chip-in">
+      <h2>Chip in</h2>
+      <p>If TMPlayer Music saves you some bother, a coffee or a monthly sponsorship pays for the time that goes into it. Any amount is welcome, and one coffee is plenty.</p>
+      <div class="support-coffee support-coffee-start">
+        <CoffeeButton large />
+        <a class="support-alt" href={SPONSORS_URL} rel="noopener">Sponsor on GitHub</a>
+      </div>
+    </section>
+
+    <section id="star">
+      <h2>Star it on GitHub</h2>
+      <p>A star costs nothing and takes one click. It is how the next person, reading a GitHub page cold, learns that somebody else already trusted this app.</p>
+      <nav class="links links-inline" aria-label="Star">
+        <a href={REPO_URL} rel="noopener">Star on GitHub</a>
+      </nav>
+    </section>
+
+    <section id="share">
+      <h2>Tell a friend</h2>
+      <p>Know someone who keeps audio files in their Telegram chats? Send them <a href="/">music.tmplayer.org</a>.</p>
+    </section>
+
+    <section>
+      <h2>Already supporting?</h2>
+      <p>Thank you. You do not need to do anything here. The app asks now and then, at most once every two weeks and never while music plays, and "Don't show again" in that window ends it for good. The reminder notification is off unless you turn it on in Settings.</p>
+    </section>
+  </main>
+  <Footer />
+</Base>

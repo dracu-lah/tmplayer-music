@@ -27,6 +27,8 @@ import com.tmplayer.music.R
 import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.Storage
+import com.tmplayer.music.data.SupportChecks
+import com.tmplayer.music.data.SupportReminder
 import com.tmplayer.music.data.TagEnricher
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.ArtistDisplay
@@ -211,9 +213,13 @@ class PlaybackService : MediaSessionService() {
     /** [item] played to its end: its card starts from the top next time. */
     private fun finished(item: MediaItem?) {
         val queued = item?.mediaId?.let { MediaIds.item(it) } ?: return
+        val at = System.currentTimeMillis()
+        // A track played to its end is what the sponsor ask counts, and its good moment.
+        SupportReminder.trackFinished(at)
         scope.launch(Dispatchers.IO) {
             runCatching { Library.index().clearResume(queued.id) }.onFailure { Logger.w(TAG, "clearing a finished track failed", it) }
             Library.notifyChanged()
+            runCatching { SupportChecks.store(applicationContext).noteCompleted(queued.songKey.ifBlank { queued.id.toString() }, at) }
         }
     }
 

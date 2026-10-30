@@ -1,0 +1,14 @@
+---
+// The Buy Me a Coffee button, as tmplayer.org draws it: Buy Me a Coffee's own yellow (#FFDD00)
+// with their near-black words and their cup, the official artwork in public/brand/, never redrawn.
+// It is the first way to chip in wherever the site asks, with GitHub Sponsors the quieter link
+// beside it.
+import { BMC_URL } from '../lib/support';
+
+interface Props { large?: boolean }
+const { large = false } = Astro.props;
+---
+<a class:list={['btn-bmc', { 'btn-bmc-lg': large }]} href={BMC_URL} rel="noopener">
+  <img class="bmc-cup" src="/brand/bmc-cup-on-yellow.svg" alt="" width="14" height="20" loading="lazy" decoding="async">
+  <span>Buy me a coffee</span>
+</a>

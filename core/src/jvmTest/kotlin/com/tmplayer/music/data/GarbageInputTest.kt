@@ -206,6 +206,17 @@ class GarbageInputTest {
     }
 
     @Test
+    fun `the support counters' stored list that is garbage reads as a bounded list, never a crash`() {
+        val random = Random(19)
+        val odd = listOf("", ";", "|", "||", ";;;;", "a|", "|1", "a|1|1", "a|x", "a|99999999999999999999", "\u0000|1", "a|1;".repeat(100_000))
+        repeat(3000) {
+            val text = if (it < odd.size) odd[it] else String(CharArray(random.nextInt(0, 300)) { "ab|;19-".random(random) })
+            assertTrue(SupportReminder.decodeRecent(text).size <= 16)
+        }
+        assertTrue(SupportReminder.decodeRecent(null).isEmpty())
+    }
+
+    @Test
     fun `phone numbers, codes and country rows that are garbage never crash`() {
         val random = Random(17)
         val countries = BundledCountries.all

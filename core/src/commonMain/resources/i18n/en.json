@@ -387,6 +387,26 @@
     "megabytes": "{size} MB",
     "not_enough": "Not enough space to play this track: it needs {needed} and {free} is free. Free up space in Settings, or make room on the device."
   },
+  "support": {
+    "ask_text": "You have played {count, plural, one {# track} other {# tracks}} to the end here. TMPlayer Music has no ads of its own and no account of ours. If it earns a spot in your day, a coffee keeps it going. It is voluntary and unlocks nothing.",
+    "ask_title": "Enjoying TMPlayer Music?",
+    "buy_coffee": "Buy me a coffee",
+    "channel": "TMPlayer Music news",
+    "channel_detail": "Rare notes from the app, such as the sponsor reminder",
+    "dont_show": "Don't show again",
+    "maybe_later": "Maybe later",
+    "note": "Voluntary. It unlocks nothing: every feature is free for everyone.",
+    "notify_not_now": "Not now",
+    "notify_sponsor_body": "If TMPlayer Music is useful to you, a coffee keeps it going. It stays free, with every feature, either way.",
+    "notify_sponsor_title": "Don't forget to sponsor TMPlayer Music",
+    "notify_star_body": "A star on GitHub costs nothing and helps more people find it.",
+    "notify_star_title": "Enjoying TMPlayer Music?",
+    "reminders": "Sponsor reminders",
+    "reminders_detail": "Now and then, never more than once a month, a notification asking whether TMPlayer Music has earned a coffee",
+    "sponsor_github": "Sponsor on GitHub",
+    "star_github": "Star on GitHub",
+    "title": "Support TMPlayer Music"
+  },
   "tab": {
     "albums": "Albums",
     "artists": "Artists",

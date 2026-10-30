@@ -20,6 +20,16 @@ object About {
     /** The licences of the work the app ships from others, such as the Hugeicons icons (MIT). */
     const val THIRD_PARTY_URL = "https://github.com/dracu-lah/tmplayer-music/blob/main/THIRD_PARTY_NOTICES.md"
 
+    /** The source repository: Star on GitHub opens it. */
+    const val SOURCE = "https://github.com/dracu-lah/tmplayer-music"
+
+    /**
+     * The two ways to chip in, the same pages TMPlayer and `.github/FUNDING.yml` link. nevil.dev is
+     * the right Buy Me a Coffee page (buymeacoffee.com/nevil is somebody else's).
+     */
+    const val COFFEE = "https://buymeacoffee.com/nevil.dev"
+    const val SPONSORS = "https://github.com/sponsors/dracu-lah"
+
     /**
      * The version as one short text: name, code and build type, `0.1.0 (1), release`. A blank
      * name reads as `?`, a negative code and a blank type are left out, so a broken build still

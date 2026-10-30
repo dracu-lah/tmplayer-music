@@ -152,6 +152,12 @@ object Library {
         playing.value = on
     }
 
+    /** Whether one of the app's screens is on screen now, for a check that must not post over it. */
+    val isForeground: Boolean get() = foreground.value
+
+    /** Whether the player is playing now. */
+    val isPlaying: Boolean get() = playing.value
+
     /** The user's answer about mobile data, from the one time question or Settings. */
     fun setMobileAllowed(allowed: Boolean) {
         choices.setMobileAllowed(allowed)

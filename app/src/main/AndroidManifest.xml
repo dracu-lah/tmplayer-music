@@ -11,6 +11,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      Keeps the sponsor reminder's once a day job (SupportChecks, scheduled only while its switch is
+      on) across a restart: JobScheduler drops a persisted job without it. Nothing runs at boot itself.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".MusicApp"
@@ -58,5 +63,27 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!-- The sponsor reminder's daily check (SupportChecks); only the system's job scheduler binds it. -->
+        <service
+            android:name=".data.SupportChecks"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!--
+          The sponsor reminder's buttons (NoticeActions): Buy me a coffee and Star on GitHub open the
+          page in the browser through an activity with no window, Not now only takes the notification
+          down. Reached by this app's own notification alone.
+        -->
+        <activity
+            android:name=".data.NoticeLinkActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+        <receiver
+            android:name=".data.NoticeDismissReceiver"
+            android:exported="false" />
     </application>
 </manifest>

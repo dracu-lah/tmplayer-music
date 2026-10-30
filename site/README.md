@@ -37,7 +37,8 @@ Cloudflare account wrangler is logged in to (`npx wrangler whoami`; `npx wrangle
 | `site.config.mjs` | `INDEXABLE`, the one switch for search engines, and `ORIGIN` |
 | `astro.config.mjs` | the build, and `tmHeaders`, which writes `dist/_headers` (security headers, caching, X-Robots-Tag) |
 | `src/layouts/Base.astro` | `<html>` and the whole `<head>`: canonical, robots, Open Graph, Twitter, icons, manifest |
-| `src/pages/index.astro`, `src/pages/404.astro` | the pages |
+| `src/pages/index.astro`, `src/pages/support/index.astro`, `src/pages/404.astro` | the pages: home (with a small Chip in block), Support (English only, as tmplayer.org's) and 404 |
+| `src/components/Footer.astro`, `src/components/CoffeeButton.astro`, `src/lib/support.ts` | the footer and the support links: Buy Me a Coffee first in its own yellow (`public/brand/`, their official cup), GitHub Sponsors beside it |
 | `src/pages/sitemap.xml.ts`, `src/pages/robots.txt.ts` | the sitemap and robots.txt, both following `INDEXABLE` |
 | `src/lib/app-ld.ts` | the JSON-LD: `WebSite` always, `SoftwareApplication` only when indexable |
 | `src/components/JsonLd.astro` | writes a JSON-LD block |
