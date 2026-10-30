@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="art/logo.svg" width="88" alt="TMPlayer Music logo" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="art/logo-white.svg" />
+    <img src="art/logo.svg" width="88" alt="TMPlayer Music logo" />
+  </picture>
 </p>
 
 <h1 align="center">TMPlayer Music</h1>
