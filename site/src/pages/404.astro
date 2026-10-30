@@ -1,0 +1,15 @@
+---
+// The page every unknown path answers with. Cloudflare Pages serves dist/404.html with status 404
+// for any path that has no file. noindex, no canonical and no social tags (Base's notFound).
+import Base from '../layouts/Base.astro';
+---
+<Base path="/404/" title="Page not found: TMPlayer Music" description="This page does not exist on music.tmplayer.org." notFound>
+  <main id="main" class="soon">
+    <p class="eyebrow">404</p>
+    <h1>Page not found</h1>
+    <p class="lede">This address does not lead anywhere on music.tmplayer.org.</p>
+    <nav class="links" aria-label="Links">
+      <a href="/">Go to the home page</a>
+    </nav>
+  </main>
+</Base>

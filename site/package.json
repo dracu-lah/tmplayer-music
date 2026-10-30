@@ -1,0 +1,26 @@
+{
+  "name": "tmplayer-music-site",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "pages:dev": "wrangler pages dev dist",
+    "pages:deploy": "astro build && wrangler pages deploy dist --project-name tmplayer-music-site --branch main"
+  },
+  "dependencies": {
+    "astro": "7.3.4"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@types/node": "24.19.0",
+    "typescript": "5.9.3",
+    "wrangler": "4.156.0"
+  }
+}

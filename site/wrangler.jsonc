@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // A Cloudflare Pages project serving the static Astro build, not a Worker: tmplayer.org's DNS is
+  // not on Cloudflare, and a Pages custom domain works with a plain CNAME at any DNS provider.
+  // The custom domain music.tmplayer.org is added in the dashboard, not here (site/README.md).
+  "name": "tmplayer-music-site",
+  "pages_build_output_dir": "dist",
+  "compatibility_date": "2026-10-01"
+}

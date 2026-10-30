@@ -1,0 +1,101 @@
+/* The placeholder page's whole stylesheet. Colours are the app icon's: near black #0E0E12,
+   off-white #EDEDF2 and coral #FF6B57 in the dark scheme; on white the deeper coral #B23A26 carries
+   text at 4.5:1 or more, as the app's light scheme does. */
+
+@font-face {
+  font-family: "Poppins";
+  src: url("/fonts/poppins-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Poppins";
+  src: url("/fonts/poppins-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #FFFFFF;
+  --fg: #0E0E12;
+  --muted: #4A4A56;
+  --accent: #B23A26;
+  --line: #DCDCE3;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0E0E12;
+    --fg: #EDEDF2;
+    --muted: #A9A9B6;
+    --accent: #FF6B57;
+    --line: #2C2C38;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 1rem/1.6 "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.soon {
+  min-height: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.mark { width: 5rem; height: 5rem; border-radius: 1.25rem; margin-bottom: 2rem; }
+
+.eyebrow {
+  margin: 0 0 .5rem;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: .875rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-weight: 600;
+  font-size: clamp(2.25rem, 7vw, 3.5rem);
+  line-height: 1.1;
+  letter-spacing: -.02em;
+}
+
+.lede { margin: 0 0 1rem; font-size: 1.125rem; }
+
+.notice { margin: 0 0 2rem; color: var(--muted); font-size: .9375rem; }
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  width: 100%;
+}
+.links a {
+  display: inline-block;
+  padding: .5rem 1.125rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--fg);
+  text-decoration: none;
+  font-size: .9375rem;
+}
+.links a:hover { border-color: var(--accent); color: var(--accent); }
+.links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

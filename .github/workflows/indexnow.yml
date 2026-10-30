@@ -1,0 +1,32 @@
+name: IndexNow (site)
+
+# Adapted from TMPlayer's IndexNow workflow, and not enabled yet: it runs only when started by hand
+# (Actions, IndexNow (site), Run workflow), and scripts/indexnow-site.py sends nothing while
+# INDEXABLE in site/site.config.mjs is false.
+#
+# TMPlayer's version starts on every push to main that touches site/ and waits for Vercel's commit
+# status. music.tmplayer.org is deployed by direct upload to Cloudflare Pages (`pnpm -C site
+# pages:deploy`), which leaves no commit status to wait for, so here the ping is started by hand after a
+# deploy. If the site ever deploys from CI, add the push trigger and run this after the deploy step.
+on:
+  workflow_dispatch:
+    inputs:
+      before:
+        description: 'The commit the last ping covered (empty: compare with the parent of HEAD)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Ping IndexNow with the changed pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Ping IndexNow
+        run: python3 scripts/indexnow-site.py --before "${{ inputs.before }}" --after "${{ github.sha }}"

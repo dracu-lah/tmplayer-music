@@ -1,0 +1,34 @@
+---
+// The placeholder home page: what the app is in one line, the unofficial notice and the links.
+// No download button, no screenshots and nothing about features until there is a release to
+// point at. It is noindex while INDEXABLE in site.config.mjs is false.
+import Base from '../layouts/Base.astro';
+import JsonLd from '../components/JsonLd.astro';
+import { INDEXABLE } from '../../site.config.mjs';
+import { SOFTWARE_APP, WEBSITE } from '../lib/app-ld';
+
+const REPO = 'https://github.com/dracu-lah/tmplayer-music';
+---
+<Base
+  path="/"
+  title="TMPlayer Music: coming soon"
+  description="TMPlayer Music is a player for the audio files already in your own Telegram chats. It is still being built. Unofficial, not affiliated with Telegram."
+>
+  <Fragment slot="head">
+    <JsonLd data={WEBSITE} />
+    {INDEXABLE && <JsonLd data={SOFTWARE_APP} />}
+  </Fragment>
+
+  <main id="main" class="soon">
+    <img class="mark" src="/favicon.svg" width="96" height="96" alt="">
+    <p class="eyebrow">Coming soon</p>
+    <h1>TMPlayer Music</h1>
+    <p class="lede">A player for the audio files already in your own Telegram chats. It is still being built, and this page will say more once there is something to try.</p>
+    <p class="notice">Unofficial, not affiliated with Telegram.</p>
+    <nav class="links" aria-label="Links">
+      <a href={REPO}>Source on GitHub</a>
+      <a href="https://tmplayer.org/legal/">Legal</a>
+      <a href="https://tmplayer.org/">TMPlayer, for the videos in your chats</a>
+    </nav>
+  </main>
+</Base>

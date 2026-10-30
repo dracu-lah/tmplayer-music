@@ -1,0 +1,79 @@
+---
+// Every page's <html> and <head>, adapted from tmplayer.org's Base.astro: title, description,
+// canonical, robots, author, Open Graph with the image's type and size, og:locale, the four
+// twitter: tags, the icons and the manifest. Page-specific JSON-LD goes in the "head" slot.
+//
+// Robots follow INDEXABLE in site.config.mjs. While it is false (the placeholder) every page is
+// noindex, nofollow, whatever it asks for; the X-Robots-Tag header (astro.config.mjs) says the same.
+import cssUrl from '../styles/styles.css?url';
+import { INDEXABLE, ORIGIN } from '../../site.config.mjs';
+
+interface Props {
+  /** the page's path, such as / */
+  path: string;
+  title: string;
+  description: string;
+  /** og:title and twitter:title, when they differ from the <title> */
+  socialTitle?: string;
+  imageAlt?: string;
+  /** the 404 page: noindex, no canonical and no social tags */
+  notFound?: boolean;
+}
+const { path, title, socialTitle = title, description, imageAlt = 'The TMPlayer Music icon', notFound = false } = Astro.props;
+const url = ORIGIN + path;
+// Bump ?v= whenever og.png changes, so the social sites fetch the new one.
+const OG_IMAGE = `${ORIGIN}/og.png?v=1`;
+const robots = INDEXABLE ? 'index, follow, max-image-preview:large, max-snippet:-1' : 'noindex, nofollow';
+---
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<meta name="description" content={description}>
+{notFound ? <meta name="robots" content="noindex"> : <Fragment>
+<link rel="canonical" href={url}>
+{/* Placeholder: noindex until launch. See INDEXABLE in site.config.mjs and "Going live" in README.md. */}
+<meta name="robots" content={robots}>
+<meta name="author" content="dracu-lah">
+</Fragment>}
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E0E12" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+{!notFound && <Fragment>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TMPlayer Music">
+<meta property="og:title" content={socialTitle}>
+<meta property="og:description" content={description}>
+<meta property="og:url" content={url}>
+<meta property="og:image" content={OG_IMAGE}>
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content={imageAlt}>
+<meta property="og:locale" content="en_US">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content={socialTitle}>
+<meta name="twitter:description" content={description}>
+<meta name="twitter:image" content={OG_IMAGE}>
+<meta name="twitter:image:alt" content={imageAlt}>
+</Fragment>}
+
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+{!notFound && <Fragment>
+<link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="/icon-512.png">
+<link rel="manifest" href="/site.webmanifest">
+</Fragment>}
+<link rel="preload" href="/fonts/poppins-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/poppins-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href={cssUrl}>
+<slot name="head" />
+</head>
+<body>
+<slot />
+</body>
+</html>

@@ -1,0 +1,6 @@
+---
+// A JSON-LD block. "</" is escaped so no string in the data can close the script early.
+interface Props { data: unknown }
+const body = '\n' + JSON.stringify(Astro.props.data, null, 2).replace(/<\//g, '<\\/') + '\n';
+---
+<script type="application/ld+json" set:html={body} is:inline></script>
