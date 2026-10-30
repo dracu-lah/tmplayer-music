@@ -131,7 +131,7 @@ internal object DemoMode {
         com.tmplayer.music.lyrics.LyricsOnline.httpOverride = DemoLyrics
         com.tmplayer.music.lyrics.LyricsOnline.choices.setOnline(true)
         scope.launch {
-            DemoLibrary.fill(File(folder, "covers"))
+            DemoLibrary.fill(File(folder, "covers2"))
             holdReady()
             Library.notifyChanged()
             _loaded.value = true
