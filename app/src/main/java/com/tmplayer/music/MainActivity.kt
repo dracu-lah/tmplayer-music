@@ -12,23 +12,15 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.tmplayer.music.data.AuthState
-import com.tmplayer.music.data.Td
-import com.tmplayer.music.ui.Shell
-import com.tmplayer.music.ui.auth.SignInScreen
+import com.tmplayer.music.ui.AppRoot
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            MusicTheme {
-                val auth by Td.auth.collectAsStateWithLifecycle()
-                if (auth is AuthState.Ready) Shell() else SignInScreen(auth)
-            }
+            MusicTheme { AppRoot() }
         }
     }
 }

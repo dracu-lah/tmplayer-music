@@ -29,6 +29,24 @@
     "wrong_code": "Wrong code",
     "wrong_password": "Wrong password"
   },
+  "format": {
+    "bit_depth": "{bits} bit",
+    "bitrate": "{kbps} kbps",
+    "gigabytes": "{size} GB",
+    "kilobytes": "{size} KB",
+    "megabytes": "{size} MB",
+    "sample_rate": "{khz} kHz",
+    "unknown_duration": "--:--"
+  },
+  "library": {
+    "albums": "{count, plural, one {# album} other {# albums}}",
+    "counts": "{songs, plural, one {# song} other {# songs}} ({files, plural, one {# file} other {# files}})",
+    "empty": "No songs yet. Add chats with music in Manage chats, or wait for the scan to find them.",
+    "menu": "More",
+    "songs": "{count, plural, one {# song} other {# songs}}",
+    "unknown_artist": "Unknown artist",
+    "versions": "{count, plural, one {# version} other {# versions}}"
+  },
   "login": {
     "choose_body": "Play the audio files already in your own Telegram chats. Sign in to pick the chats with your music.",
     "choose_phone": "Use a phone number",
@@ -56,6 +74,18 @@
     "resend": "Send the code again",
     "stalled": "This is taking longer than usual. Check the connection, then try again."
   },
+  "manage": {
+    "add": "Add chats",
+    "body": "These chats are read for audio. Removing one takes its tracks out of the library; your messages in Telegram are not touched.",
+    "empty": "No chats chosen yet.",
+    "refresh": "Look for new tracks",
+    "remove": "Remove",
+    "remove_body": "{count, plural, =0 {Nothing from this chat is in your library yet.} one {# track leaves your library.} other {# tracks leave your library.}} Your messages in Telegram are not touched.",
+    "remove_title": "Remove {chat}?",
+    "scanning": "{count, plural, one {Scanning, # track so far} other {Scanning, # tracks so far}}",
+    "title": "Manage chats",
+    "tracks": "{count, plural, one {# track} other {# tracks}}"
+  },
   "picker": {
     "archived": "Archived chats",
     "body": "Tick the chats that hold your music. You can add or remove chats later in Manage chats.",
@@ -74,16 +104,45 @@
     "total": "{chats, plural, one {# chat} other {# chats}}, {files, plural, =0 {counting files} one {about # file} other {about # files}}",
     "untitled": "Untitled chat"
   },
+  "scan": {
+    "pause": "Pause",
+    "paused": "Paused",
+    "resume": "Resume",
+    "running": "Scanning {current} of {total} chats, {found, plural, one {# track so far} other {# tracks so far}}",
+    "tags": "Reading tags, {count, plural, one {# file done} other {# files done}}",
+    "waiting": "Telegram asked us to wait {seconds} s before reading more"
+  },
   "shell": {
-    "log_out": "Log out",
-    "next_step": "Picking the chats with your music comes next.",
-    "signed_in": "You're signed in"
+    "log_out": "Log out"
+  },
+  "sort": {
+    "added": "Recently added",
+    "album": "Album",
+    "artist": "Artist",
+    "title": "Title"
+  },
+  "tab": {
+    "albums": "Albums",
+    "artists": "Artists",
+    "songs": "Songs"
   },
   "unit": {
     "days": "{count, plural, one {# day} other {# days}}",
     "hours": "{count, plural, one {# hour} other {# hours}}",
     "minutes": "{count, plural, one {# minute} other {# minutes}}",
     "seconds": "{count, plural, one {# second} other {# seconds}}"
+  },
+  "versions": {
+    "cant_play": "Can't play this format",
+    "default": "Plays by default",
+    "why_lossless": "Plays the lossless version by default.",
+    "why_oldest": "These versions are alike, so the first one posted plays by default.",
+    "why_on_device": "Plays the version already on this device by default.",
+    "why_playable": "Plays the version this app can play by default.",
+    "why_preferred": "Plays the version you chose by default.",
+    "why_quality": "Plays the version with the higher quality by default.",
+    "why_smaller": "Plays the smaller version by default to save mobile data.",
+    "why_tags": "Plays the version with the fuller details by default."
   },
   "welcome": {
     "body": "A player for the audio files already in your own Telegram chats. You choose which chats it reads; nothing else is touched."
