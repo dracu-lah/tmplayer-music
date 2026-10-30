@@ -249,6 +249,7 @@ private fun SyncedLyrics(lyrics: Lyrics, state: PlayerState, shown: Boolean) {
     }
     val current = lyrics.lineAt(position, LATENCY_MS)
     val list = rememberLazyListState()
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
     LaunchedEffect(current) {
         if (current >= 0 && !list.isScrollInProgress) runCatching { list.animateScrollToItem((current - 2).coerceAtLeast(0)) }
     }
@@ -264,7 +265,7 @@ private fun SyncedLyrics(lyrics: Lyrics, state: PlayerState, shown: Boolean) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics { selected = playing }
-                    .clickable(onClickLabel = L.lyricsSeek) { PlayerConnection.seekTo(line.timeMs) }
+                    .clickable(onClickLabel = L.lyricsSeek) { haptics.tap(); PlayerConnection.seekTo(line.timeMs) }
                     .padding(vertical = 6.dp, horizontal = 8.dp),
             )
         }

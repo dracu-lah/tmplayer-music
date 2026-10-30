@@ -29,6 +29,7 @@ class MusicApp : Application() {
         Logger.sink = AndroidLogSink
         // The bounded log file and the crash record for Send logs; first, so later lines are kept.
         Diagnostics.install(this)
+        com.tmplayer.music.platform.HapticSetting.start(Prefs(this))
         // A debug build's demo library starts in place of the app (app/src/debug); never in a release.
         if (BuildHooks.startInstead(this)) return
         Td.start(this)

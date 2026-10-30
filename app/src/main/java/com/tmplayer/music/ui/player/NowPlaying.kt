@@ -324,8 +324,9 @@ private fun SkipButton(
     source: MutableInteractionSource,
     modifier: Modifier,
 ) {
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
     MorphButton(
-        onClick = onClick,
+        onClick = { haptics.tap(); onClick() },
         modifier = modifier,
         enabled = enabled,
         containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -338,9 +339,10 @@ private fun SkipButton(
 
 @Composable
 private fun ShuffleToggle(on: Boolean) {
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
     MorphToggle(
         checked = on,
-        onCheckedChange = { PlayerConnection.setShuffle(it) },
+        onCheckedChange = { haptics.toggle(it); PlayerConnection.setShuffle(it) },
         modifier = Modifier.semantics { contentDescription = if (on) L.playerShuffleOn else L.playerShuffleOff },
     ) {
         Icon(MusicIcons.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -351,9 +353,11 @@ private fun ShuffleToggle(on: Boolean) {
 
 @Composable
 private fun RepeatToggle(mode: Int) {
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
     MorphToggle(
         checked = mode != Player.REPEAT_MODE_OFF,
-        onCheckedChange = { PlayerConnection.cycleRepeat() },
+        // Off, all, one, off: on until it leaves repeat one.
+        onCheckedChange = { haptics.toggle(mode != Player.REPEAT_MODE_ONE); PlayerConnection.cycleRepeat() },
         modifier = Modifier.semantics {
             contentDescription = when (mode) {
                 Player.REPEAT_MODE_ONE -> L.playerRepeatOne

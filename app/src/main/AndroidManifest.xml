@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Haptic feedback played on the vibrator itself (its click and tick), since some phones
+         (HyperOS) drop a view's haptic feedback without a word. Granted at install. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Playing with the screen off or in another app: a media playback foreground service (Android 14
          wants the type), and its notification, which Android 13 and later ask the user for. Playback
          works without it. -->

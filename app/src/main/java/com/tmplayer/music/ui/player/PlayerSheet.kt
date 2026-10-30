@@ -337,6 +337,8 @@ private fun PlayerSheet(
             }
         }
         val nested = remember(sheet, fling) { SheetNestedScroll(sheet, fling) }
+        val sheetDrags = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+        com.tmplayer.music.ui.common.SettleHaptic(sheet.settledValue, sheetDrags)
         val collapsedColor = colors.surfaceContainerHigh
         val openColor = colors.background
         val tint = rememberCoverTint(state.item)
@@ -363,7 +365,7 @@ private fun PlayerSheet(
                     clip = p < 1f || back > 0f
                 }
                 .nestedScroll(nested)
-                .anchoredDraggable(sheet, reverseDirection = false, orientation = Orientation.Vertical, flingBehavior = fling)
+                .anchoredDraggable(sheet, reverseDirection = false, orientation = Orientation.Vertical, interactionSource = sheetDrags, flingBehavior = fling)
                 .drawBehind {
                     val p = progress()
                     drawRect(lerp(collapsedColor, openColor, p))
@@ -498,6 +500,8 @@ internal fun MiniPlayer(
     val title = state.metadata.title?.toString().orEmpty()
     val threshold = with(LocalDensity.current) { 72.dp.toPx() }
     var drag by remember { mutableFloatStateOf(0f) }
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
+    val swipeHaptics = com.tmplayer.music.ui.common.rememberHaptics()
     val dismissAction = L.nowplayingDismiss
     Box(
         Modifier
@@ -521,6 +525,7 @@ internal fun MiniPlayer(
                 ) { change, amount ->
                     change.consume()
                     drag += amount
+                    swipeHaptics.onPass(drag, threshold)
                 }
             },
     ) {
@@ -548,11 +553,11 @@ internal fun MiniPlayer(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = PlayerConnection::previous) {
+            IconButton(onClick = { haptics.tap(); PlayerConnection.previous() }) {
                 Icon(MusicIcons.Previous, contentDescription = L.playerPrevious)
             }
             PlayPauseButton(state, Modifier.size(44.dp), iconSize = 22.dp)
-            IconButton(onClick = PlayerConnection::next, enabled = state.hasNext) {
+            IconButton(onClick = { haptics.tap(); PlayerConnection.next() }, enabled = state.hasNext) {
                 Icon(MusicIcons.Next, contentDescription = L.playerNext)
             }
         }
@@ -581,8 +586,9 @@ internal fun PlayPauseButton(
 ) {
     val playing = state.isPlaying
     val label = if (playing) L.playerPause else L.playerPlay
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
     MorphButton(
-        onClick = PlayerConnection::toggle,
+        onClick = { haptics.confirm(); PlayerConnection.toggle() },
         modifier = modifier.semantics { contentDescription = label },
         on = playing,
         interactionSource = interactionSource,

@@ -96,6 +96,7 @@ internal fun FavouriteButton(item: MediaItem?) {
     val changes by com.tmplayer.music.data.Library.changes.collectAsStateWithLifecycle()
     var on by remember(key) { mutableStateOf<Boolean?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
     LaunchedEffect(key, changes) {
         if (key.isBlank()) return@LaunchedEffect
         on = runCatching { key in com.tmplayer.music.data.Library.index().favouriteKeys() }.getOrNull()
@@ -109,6 +110,7 @@ internal fun FavouriteButton(item: MediaItem?) {
                 val song = index.song(key) ?: return@runCatching
                 if (index.setFavourite(song, !now)) {
                     on = !now
+                    haptics.confirm()
                 } else {
                     PlaybackErrors.report(L.menuFavouritesFull)
                 }
@@ -181,9 +183,10 @@ internal fun SleepSheet(onDismiss: () -> Unit) {
 
 @Composable
 private fun SheetLine(text: String, onClick: () -> Unit) {
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
     Text(
         text,
         style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth().clickable { haptics.confirm(); onClick() }.padding(horizontal = 20.dp, vertical = 14.dp),
     )
 }

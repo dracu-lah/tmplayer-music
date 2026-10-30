@@ -129,6 +129,7 @@ fun WavySeekBar(
         }
     }
     val currentSeek by rememberUpdatedState(onSeek)
+    val haptics = com.tmplayer.music.ui.common.rememberHaptics()
     val currentScrub by rememberUpdatedState(onScrub)
     val duration by rememberUpdatedState(durationMs)
     val currentFraction by rememberUpdatedState(fraction)
@@ -151,6 +152,7 @@ fun WavySeekBar(
                     down.consume()
                     seeking = at(down.position.x)
                     currentScrub(seeking)
+                    haptics.gestureStart(); haptics.marks(null); haptics.marks(seeking)
                     var id = down.id
                     while (true) {
                         val event = awaitPointerEvent()
@@ -161,10 +163,12 @@ fun WavySeekBar(
                         if (!change.pressed) break
                         seeking = at(change.position.x)
                         currentScrub(seeking)
+                        haptics.marks(seeking)
                     }
                     seeking?.let { currentSeek((it * duration).toLong()) }
                     seeking = null
                     currentScrub(null)
+                    haptics.gestureEnd(); haptics.marks(null)
                 }
             }
             .semantics {

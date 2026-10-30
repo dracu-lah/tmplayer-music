@@ -117,6 +117,8 @@ private fun QueueList(items: List<MediaItem>, playing: Int, onChanged: () -> Uni
     // A row and the gap under it: how far a dragged row travels to swap one place.
     val rowHeight = with(LocalDensity.current) { 68.dp.toPx() }
     val shape = MaterialTheme.shapes.medium
+    val dragHaptics = com.tmplayer.music.ui.common.rememberHaptics()
+    val swipeHaptics = com.tmplayer.music.ui.common.rememberHaptics()
 
     LazyColumn(state = list, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp)) {
         itemsIndexed(items, key = { i, item -> "$i:${item.mediaId}" }) { i, item ->
@@ -137,6 +139,7 @@ private fun QueueList(items: List<MediaItem>, playing: Int, onChanged: () -> Uni
                         ) { change, amount ->
                             change.consume()
                             swipe += amount
+                            swipeHaptics.onPass(swipe, size.width * SWIPE_REMOVE)
                         }
                     }
                     .graphicsLayer {
@@ -169,21 +172,27 @@ private fun QueueList(items: List<MediaItem>, playing: Int, onChanged: () -> Uni
                                 onDragStart = {
                                     dragging = i
                                     dragOffset = 0f
+                                    dragHaptics.gestureStart()
+                                    dragHaptics.onChange(null)
                                 },
                                 onDragEnd = {
                                     val to = (dragging + (dragOffset / rowHeight).roundToInt()).coerceIn(0, items.lastIndex)
                                     PlayerConnection.move(dragging, to)
                                     onChanged()
+                                    dragHaptics.onChange(null)
+                                    dragHaptics.tick()
                                     dragging = -1
                                     dragOffset = 0f
                                 },
                                 onDragCancel = {
+                                    dragHaptics.onChange(null)
                                     dragging = -1
                                     dragOffset = 0f
                                 },
                             ) { change, amount ->
                                 change.consume()
                                 dragOffset += amount.y
+                                dragHaptics.onChange((dragging + (dragOffset / rowHeight).roundToInt()).coerceIn(0, items.lastIndex))
                             }
                         },
                 )
