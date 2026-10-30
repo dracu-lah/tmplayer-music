@@ -59,6 +59,9 @@ alone. The kinds of cases that keep coming up:
   archive, 100,000 tracks, 20,000 in one chat. First content within 3 s (from the disk index), never
   after a whole scan; TDLib calls have a budget; caches are bounded; a FLOOD_WAIT is waited out by the
   call that got it while the rest go on, and retries stop by themselves.
+- **Versions.** The same song in several files is one row with a Versions sheet (as TMPlayer folds copies);
+  live, remix and other recordings are separate rows. Never fold different artists; the group key is made
+  at index time.
 - **Music specifics** (from a mature player's real bug reports, `plan/RESEARCH.md` section 15): a
   missing duration is unknown, never hidden; tags are decoded by detecting the encoding; albums group
   by album artist plus album plus year; leaving a chat or logging out purges its rows and stats; hi-res
