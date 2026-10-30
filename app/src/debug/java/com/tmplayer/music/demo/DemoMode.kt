@@ -127,6 +127,9 @@ internal object DemoMode {
         // No "Waiting for Telegram" banner over the shots: the demo never connects, so its reading
         // progress would sit on Home and Library for good. Only the in-memory demo choices change.
         Library.choices.setShowProgress(false)
+        // The lyrics page shows invented synced lines from DemoLyrics, never the real service.
+        com.tmplayer.music.lyrics.LyricsOnline.httpOverride = DemoLyrics
+        com.tmplayer.music.lyrics.LyricsOnline.choices.setOnline(true)
         scope.launch {
             DemoLibrary.fill(File(folder, "covers"))
             holdReady()

@@ -129,7 +129,7 @@ internal fun NowPlayingContent(
 
     val slotContent: @Composable (Modifier) -> Unit = { slotModifier ->
         if (showLyrics) {
-            Box(slotModifier.then(fade)) { LyricsPanel(state) }
+            Box(slotModifier.then(fade)) { LyricsPanel(state, visible = open) }
         } else {
             Box(slotModifier.then(coverMotion)) {
                 ItemCover(state.item, 420.dp, state.metadata.title?.toString().orEmpty(), fill = true)

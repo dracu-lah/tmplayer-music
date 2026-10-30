@@ -108,6 +108,12 @@ object Library {
         }
         choices = LibraryChoices(store)
         dir = folder.apply { mkdirs() }
+        // The opt in lyrics lookup: off until the user turns it on; its answers live beside the library.
+        com.tmplayer.music.lyrics.LyricsOnline.apply {
+            online = { net.value != NetState.Offline }
+            version = { Updates.installedVersion }
+            start(File(dir, "lyrics-online"), store)
+        }
         index = LibraryIndex.open(File(dir, "library.db").path).also { it.hiddenMask = choices.hiddenMask }
         scanner = LibraryScanner(IndexScanStore(), ::fetchPage, scope)
         if (choices.paused.value) scanner.pause()
@@ -368,6 +374,7 @@ object Library {
         File(dir, "covers").deleteRecursively()
         File(dir, "lyrics").deleteRecursively()
         lyricsCache.evictAll()
+        com.tmplayer.music.lyrics.LyricsOnline.clear()
         dropLoaders()
         File(dir, ACCOUNT_FILE).delete()
         index = LibraryIndex.open(File(dir, "library.db").path).also { it.hiddenMask = choices.hiddenMask }

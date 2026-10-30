@@ -9,6 +9,8 @@ import com.tmplayer.music.library.playlistName
 import com.tmplayer.music.library.recentSearchKey
 import com.tmplayer.music.library.searchText
 import com.tmplayer.music.library.searchWords
+import com.tmplayer.music.lyrics.GatewayAnswer
+import com.tmplayer.music.lyrics.HttpAnswer
 import com.tmplayer.music.lyrics.LyricsParser
 import com.tmplayer.music.player.SavedQueue
 import com.tmplayer.music.tags.Samples
@@ -154,6 +156,30 @@ class GarbageInputTest {
             val alphabet = "[]:.0123456789<>ab\n"
             LyricsParser.parse(String(CharArray(random.nextInt(0, 400)) { alphabet[random.nextInt(alphabet.length)] }))
         }
+    }
+
+    @Test
+    fun `lyrics gateway answers that are garbage read as a result, never a crash`() {
+        val random = Random(17)
+        val bodies = listOf(
+            "", "{", "[]", "null", "42", "\"x\"", "{\"synced\":", "{\"synced\":{\"a\":1},\"plain\":[1],\"instrumental\":\"yes\"}",
+            "{\"synced\":\"[00:01]x\",\"plain\":null", "{\"error\":7}", "{\"retryAfter\":-5}", "{\"retryAfter\":1e999}",
+            "{\"synced\":\"" + "[00:01]".repeat(100_000) + "\"}", "{\"plain\":\"" + "a".repeat(GatewayAnswer.MAX_BODY_CHARS + 10) + "\"}",
+            "\u0000\u0001{}",
+        )
+        for (code in listOf(200, 400, 404, 429, 500, 502, -1, 999)) {
+            for (body in bodies) {
+                GatewayAnswer.parse(HttpAnswer(code, body))
+                GatewayAnswer.parse(HttpAnswer(code, body, retryAfterSec = Long.MIN_VALUE))
+            }
+        }
+        repeat(2000) {
+            val alphabet = "{}[]\":,.0123456789truefalsnul\\syncedplain"
+            val body = String(CharArray(random.nextInt(0, 400)) { alphabet[random.nextInt(alphabet.length)] })
+            GatewayAnswer.parse(HttpAnswer(if (random.nextBoolean()) 200 else random.nextInt(-5, 700), body, random.nextLong()))
+            GatewayAnswer.parse(HttpAnswer(200, String(random.nextBytes(random.nextInt(0, 512)), Charsets.ISO_8859_1)))
+        }
+        assertEquals(GatewayAnswer.Busy(1), GatewayAnswer.parse(HttpAnswer(429, "", retryAfterSec = -100)))
     }
 
     @Test

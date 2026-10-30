@@ -157,7 +157,26 @@
     "send_title": "Send {app} logs"
   },
   "lyrics": {
+    "ask_allow": "Turn on",
+    "ask_body": "To find lyrics, TMPlayer Music sends the title, artist, album and length of the song to our lyrics service, which asks LRCLIB. We keep nothing. Chat names and file names are never sent. You can turn this off in Settings, Lyrics.",
+    "ask_not_now": "Not now",
+    "ask_title": "Find lyrics online?",
+    "busy": "Lyrics are busy. Try again in a minute.",
+    "clear": "Clear saved lyrics",
+    "clear_detail": "Lyrics found online are kept on this device only, so a song is looked up once. Clearing them is safe.",
+    "cleared": "Saved lyrics cleared.",
+    "failed": "Couldn't get lyrics just now.",
+    "instrumental": "Instrumental",
+    "loading": "Looking for lyrics",
+    "need_length": "Looking up lyrics needs the track's length, and this file doesn't say how long it is.",
     "none": "No lyrics for this track. A .lrc file with the same name in the same chat, or lyrics in the file's tags, show here.",
+    "not_found": "No lyrics found for this track.",
+    "offline": "Lyrics need a connection.",
+    "online_detail": "When a track has no lyrics in its file or chat, its title, artist, album and length go to our lyrics service, which asks LRCLIB. Chat names, file names and your account are never sent.",
+    "online_title": "Look up lyrics online",
+    "search_online": "Search online",
+    "seek": "Play from this line",
+    "source": "Lyrics from LRCLIB",
     "title": "Lyrics"
   },
   "manage": {
