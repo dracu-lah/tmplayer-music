@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A placeholder until the real icon (step V6): a play triangle with a note inside. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,30 L80,54 L38,78 Z" />
+    <path
+        android:fillColor="#1E1B2E"
+        android:pathData="M52,44 L60,42 L60,46 L54,47.5 L54,60 A4,4 0 1,1 52,56.6 Z" />
+</vector>

@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      # No Telegram credentials here: the build compiles without them and the app says so at sign in.
+      - name: Unit tests and debug build
+        run: ./gradlew :core:jvmTest :app:assembleDebug --console=plain
+      - name: No em or en dashes
+        run: |
+          if grep -rInP '\x{2014}|\x{2013}' --exclude-dir=.git --exclude-dir=build --exclude-dir=.gradle --exclude-dir=node_modules .; then
+            echo "Found an em or en dash"; exit 1
+          fi

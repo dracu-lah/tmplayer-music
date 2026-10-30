@@ -1,0 +1,69 @@
+{
+  "app": {
+    "name": "TMPlayer Music",
+    "unofficial": "Unofficial, not affiliated with Telegram."
+  },
+  "common": {
+    "back": "Back",
+    "continue": "Continue",
+    "retry": "Try again",
+    "start_over": "Start over"
+  },
+  "errors": {
+    "code_expired": "That code has expired. Start over to have a new one sent.",
+    "email_invalid": "That email address doesn't look right. Check it and try again.",
+    "flood_wait": "Telegram has asked us to slow down. Try again in about {wait}.",
+    "no_account": "This number has no Telegram account yet. Create one in the Telegram app, then sign in here.",
+    "no_answer": "Telegram didn't answer. Try again in a moment.",
+    "no_api_credentials": "No Telegram API credentials in this build. Add TG_API_ID and TG_API_HASH to local.properties and rebuild.",
+    "no_space": "This device has run out of storage. Free up some space, then try again.",
+    "not_connected": "Not connected",
+    "offline": "Can't reach Telegram. Check this device's internet connection.",
+    "phone_invalid": "That number isn't one Telegram recognises. Include the country code, as in +44.",
+    "premium_sign_in": "Telegram won't send this number a code here. Sign in with a QR code from the Telegram app instead: start over, then choose Scan a QR code.",
+    "signed_out": "Telegram signed this device out. Sign in again to carry on.",
+    "tdlib_parameters": "TDLib rejected its parameters: {message}",
+    "tdlib_unavailable": "TDLib, the part of TMPlayer Music that talks to Telegram, could not start on this device. Please report this with the message: {message}",
+    "unsupported_sign_in_step": "This account needs a step TMPlayer Music can't do. Finish signing in in the Telegram app first, then try again.",
+    "wrong_code": "Wrong code",
+    "wrong_password": "Wrong password"
+  },
+  "login": {
+    "choose_body": "Play the audio files already in your own Telegram chats. Sign in to pick the chats with your music.",
+    "choose_phone": "Use a phone number",
+    "choose_qr": "Scan a QR code",
+    "choose_title": "Welcome",
+    "code_body": "Telegram sent a code to {phone}.",
+    "code_body_app": "Telegram sent the code to the Telegram app on your other device.",
+    "code_label": "Code",
+    "code_title": "Enter the code",
+    "connecting": "Connecting to Telegram",
+    "email_address_label": "Email address",
+    "email_address_title": "Your email address",
+    "email_code_body": "Telegram mailed a code to {pattern}.",
+    "email_code_title": "Check your email",
+    "failed_title": "Couldn't sign in",
+    "password_hint": "Hint: {hint}",
+    "password_label": "Password",
+    "password_title": "Two-step verification",
+    "phone_body": "Include the country code, as in +44 7700 900123.",
+    "phone_label": "Phone number",
+    "phone_title": "Your phone number",
+    "qr_body": "On your phone, open Telegram, go to Settings, then Devices, then Link Desktop Device, and scan this code.",
+    "qr_refresh": "Get a new code",
+    "qr_title": "Scan with your phone",
+    "resend": "Send the code again",
+    "stalled": "This is taking longer than usual. Check the connection, then try again."
+  },
+  "shell": {
+    "log_out": "Log out",
+    "next_step": "Picking the chats with your music comes next.",
+    "signed_in": "You're signed in"
+  },
+  "unit": {
+    "days": "{count, plural, one {# day} other {# days}}",
+    "hours": "{count, plural, one {# hour} other {# hours}}",
+    "minutes": "{count, plural, one {# minute} other {# minutes}}",
+    "seconds": "{count, plural, one {# second} other {# seconds}}"
+  }
+}
