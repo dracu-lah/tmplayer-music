@@ -38,7 +38,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.Dp
@@ -74,6 +73,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
@@ -340,7 +340,8 @@ private fun PlayerSheet(
         val sheetDrags = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
         com.tmplayer.music.ui.common.SettleHaptic(sheet.settledValue, sheetDrags)
         // The mini-player is the page's own tone (see MusicTheme for every layer): it rests on the
-        // bottom bar as part of one surface, its top edge drawn by the progress line or a hairline.
+        // bottom bar as part of one surface, the progress line or a hairline along its bottom edge is the
+        // single line between the two.
         // Opened, Now Playing is the same tone with the cover's tint over it.
         val collapsedColor = colors.background
         val openColor = colors.background
@@ -484,10 +485,10 @@ private class SheetNestedScroll(
 
 /**
  * The collapsed sheet: a full width row flush with the window's edges, directly on the navigation
- * bar, with a thin progress line along its top edge that only moves when the position is read
- * (twice a second while playing), then the cover, title and artist (or the last error), previous,
- * play or pause and next. Tap or swipe up opens Now Playing; swipe sideways skips; swipe down while
- * paused stops and closes it (TalkBack has the same as an action).
+ * bar: the cover, title and artist (or the last error), previous, play or pause and next, over a
+ * thin progress line along its bottom edge, right above the bar's tabs, that only moves when the
+ * position is read (twice a second while playing; [fraction] stands in for it in previews). Tap or swipe up opens
+ * Now Playing; swipe sideways skips; swipe down while paused stops and closes it (TalkBack has the same as an action).
  */
 @Composable
 internal fun MiniPlayer(
@@ -496,6 +497,7 @@ internal fun MiniPlayer(
     canDismiss: Boolean,
     onExpand: () -> Unit,
     onDismiss: () -> Unit,
+    fraction: (() -> Float)? = null,
 ) {
     val error by PlaybackErrors.last.collectAsStateWithLifecycle()
     // Read only by the progress line while it draws: a tick redraws the line, not the row.
@@ -565,21 +567,26 @@ internal fun MiniPlayer(
                 Icon(MusicIcons.Next, contentDescription = L.playerNext)
             }
         }
-        if (state.durationMs > 0) {
-            LinearProgressIndicator(
-                progress = { WaveLogic.fraction(position.value, state.durationMs) },
-                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(2.dp),
-                trackColor = MaterialTheme.colorScheme.outlineVariant,
-                gapSize = 0.dp,
-                drawStopIndicator = {},
-            )
-        } else {
-            // A length not known yet: no progress, but the same top edge as a hairline.
-            androidx.compose.material3.HorizontalDivider(
-                Modifier.align(Alignment.TopCenter).fillMaxWidth(),
-                color = MaterialTheme.colorScheme.outlineVariant,
-            )
-        }
+        // The line between the mini-player and the bar under it: a 2 dp track with the played part
+        // in white, flush along the row's bottom edge, or a hairline while the length is not known.
+        // Drawn only: a position tick redraws this line, not the row. It fades with the row as the
+        // sheet opens, and with no bar under it (the rail) it still marks the row's bottom edge.
+        val track = MaterialTheme.colorScheme.outlineVariant
+        val read = fraction ?: { WaveLogic.fraction(position.value, state.durationMs) }
+        val known = state.durationMs > 0
+        Spacer(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(if (known) 2.dp else 1.dp)
+                .drawBehind {
+                    drawRect(track)
+                    if (known) {
+                        val played = read().coerceIn(0f, 1f) * size.width
+                        if (played > 0f) drawRect(Color.White, size = Size(played, size.height))
+                    }
+                },
+        )
     }
 }
 

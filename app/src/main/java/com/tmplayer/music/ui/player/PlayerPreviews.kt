@@ -1,8 +1,6 @@
 package com.tmplayer.music.ui.player
 
 import android.content.res.Configuration
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -62,15 +60,14 @@ private fun NowPlayingUnknownLength() = NowPlayingSample(dark = false, durationM
 private fun NowPlayingLandscape() = NowPlayingSample(dark = true)
 
 @Composable
-private fun MiniSample(dark: Boolean, playing: Boolean) {
+private fun MiniSample(dark: Boolean, playing: Boolean, durationMs: Long = 215_000) {
     MusicTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
-            // Flush and full width, directly on the bottom bar, as in the app.
+            // Flush and full width, directly on the bottom bar, as in the app: the progress line along
+            // the mini-player's bottom edge is the one line between the two.
             Column(Modifier.padding(top = 24.dp)) {
-                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                    MiniPlayer(sample(playing), progress = { 0f }, canDismiss = !playing, onExpand = {}, onDismiss = {})
-                }
-                com.tmplayer.music.ui.library.ShellBottomBar(com.tmplayer.music.shell.MainTab.Library, sheet = null, onSelect = {})
+                MiniPlayer(sample(playing, durationMs), progress = { 0f }, canDismiss = !playing, onExpand = {}, onDismiss = {}, fraction = { 0.4f })
+                com.tmplayer.music.ui.library.ShellBottomBar(com.tmplayer.music.shell.MainTab.Library, sheet = null, onSelect = {}, miniPlayerOn = true)
             }
         }
     }
@@ -83,6 +80,10 @@ private fun MiniDark() = MiniSample(dark = true, playing = false)
 @Preview(name = "Mini-player, font 1.3", widthDp = 360, fontScale = 1.3f)
 @Composable
 private fun MiniLargeText() = MiniSample(dark = false, playing = true)
+
+@Preview(name = "Mini-player, unknown length", widthDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun MiniUnknownLength() = MiniSample(dark = true, playing = false, durationMs = 0)
 
 @Preview(name = "Wavy seek bar: playing, paused, unknown", widthDp = 360)
 @Composable

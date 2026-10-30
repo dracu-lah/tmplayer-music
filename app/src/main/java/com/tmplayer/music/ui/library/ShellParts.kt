@@ -476,10 +476,12 @@ private object NavFill {
  * sheet (read while drawing only).
  *
  * It is the page's own tone (`background`, black), not a container, so it never reads as a separate
- * slab. With no mini-player on it, a hairline marks its top; with one, the mini-player's edge does.
+ * slab. With no mini-player on it, a hairline marks its top; with one, the mini-player's progress
+ * line is the single line there, so the bar draws none. [miniPlayerOn] says so where there is no
+ * [sheet] to ask (previews).
  */
 @Composable
-fun ShellBottomBar(selected: MainTab, sheet: PlayerSheetController?, onSelect: (MainTab) -> Unit) {
+fun ShellBottomBar(selected: MainTab, sheet: PlayerSheetController?, onSelect: (MainTab) -> Unit, miniPlayerOn: Boolean = false) {
     if (sheet != null) {
         androidx.compose.runtime.DisposableEffect(sheet) { onDispose { sheet.bottomBarPx = 0 } }
     }
@@ -496,7 +498,7 @@ fun ShellBottomBar(selected: MainTab, sheet: PlayerSheetController?, onSelect: (
             }
             .drawWithContent {
                 drawContent()
-                if (sheet?.showing != true) drawLine(hairline, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
+                if (!miniPlayerOn && sheet?.showing != true) drawLine(hairline, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
             },
     ) {
         Row(
