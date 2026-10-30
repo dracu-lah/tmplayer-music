@@ -369,7 +369,7 @@ private fun previewItems(n: Int) = (1..n).map { i ->
 
 @Composable
 private fun DialSample(dark: Boolean, n: Int) {
-    MusicTheme(dark = dark, dynamic = false) {
+    MusicTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             Column(Modifier.padding(vertical = 12.dp)) {
                 SpeedDialContent(previewItems(n), current = TrackId(1, 1), playing = !dark, onTap = {}, onRemove = {})
@@ -377,10 +377,6 @@ private fun DialSample(dark: Boolean, n: Int) {
         }
     }
 }
-
-@Preview(name = "Speed dial, light, two pages", widthDp = 400)
-@Composable
-private fun DialLight() = DialSample(dark = false, n = 14)
 
 @Preview(name = "Speed dial, dark, one page", widthDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable

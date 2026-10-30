@@ -8,6 +8,15 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,9 +59,11 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -81,6 +92,7 @@ import com.tmplayer.music.ui.onboarding.ChatPicker
 import com.tmplayer.music.ui.player.HidePlayerSheet
 import com.tmplayer.music.ui.player.LocalPlayerSheet
 import com.tmplayer.music.ui.player.PlayerSheetSpacer
+import com.tmplayer.music.ui.theme.LocalReducedMotion
 import com.tmplayer.music.ui.theme.MusicMotion
 import kotlinx.coroutines.launch
 
@@ -269,10 +281,19 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
         }
     }
 
+    // A tab change fades through: the old tab fades out quickly, the new one fades in rising a few
+    // dp. Each side keeps its own saved state (scroll place), so nothing jumps. Chips and pages
+    // change in place. Snaps when animations are off.
+    val reduced = LocalReducedMotion.current
+    val riseByPx = with(LocalDensity.current) { 10.dp.roundToPx() }
     val body: @Composable () -> Unit = {
         when (page) {
-            null -> {
-                val key = when (tab) {
+            null -> AnimatedContent(
+                targetState = tab,
+                transitionSpec = { tabFadeThrough(reduced, riseByPx) },
+                label = "tabFadeThrough",
+            ) { shownTab ->
+                val key = when (shownTab) {
                     MainTab.Home -> "home:$homeRound"
                     MainTab.Chats -> "chats"
                     MainTab.Library -> when (shelf) {
@@ -285,7 +306,7 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
                 // after a rotation or process death.
                 holder.SaveableStateProvider(key) {
                     RefreshBox {
-                        when (tab) {
+                        when (shownTab) {
                             MainTab.Home -> HomeTab(actions, onShuffleAll = { scope.launch { runCatching { actions.shuffle(allSongs()) } } })
                             MainTab.Chats -> ChatsTab(actions, onChat = { open(Page.ChatPage(it)) }, onAdd = { open(Page.Picker) })
                             MainTab.Library -> when (shelf) {
@@ -611,8 +632,15 @@ private fun ScanBar(onOpen: () -> Unit) {
     val mode = LibraryStatus.banner(view, showProgress)
     val shown = view ?: return
     if (mode == LibraryStatus.Banner.None) return
+    // An inset card in surfaceContainer, one small step from the page, not a full-width slab in an
+    // accent container: the progress and the buttons carry the accent. Errors keep their own colour.
+    val card = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
     if (mode == LibraryStatus.Banner.Attention) {
-        Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer,
+            shape = MaterialTheme.shapes.medium,
+            modifier = card.clip(MaterialTheme.shapes.medium).clickable(onClick = onOpen),
+        ) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Text(L.scanFailedChats(shown.failedChats), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                 Text(L.scanFailedChatsSub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
@@ -620,13 +648,17 @@ private fun ScanBar(onOpen: () -> Unit) {
         }
         return
     }
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = card.clip(MaterialTheme.shapes.medium).clickable(onClick = onOpen),
+    ) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(shown.line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Text(shown.line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     shown.sub?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 TextButton(onClick = { if (paused) Library.resume() else Library.pause() }) {
@@ -643,3 +675,11 @@ private fun ScanBar(onOpen: () -> Unit) {
         }
     }
 }
+
+/** The tab change: out in 90 ms, in over 200 ms from [riseByPx] lower; none with animations off. */
+private fun tabFadeThrough(reduced: Boolean, riseByPx: Int): ContentTransform =
+    if (reduced) {
+        EnterTransition.None togetherWith ExitTransition.None
+    } else {
+        (fadeIn(tween(200, delayMillis = 40)) + slideInVertically(tween(200)) { riseByPx }) togetherWith fadeOut(tween(90))
+    }

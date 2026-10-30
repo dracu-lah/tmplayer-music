@@ -1,7 +1,14 @@
 package com.tmplayer.music.ui.library
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -22,6 +29,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -34,6 +42,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +64,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -66,6 +77,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +89,8 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.R
+import com.tmplayer.music.data.Account
+import com.tmplayer.music.data.AccountProfile
 import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.i18n.L
@@ -88,8 +102,11 @@ import com.tmplayer.music.shell.NavMotion
 import com.tmplayer.music.ui.common.MusicIcons
 import com.tmplayer.music.ui.player.PlayerSheetController
 import com.tmplayer.music.ui.theme.Pill
+import com.tmplayer.music.ui.theme.LocalReducedMotion
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 
 /**
  * What the shell tells the screens inside it: a tap on the tab already shown (scroll to the top),
@@ -264,8 +281,10 @@ fun ShellTopBar(
 }
 
 /**
- * The account menu behind the overflow button: Settings, Manage chats, Send logs, About, Log out.
- * Its own composable so the avatar button (W15) can replace the button and keep the entries.
+ * The account menu behind the signed-in user's avatar (W15): a header with the name, the username
+ * if there is one and "Signed in", then Settings, Manage chats, Send logs, About, Log out (which asks
+ * first, in the shell). The profile is read once per session ([Account.load]); until then, or if it
+ * cannot be read, the avatar is a neutral tile. TalkBack reads the button as "Account and settings".
  */
 @Composable
 fun AccountMenu(
@@ -276,9 +295,15 @@ fun AccountMenu(
     onLogOut: () -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
+    val profile by Account.profile.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { Account.load() }
     Box {
-        IconButton(onClick = { open = true }) { Icon(MusicIcons.More, contentDescription = L.shellAccountMenu) }
+        IconButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = L.shellAccountMenu }) {
+            AccountAvatar(profile, size = 32.dp)
+        }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            AccountHeader(profile)
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
             val item: @Composable (String, () -> Unit) -> Unit = { text, action ->
                 DropdownMenuItem(text = { Text(text) }, onClick = {
                     open = false
@@ -290,6 +315,35 @@ fun AccountMenu(
             item(L.logsSend, onSendLogs)
             item(L.settingsAbout, onAbout)
             item(L.shellLogOut, onLogOut)
+        }
+    }
+}
+
+/** Who is signed in, at the top of the account menu: read as one item by TalkBack, not a button. */
+@Composable
+private fun AccountHeader(profile: AccountProfile?) {
+    val name = profile?.name?.takeIf { it.isNotBlank() } ?: L.shellAccountUnknown
+    Row(
+        Modifier
+            .widthIn(min = 200.dp, max = 300.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AccountAvatar(profile, size = 40.dp)
+        Column(Modifier.weight(1f, fill = false)) {
+            Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            profile?.username?.takeIf { it.isNotEmpty() }?.let {
+                Text(
+                    "@$it",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(L.shellSignedIn, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
 }
@@ -306,39 +360,113 @@ private fun tabIcon(tab: MainTab, selected: Boolean): ImageVector = when (tab) {
     MainTab.Library -> if (selected) MusicIcons.LibraryFilled else MusicIcons.Library
 }
 
-/** One destination: the icon in a pill that fills when selected, the label under it. */
+/**
+ * One destination, with nothing behind it (no pill, ripple or pressed tint): the chosen tab is a
+ * filled white icon over a bold white label, the others an outline and a medium label in muted grey.
+ *
+ * Choosing it plays TMPlayer's bar "drop", adapted: the glyph dips to [NavFill.DIP] and springs back
+ * a touch past its size, while the filled glyph fades in over the outline on an overlapping ramp
+ * (fill in over the first 70%, outline out over the last 70%, [NavFill.IN_MS] in all) and the label
+ * turns white and bold in step. Leaving it drains back to the outline quicker ([NavFill.OUT_MS]). The
+ * first draw does not animate, nothing runs at rest, and with animations off it snaps. The fill and
+ * scale are read while drawing only; the label reads the level, so it recomposes during the 280 ms.
+ *
+ * Keyboard focus (never touch, which does not focus here) draws a ring around the item.
+ */
 @Composable
 private fun NavItem(tab: MainTab, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
+    val reduced = LocalReducedMotion.current
+    val press = remember { MutableInteractionSource() }
+    val focused by press.collectIsFocusedAsState()
+    val level = remember { Animatable(if (selected) 1f else 0f) }
+    val scale = remember { Animatable(1f) }
+    val first = remember { booleanArrayOf(true) }
+    LaunchedEffect(selected, reduced) {
+        if (first[0]) {
+            first[0] = false
+            return@LaunchedEffect
+        }
+        val target = if (selected) 1f else 0f
+        if (reduced) {
+            level.snapTo(target)
+            scale.snapTo(1f)
+            return@LaunchedEffect
+        }
+        if (selected) {
+            coroutineScope {
+                launch { level.animateTo(1f, tween(NavFill.IN_MS, easing = FastOutSlowInEasing)) }
+                launch {
+                    scale.animateTo(NavFill.DIP, tween(NavFill.DIP_MS))
+                    scale.animateTo(1f, spring(dampingRatio = 0.42f, stiffness = Spring.StiffnessMedium))
+                }
+            }
+        } else {
+            scale.snapTo(1f)
+            level.animateTo(0f, tween(NavFill.OUT_MS))
+        }
+    }
+    val ring = colors.onSurface
     Column(
         modifier
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .selectable(selected = selected, interactionSource = press, indication = null, role = Role.Tab, onClick = onClick)
+            .drawWithContent {
+                drawContent()
+                if (focused) {
+                    val inset = 4.dp.toPx()
+                    drawRoundRect(
+                        ring,
+                        topLeft = Offset(inset, inset),
+                        size = androidx.compose.ui.geometry.Size(size.width - 2 * inset, size.height - 2 * inset),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
+                    )
+                }
+            }
             .padding(vertical = 12.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Box(
             Modifier
-                .clip(Pill)
-                .background(if (selected) colors.secondaryContainer else colors.surfaceContainer)
-                .padding(horizontal = 20.dp, vertical = 4.dp),
+                .padding(vertical = 4.dp)
+                .graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                tabIcon(tab, selected),
+                tabIcon(tab, selected = false),
                 contentDescription = null,
-                tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.graphicsLayer { alpha = 1f - ((level.value - 0.3f) / 0.7f).coerceIn(0f, 1f) },
+            )
+            Icon(
+                tabIcon(tab, selected = true),
+                contentDescription = null,
+                tint = colors.primary,
+                modifier = Modifier.graphicsLayer { alpha = (level.value / 0.7f).coerceIn(0f, 1f) },
             )
         }
+        val t = level.value
         Text(
             tabLabel(tab),
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) colors.onSurface else colors.onSurfaceVariant,
+            fontWeight = if (t >= 0.5f) FontWeight.Bold else FontWeight.Medium,
+            color = androidx.compose.ui.graphics.lerp(colors.onSurfaceVariant, colors.primary, t),
             maxLines = 1,
             textAlign = TextAlign.Center,
         )
     }
+}
+
+/** The figures of [NavItem]'s fill, from TMPlayer's SelectableIcon "drop". */
+private object NavFill {
+    const val IN_MS = 280
+    const val OUT_MS = 140
+    const val DIP = 0.86f
+    const val DIP_MS = 90
 }
 
 /**
@@ -346,14 +474,18 @@ private fun NavItem(tab: MainTab, selected: Boolean, onClick: () -> Unit, modifi
  * large font scale are never clipped) and reports its height to the player sheet, which rests the
  * mini-player on it. As Now Playing opens, the bar slides down out of the window in step with the
  * sheet (read while drawing only).
+ *
+ * It is the page's own tone (`background`, black), not a container, so it never reads as a separate
+ * slab. With no mini-player on it, a hairline marks its top; with one, the mini-player's edge does.
  */
 @Composable
 fun ShellBottomBar(selected: MainTab, sheet: PlayerSheetController?, onSelect: (MainTab) -> Unit) {
     if (sheet != null) {
         androidx.compose.runtime.DisposableEffect(sheet) { onDispose { sheet.bottomBarPx = 0 } }
     }
+    val hairline = MaterialTheme.colorScheme.outlineVariant
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MaterialTheme.colorScheme.background,
         modifier = Modifier
             .fillMaxWidth()
             .onSizeChanged { sheet?.bottomBarPx = it.height }
@@ -361,6 +493,10 @@ fun ShellBottomBar(selected: MainTab, sheet: PlayerSheetController?, onSelect: (
                 val p = sheet?.progress() ?: 0f
                 translationY = NavMotion.barOffset(p, size.height)
                 alpha = if (NavMotion.barGone(p)) 0f else 1f
+            }
+            .drawWithContent {
+                drawContent()
+                if (sheet?.showing != true) drawLine(hairline, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
             },
     ) {
         Row(
@@ -382,8 +518,9 @@ fun ShellBottomBar(selected: MainTab, sheet: PlayerSheetController?, onSelect: (
 @Composable
 fun ShellRail(selected: MainTab, sheet: PlayerSheetController?, onSelect: (MainTab) -> Unit) {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // The page's tone, like the bottom bar: the rail is part of the page, not a panel beside it.
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MaterialTheme.colorScheme.background,
         modifier = Modifier
             .fillMaxHeight()
             .graphicsLayer {

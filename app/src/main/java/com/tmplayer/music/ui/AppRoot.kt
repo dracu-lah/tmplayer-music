@@ -87,6 +87,9 @@ fun AppRoot() {
             onLogOut = {
                 scope.launch {
                     PlayerConnection.clear()
+                    // The avatar and the name go with the account.
+                    com.tmplayer.music.data.Account.clear()
+                    com.tmplayer.music.ui.library.AvatarCache.clear()
                     runCatching { context.deleteFile("queue.json") }
                     runCatching { Library.wipe() }
                     prefs.pickerDone = false

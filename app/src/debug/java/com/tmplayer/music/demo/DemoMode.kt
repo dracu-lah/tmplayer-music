@@ -26,9 +26,7 @@ package com.tmplayer.music.demo
  *     --ez demo true            enter the demo (or stay in it); `--ez demo false` leaves it
  *     --es demo_screen NAME     home (default), chats, songs, albums, artists, playlists, favourites,
  *                               album, artist, playlist, settings, nowplaying, queue
- *     --ez demo_dark true       dark theme; false for light; left out, the system's
- *     --ez demo_dynamic true    wallpaper colours on Android 12+ (off by default: the app's own
- *                               palette, the same on every phone)
+ *     (`demo_dark`, `demo_dynamic` and `demo_black` are ignored: the app has one look, pure black.)
  *     --ez demo_playing false   the player paused (playing by default)
  *     --es demo_album TITLE     the album for `album` (default Northern Glass)
  *
@@ -39,12 +37,8 @@ package com.tmplayer.music.demo
 import android.app.Application
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -74,6 +68,7 @@ import com.tmplayer.music.ui.player.LocalPlayerSheet
 import com.tmplayer.music.ui.player.PlayerSheetHost
 import com.tmplayer.music.ui.player.QueueSheet
 import com.tmplayer.music.ui.theme.MusicTheme
+import com.tmplayer.music.ui.theme.enableBlackEdgeToEdge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -89,10 +84,10 @@ internal object DemoMode {
 
     const val EXTRA_DEMO = "demo"
     const val EXTRA_SCREEN = "demo_screen"
-    const val EXTRA_DARK = "demo_dark"
-    const val EXTRA_DYNAMIC = "demo_dynamic"
     const val EXTRA_PLAYING = "demo_playing"
     const val EXTRA_ALBUM = "demo_album"
+    private const val DEMO_NAME = "Robin Vale"
+    private const val DEMO_USERNAME = "robinvale"
 
     /** True in a process started as the demo; fixed for the life of the process. */
     @Volatile
@@ -130,6 +125,8 @@ internal object DemoMode {
         // The lyrics page shows invented synced lines from DemoLyrics, never the real service.
         com.tmplayer.music.lyrics.LyricsOnline.httpOverride = DemoLyrics
         com.tmplayer.music.lyrics.LyricsOnline.choices.setOnline(true)
+        // The top bar's avatar: an invented name on an initials tile, never the real account.
+        com.tmplayer.music.data.Account.showFixed(com.tmplayer.music.data.AccountProfile(name = DEMO_NAME, username = DEMO_USERNAME, photoFileId = 0))
         scope.launch {
             DemoLibrary.fill(File(folder, "covers2"))
             holdReady()
@@ -184,12 +181,7 @@ internal object DemoMode {
 
     private fun show(activity: ComponentActivity, options: Options) {
         shownIn = WeakReference(activity)
-        val bars = when (options.dark) {
-            true -> SystemBarStyle.dark(Color.TRANSPARENT)
-            false -> SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-            null -> SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT)
-        }
-        activity.enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+        activity.enableBlackEdgeToEdge()
         PlayerConnection.connect(activity)
         options.screen.shelf?.let { shelf ->
             val choices = ShellChoices(Prefs(activity))
@@ -211,7 +203,7 @@ internal object DemoMode {
 
     @Composable
     private fun DemoRoot(model: ShellModel, options: Options) {
-        MusicTheme(dark = options.dark ?: isSystemInDarkTheme(), dynamic = options.dynamic) {
+        MusicTheme {
             val loaded by loaded.collectAsStateWithLifecycle()
             if (!loaded) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {}
@@ -262,16 +254,12 @@ internal object DemoMode {
     /** What a demo launch shows. */
     data class Options(
         val screen: Screen,
-        val dark: Boolean?,
-        val dynamic: Boolean,
         val playing: Boolean,
         val album: String,
     ) {
         companion object {
             fun from(intent: Intent?): Options = Options(
                 screen = Screen.of(intent?.getStringExtra(EXTRA_SCREEN)),
-                dark = intent?.takeIf { it.hasExtra(EXTRA_DARK) }?.getBooleanExtra(EXTRA_DARK, false),
-                dynamic = intent?.getBooleanExtra(EXTRA_DYNAMIC, false) ?: false,
                 playing = intent?.getBooleanExtra(EXTRA_PLAYING, true) ?: true,
                 album = intent?.getStringExtra(EXTRA_ALBUM)?.trim()?.takeIf { it.isNotEmpty() } ?: DemoCatalog.PAGE_ALBUM,
             )

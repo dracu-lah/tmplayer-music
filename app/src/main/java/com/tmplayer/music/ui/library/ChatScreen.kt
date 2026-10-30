@@ -211,10 +211,10 @@ private fun AddChatsButton(onAdd: () -> Unit) {
     }
 }
 
-// The end of the Chats list in light, dark and at font scale 1.3: placeholder rows, then the button.
+// The end of the Chats list on the black theme and at font scale 1.3: placeholder rows, then the button.
 @Composable
 private fun ChatsEndSample(dark: Boolean) {
-    MusicTheme(dark = dark, dynamic = false) {
+    MusicTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                 listOf("Chat one", "Chat two").forEach { title ->
@@ -232,10 +232,6 @@ private fun ChatsEndSample(dark: Boolean) {
         }
     }
 }
-
-@Preview(name = "Chats end, light", widthDp = 400)
-@Composable
-private fun ChatsEndLight() = ChatsEndSample(dark = false)
 
 @Preview(name = "Chats end, dark", widthDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable

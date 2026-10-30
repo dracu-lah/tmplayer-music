@@ -17,7 +17,7 @@ import androidx.media3.common.MediaMetadata
 import com.tmplayer.music.player.PlayerState
 import com.tmplayer.music.ui.theme.MusicTheme
 
-// Previews of the player in light, dark, at font scale 1.3 and in landscape. They use the fixed
+// Previews of the player on the black theme, at font scale 1.3 and in landscape. They use the fixed
 // (icon colour) scheme, since a preview has no wallpaper. Placeholder text only, no real names.
 
 private fun sample(playing: Boolean = true, durationMs: Long = 215_000): PlayerState = PlayerState(
@@ -38,16 +38,12 @@ private fun sample(playing: Boolean = true, durationMs: Long = 215_000): PlayerS
 
 @Composable
 private fun NowPlayingSample(dark: Boolean, playing: Boolean = true, durationMs: Long = 215_000) {
-    MusicTheme(dark = dark, dynamic = false) {
+    MusicTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             NowPlayingContent(sample(playing, durationMs), progress = { 1f }, open = false, onCollapse = {}, onQueue = {})
         }
     }
 }
-
-@Preview(name = "Now Playing, light", widthDp = 400, heightDp = 860)
-@Composable
-private fun NowPlayingLight() = NowPlayingSample(dark = false)
 
 @Preview(name = "Now Playing, dark", widthDp = 400, heightDp = 860, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
@@ -67,7 +63,7 @@ private fun NowPlayingLandscape() = NowPlayingSample(dark = true)
 
 @Composable
 private fun MiniSample(dark: Boolean, playing: Boolean) {
-    MusicTheme(dark = dark, dynamic = false) {
+    MusicTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             // Flush and full width, directly on the bottom bar, as in the app.
             Column(Modifier.padding(top = 24.dp)) {
@@ -80,10 +76,6 @@ private fun MiniSample(dark: Boolean, playing: Boolean) {
     }
 }
 
-@Preview(name = "Mini-player, light", widthDp = 400)
-@Composable
-private fun MiniLight() = MiniSample(dark = false, playing = true)
-
 @Preview(name = "Mini-player, dark, paused", widthDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun MiniDark() = MiniSample(dark = true, playing = false)
@@ -95,7 +87,7 @@ private fun MiniLargeText() = MiniSample(dark = false, playing = true)
 @Preview(name = "Wavy seek bar: playing, paused, unknown", widthDp = 360)
 @Composable
 private fun SeekBars() {
-    MusicTheme(dark = false, dynamic = false) {
+    MusicTheme {
         Surface {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 WavySeekBar(fraction = { 0.4f }, durationMs = 200_000, playing = true, visible = false, onSeek = {})

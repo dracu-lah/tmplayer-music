@@ -14,12 +14,12 @@ import com.tmplayer.music.shell.LibraryShelf
 import com.tmplayer.music.shell.MainTab
 import com.tmplayer.music.ui.theme.MusicTheme
 
-// Previews of the shell's bars in light, dark, at font scale 1.3 and sideways. Fixed colours (a
+// Previews of the shell's bars on the black theme, at font scale 1.3 and sideways. Fixed colours (a
 // preview has no wallpaper); placeholder text only.
 
 @Composable
 private fun BarsSample(dark: Boolean) {
-    MusicTheme(dark = dark, dynamic = false) {
+    MusicTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             Column {
                 ShellTopBar(title = null, onBack = null, onSearch = {}) {
@@ -33,10 +33,6 @@ private fun BarsSample(dark: Boolean) {
     }
 }
 
-@Preview(name = "Shell bars, light", widthDp = 400)
-@Composable
-private fun BarsLight() = BarsSample(dark = false)
-
 @Preview(name = "Shell bars, dark", widthDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun BarsDark() = BarsSample(dark = true)
@@ -48,7 +44,7 @@ private fun BarsLargeText() = BarsSample(dark = false)
 @Preview(name = "Shell rail, landscape", widthDp = 860, heightDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun RailLandscape() {
-    MusicTheme(dark = true, dynamic = false) {
+    MusicTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             Row(Modifier.fillMaxSize()) {
                 ShellRail(MainTab.Library, sheet = null, onSelect = {})

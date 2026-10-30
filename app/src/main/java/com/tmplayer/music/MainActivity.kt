@@ -4,7 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import com.tmplayer.music.ui.theme.enableBlackEdgeToEdge
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.SupportChecks
 import com.tmplayer.music.data.SupportReminder
@@ -16,14 +16,15 @@ import com.tmplayer.music.ui.theme.MusicTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        // Always black: transparent system bars with light icons, in either device mode.
+        enableBlackEdgeToEdge()
         super.onCreate(savedInstanceState)
         // A debug build's demo library takes the screen (app/src/debug); never in a release.
         if (BuildHooks.takeOver(this, intent)) return
         PlayerConnection.connect(this)
         if (savedInstanceState == null) handleLaunch(intent)
         setContent {
-            // The device's theme: dark or light as the system is, wallpaper colours on Android 12+.
+            // The one look: pure black, the same on every phone.
             MusicTheme {
                 AppRoot()
                 CrashOffer()

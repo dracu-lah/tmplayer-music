@@ -12,14 +12,14 @@ import androidx.compose.ui.unit.dp
 import com.tmplayer.music.data.QrPhase
 import com.tmplayer.music.ui.theme.MusicTheme
 
-// Previews of the QR plate's states in light and dark: a fresh code, one about to change, scanned,
+// Previews of the QR plate's states on the black theme: a fresh code, one about to change, scanned,
 // expired, and being replaced. The link is a placeholder that signs nobody in.
 
 private const val SAMPLE_LINK = "tg://login?token=VE1QbGF5ZXJNdXNpYyBwcmV2aWV3"
 
 @Composable
 private fun PlateSample(dark: Boolean, phase: QrPhase, remaining: Float, scanned: Boolean = false, renewing: Boolean = false) {
-    MusicTheme(dark = dark, dynamic = false) {
+    MusicTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             Box(Modifier.padding(24.dp)) {
                 QrPlate(SAMPLE_LINK, scanned = scanned, renewing = renewing, life = QrLife(phase, remaining), onRefresh = {})
@@ -27,10 +27,6 @@ private fun PlateSample(dark: Boolean, phase: QrPhase, remaining: Float, scanned
         }
     }
 }
-
-@Preview(name = "QR, light", widthDp = 360)
-@Composable
-private fun QrFreshLight() = PlateSample(dark = false, phase = QrPhase.Fresh, remaining = 0.7f)
 
 @Preview(name = "QR, dark", widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
@@ -40,17 +36,9 @@ private fun QrFreshDark() = PlateSample(dark = true, phase = QrPhase.Fresh, rema
 @Composable
 private fun QrSoonDark() = PlateSample(dark = true, phase = QrPhase.ExpiringSoon, remaining = 0.15f)
 
-@Preview(name = "QR scanned, light", widthDp = 360)
-@Composable
-private fun QrScannedLight() = PlateSample(dark = false, phase = QrPhase.Fresh, remaining = 0.5f, scanned = true)
-
 @Preview(name = "QR scanned, dark", widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun QrScannedDark() = PlateSample(dark = true, phase = QrPhase.Fresh, remaining = 0.5f, scanned = true)
-
-@Preview(name = "QR expired, light", widthDp = 360)
-@Composable
-private fun QrExpiredLight() = PlateSample(dark = false, phase = QrPhase.Expired, remaining = 0f)
 
 @Preview(name = "QR expired, dark", widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable

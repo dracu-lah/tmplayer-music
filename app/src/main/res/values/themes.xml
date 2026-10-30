@@ -1,8 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Only the window behind Compose; the screens draw their own Material 3 theme. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+        Only the window behind Compose; the screens draw the app's one Material 3 scheme (pure black,
+        ui/theme/Color.kt). The window is black from the first frame whatever the device's mode
+        (values-night holds the same), so the app never flashes white while it starts, and the
+        system bars are transparent with light icons.
+    -->
     <style name="Theme.TMPlayerMusic" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="23">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
     </style>
 </resources>

@@ -339,7 +339,10 @@ private fun PlayerSheet(
         val nested = remember(sheet, fling) { SheetNestedScroll(sheet, fling) }
         val sheetDrags = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
         com.tmplayer.music.ui.common.SettleHaptic(sheet.settledValue, sheetDrags)
-        val collapsedColor = colors.surfaceContainerHigh
+        // The mini-player is the page's own tone (see MusicTheme for every layer): it rests on the
+        // bottom bar as part of one surface, its top edge drawn by the progress line or a hairline.
+        // Opened, Now Playing is the same tone with the cover's tint over it.
+        val collapsedColor = colors.background
         val openColor = colors.background
         val tint = rememberCoverTint(state.item)
 
@@ -508,7 +511,8 @@ internal fun MiniPlayer(
             .fillMaxWidth()
             .height(miniHeight())
             .graphicsLayer { alpha = (1f - progress() / 0.25f).coerceIn(0f, 1f) }
-            .clickable(onClickLabel = L.nowplayingExpand, onClick = onExpand)
+            // No ripple over the whole row (its buttons keep theirs); TalkBack still has the action.
+            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClickLabel = L.nowplayingExpand, onClick = onExpand)
             .semantics {
                 if (canDismiss) customActions = listOf(CustomAccessibilityAction(dismissAction) { onDismiss(); true })
             }
@@ -565,9 +569,15 @@ internal fun MiniPlayer(
             LinearProgressIndicator(
                 progress = { WaveLogic.fraction(position.value, state.durationMs) },
                 modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(2.dp),
-                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                trackColor = MaterialTheme.colorScheme.outlineVariant,
                 gapSize = 0.dp,
                 drawStopIndicator = {},
+            )
+        } else {
+            // A length not known yet: no progress, but the same top edge as a hairline.
+            androidx.compose.material3.HorizontalDivider(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                color = MaterialTheme.colorScheme.outlineVariant,
             )
         }
     }

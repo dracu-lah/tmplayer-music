@@ -348,9 +348,11 @@
   },
   "shell": {
     "account_menu": "Account and settings",
+    "account_unknown": "Your account",
     "log_out": "Log out",
     "log_out_body": "The library on this phone is cleared, playlists and favourites included. Nothing in your Telegram chats changes.",
-    "log_out_title": "Log out?"
+    "log_out_title": "Log out?",
+    "signed_in": "Signed in"
   },
   "signin": {
     "choose_country": "Choose a country",
