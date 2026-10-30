@@ -10,7 +10,7 @@ import com.tmplayer.music.data.CachePolicy
  * the clip switches, the data used, each chat page's order).
  */
 class Prefs(context: Context) : KeyValues {
-    private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences("app", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences(com.tmplayer.music.BuildHooks.prefsFile("app"), Context.MODE_PRIVATE)
 
     var welcomed: Boolean
         get() = prefs.getBoolean(WELCOMED, false)

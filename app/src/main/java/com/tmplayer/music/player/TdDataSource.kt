@@ -183,11 +183,12 @@ class TdDataSource : BaseDataSource(true) {
     class Factory(context: Context) : DataSource.Factory {
         private val fallback = DefaultDataSource.Factory(context.applicationContext)
 
-        override fun createDataSource(): DataSource = Router(TdDataSource(), fallback.createDataSource())
+        override fun createDataSource(): DataSource =
+            Router(com.tmplayer.music.BuildHooks.audioSource() ?: TdDataSource(), fallback.createDataSource())
     }
 
     /** Picks the source by the URI's scheme at open. */
-    private class Router(private val td: TdDataSource, private val other: DataSource) : DataSource by other {
+    private class Router(private val td: DataSource, private val other: DataSource) : DataSource by other {
         private var active: DataSource = other
 
         override fun addTransferListener(transferListener: androidx.media3.datasource.TransferListener) {

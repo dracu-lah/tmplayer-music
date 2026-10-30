@@ -18,6 +18,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // A debug build's demo library takes the screen (app/src/debug); never in a release.
+        if (BuildHooks.takeOver(this, intent)) return
         PlayerConnection.connect(this)
         if (savedInstanceState == null) handleLaunch(intent)
         setContent {
@@ -35,6 +37,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (BuildHooks.takeOver(this, intent)) return
         handleLaunch(intent)
     }
 

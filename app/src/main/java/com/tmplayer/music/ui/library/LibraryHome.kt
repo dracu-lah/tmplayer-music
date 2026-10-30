@@ -131,16 +131,17 @@ private fun rememberShellModel(): ShellModel {
  * The top bar, banner and Library chips scroll away with the list and come back on scrolling up.
  * Each tab and chip keeps its own scroll place (switching, rotation, process death); a tap on the
  * tab already shown goes back to its top. [startOnChats] opens on the Chats tab, for the first run,
- * where the chats just picked can be played before the scan has filled the others.
+ * where the chats just picked can be played before the scan has filled the others. [startTab], when
+ * given, is the tab it opens on instead (the debug build's demo library).
  */
 @Composable
-fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false) {
+fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: MainTab? = null) {
     val context = LocalContext.current
     val choices = remember { ShellChoices(Prefs(context)) }
     val model = rememberShellModel()
     val stack = model.stack
     val sheet = LocalPlayerSheet.current
-    var tab by rememberSaveable { mutableStateOf(if (startOnChats) MainTab.Chats else MainTab.Home) }
+    var tab by rememberSaveable { mutableStateOf(startTab ?: if (startOnChats) MainTab.Chats else MainTab.Home) }
     var shelf by rememberSaveable { mutableStateOf(choices.shelf) }
     var albumsGrid by rememberSaveable { mutableStateOf(choices.albumsGrid) }
     var artistsGrid by rememberSaveable { mutableStateOf(choices.artistsGrid) }

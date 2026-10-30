@@ -29,6 +29,8 @@ class MusicApp : Application() {
         Logger.sink = AndroidLogSink
         // The bounded log file and the crash record for Send logs; first, so later lines are kept.
         Diagnostics.install(this)
+        // A debug build's demo library starts in place of the app (app/src/debug); never in a release.
+        if (BuildHooks.startInstead(this)) return
         Td.start(this)
         // The user's choices (a Pause stays on after a restart) live in Prefs; a weak device reads tags in smaller batches.
         Library.start(File(filesDir, "library"), Prefs(this), lowRam = weakDevice())

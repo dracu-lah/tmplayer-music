@@ -172,7 +172,7 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    private fun queueFile() = File(filesDir, "queue.json")
+    private fun queueFile() = File(filesDir, com.tmplayer.music.BuildHooks.appFile("queue.json"))
 
     /** Keeps the cache under its ceiling as tracks go by; at most every [TRIM_GAP_MS]. */
     private fun trimSoon() {
