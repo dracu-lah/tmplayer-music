@@ -17,10 +17,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.tmplayer.music.data.Country
 import com.tmplayer.music.data.PhoneCountries
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.ui.common.MusicIcons
 
 /**
  * The full-screen list of countries, the way Telegram's own sign in offers it.
@@ -86,7 +83,7 @@ fun CountryPicker(
             val column = Modifier.widthIn(max = 640.dp).fillMaxWidth()
             Row(column.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = L.signinCloseCountryList)
+                    Icon(MusicIcons.Back, contentDescription = L.signinCloseCountryList)
                 }
                 Text(
                     L.signinChooseCountry,
@@ -99,13 +96,13 @@ fun CountryPicker(
                 onValueChange = { query = it.take(MAX_QUERY) },
                 singleLine = true,
                 label = { Text(L.signinCountrySearch) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                leadingIcon = { Icon(MusicIcons.Search, contentDescription = null) },
                 trailingIcon = {
                     // Two hundred rows filtered to none is a dead end; clearing by holding
                     // backspace is a chore nobody should be set on a sign in screen.
                     if (query.isNotEmpty()) {
                         IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Filled.Close, contentDescription = L.signinClearSearch)
+                            Icon(MusicIcons.Close, contentDescription = L.signinClearSearch)
                         }
                     }
                 },

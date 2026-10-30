@@ -5,6 +5,7 @@
     "licence": "Free software under the GNU GPL 3.0, with an exception that allows linking with OpenSSL.",
     "licence_open": "Read the licence",
     "openssl_open": "Read the OpenSSL exception",
+    "third_party_open": "Third party notices",
     "version": "Version {version}",
     "what": "A player for the audio files already in your own Telegram chats."
   },

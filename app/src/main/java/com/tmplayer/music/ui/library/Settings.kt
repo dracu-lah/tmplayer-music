@@ -307,6 +307,7 @@ private fun AboutSection() {
     )
     Link(L.aboutLicenceOpen) { open(About.LICENCE_URL) }
     Link(L.aboutOpensslOpen) { open(About.OPENSSL_EXCEPTION_URL) }
+    Link(L.aboutThirdPartyOpen) { open(About.THIRD_PARTY_URL) }
 }
 
 /** A row that does one thing on a tap, with an optional line under it saying what. */

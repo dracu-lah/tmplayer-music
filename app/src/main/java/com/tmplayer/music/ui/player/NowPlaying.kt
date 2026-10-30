@@ -193,12 +193,12 @@ private fun TopBar(
         IconButton(onClick = onCollapse) { Icon(MusicIcons.Down, contentDescription = L.nowplayingCollapse) }
         Spacer(Modifier.weight(1f))
         MorphIconToggle(checked = showLyrics, onCheckedChange = onLyrics) {
-            Icon(PlayerIcons.Lyrics, contentDescription = if (showLyrics) L.nowplayingLyricsHide else L.nowplayingLyricsShow)
+            Icon(MusicIcons.Lyrics, contentDescription = if (showLyrics) L.nowplayingLyricsHide else L.nowplayingLyricsShow)
         }
         Spacer(Modifier.width(4.dp))
         MorphIconToggle(checked = sleep != SleepSetting.Off, onCheckedChange = { onSleep() }) {
             Icon(
-                PlayerIcons.Sleep,
+                MusicIcons.Sleep,
                 contentDescription = when (sleep) {
                     SleepSetting.Off -> L.sleepTitle
                     SleepSetting.EndOfTrack -> "${L.sleepOn}, ${L.sleepEndOfTrackShort}"

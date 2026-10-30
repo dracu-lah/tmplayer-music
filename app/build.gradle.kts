@@ -114,7 +114,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.tdl.coroutines)
     implementation(libs.zxing.core)
-    implementation(libs.androidx.compose.material.icons.core)
 
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)

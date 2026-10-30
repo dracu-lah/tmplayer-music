@@ -17,6 +17,9 @@ object About {
     const val LICENCE_URL = "https://github.com/dracu-lah/tmplayer-music/blob/main/LICENSE"
     const val OPENSSL_EXCEPTION_URL = "https://github.com/dracu-lah/tmplayer-music/blob/main/LICENSE-OPENSSL-EXCEPTION.md"
 
+    /** The licences of the work the app ships from others, such as the Hugeicons icons (MIT). */
+    const val THIRD_PARTY_URL = "https://github.com/dracu-lah/tmplayer-music/blob/main/THIRD_PARTY_NOTICES.md"
+
     /**
      * The version as one short text: name, code and build type, `0.1.0 (1), release`. A blank
      * name reads as `?`, a negative code and a blank type are left out, so a broken build still

@@ -24,8 +24,6 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -52,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.ui.common.MusicIcons
 import kotlinx.coroutines.delay
 
 /**
@@ -80,7 +79,7 @@ fun SignInFrame(onBack: (() -> Unit)?, content: @Composable ColumnScope.() -> Un
             ) {
                 if (onBack != null) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = L.commonBack)
+                        Icon(MusicIcons.Back, contentDescription = L.commonBack)
                     }
                 } else {
                     Spacer(Modifier.size(8.dp))

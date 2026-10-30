@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -70,6 +68,7 @@ import com.tmplayer.music.data.PhoneRules
 import com.tmplayer.music.data.SignInWords
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.i18n.L
+import com.tmplayer.music.ui.common.MusicIcons
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 
@@ -302,7 +301,7 @@ private fun CountryRow(country: Country?, guessing: Boolean, invalid: Boolean, o
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
-                    Icons.Filled.ArrowDropDown,
+                    MusicIcons.DropDown,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
