@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Signing
+*.keystore
+*.jks
+keystore.properties
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+.DS_Store
+
+# Never commit another project's source
+/reference-src/
