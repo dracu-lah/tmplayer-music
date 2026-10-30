@@ -18,6 +18,17 @@ val keystoreProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// A build for a store, switched on with:
+//
+//     ./gradlew :app:assembleRelease -PtmStore=true
+//
+// A store installs and updates the app itself, so that build never asks GitHub for a newer release
+// and draws nothing about one (BuildConfig.UPDATE_CHECK, read into Updates.enabled), and its
+// manifest leaves REQUEST_INSTALL_PACKAGES out (src/store/AndroidManifest.xml). Off, which is every
+// other build and the GitHub APK the release workflow makes, the updater is in. Adapted from
+// TMPlayer's tmFdroid switch; there is no store flavor yet, so it is a property.
+val storeBuild: Boolean = (findProperty("tmStore") as String?)?.trim()?.toBoolean() ?: false
+
 android {
     namespace = "com.tmplayer.music"
     // 37 because tdl-coroutines refuses to be compiled against anything older (as TMPlayer).
@@ -33,8 +44,13 @@ android {
         // Android 6, TMPlayer's floor. Newer APIs are guarded where they are called.
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
+        // The release workflow passes both from the tag (major*1000000 + minor*10000 + patch*100 +
+        // stage); a local build is code 1, which any release installs over.
+        versionCode = (findProperty("tmVersionCode") as String?)?.trim()?.toIntOrNull() ?: 1
         versionName = (findProperty("tmVersionName") as String?) ?: "0.1.0"
+
+        // The self-updater of the GitHub APK; off in a store build (see storeBuild above).
+        buildConfigField("boolean", "UPDATE_CHECK", "${!storeBuild}")
 
         // The app's own Telegram API credentials, from local.properties or the environment. A
         // build without them compiles and says so on the sign in screen.
@@ -77,6 +93,12 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release")
         }
+    }
+
+    // The store build's manifest overlay, which takes the install permissions back out.
+    if (storeBuild) {
+        sourceSets.getByName("debug").manifest.srcFile("src/store/AndroidManifest.xml")
+        sourceSets.getByName("release").manifest.srcFile("src/store/AndroidManifest.xml")
     }
 
     compileOptions {

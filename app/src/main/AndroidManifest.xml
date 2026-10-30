@@ -16,6 +16,11 @@
       on) across a restart: JobScheduler drops a persisted job without it. Nothing runs at boot itself.
     -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- The self-updater of the GitHub APK: hands the downloaded, checked update to Android's
+         installer, without its question where Android 12 and later allow that. A store build
+         takes both out again (src/store/AndroidManifest.xml, -PtmStore=true). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <application
         android:name=".MusicApp"
@@ -38,7 +43,8 @@
             </intent-filter>
         </activity>
 
-        <!-- Hands the Send logs file to the app the user picks in the share sheet; not exported. -->
+        <!-- Hands the Send logs file to the app the user picks in the share sheet, and the
+             downloaded update to the system installer (Android 6 to 11); not exported. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.logs"
@@ -85,5 +91,17 @@
         <receiver
             android:name=".data.NoticeDismissReceiver"
             android:exported="false" />
+        <!--
+          After the app has updated itself: deletes the downloaded APK and, after an install that
+          closed the app, posts "Updated, tap to open". Android sends MY_PACKAGE_REPLACED to the
+          app's own package only, so nothing else reaches it.
+        -->
+        <receiver
+            android:name=".data.UpdatedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -10,6 +10,8 @@ import com.tmplayer.music.data.Prefs
 import com.tmplayer.music.data.Storage
 import com.tmplayer.music.data.SupportChecks
 import com.tmplayer.music.data.Td
+import com.tmplayer.music.data.Updates
+import com.tmplayer.music.data.configureForAndroid
 import com.tmplayer.music.data.start
 import com.tmplayer.music.platform.Logger
 import java.io.File
@@ -31,6 +33,8 @@ class MusicApp : Application() {
         // The user's choices (a Pause stays on after a restart) live in Prefs; a weak device reads tags in smaller batches.
         Library.start(File(filesDir, "library"), Prefs(this), lowRam = weakDevice())
         NetworkWatch.start(this)
+        // What this build is, for the update check; off in a store build (BuildConfig.UPDATE_CHECK).
+        Updates.configureForAndroid(this)
         Storage.cacheDir = AndroidPaths(this).filesDir
         Storage.chosenCeiling = Prefs(this).cacheCeiling(weakDevice())
         // The once a day sponsor reminder job, only while its switch is on (off by default).

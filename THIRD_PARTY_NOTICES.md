@@ -14,8 +14,10 @@ with it.
 Parts of this app are taken or adapted from [TMPlayer](https://github.com/dracu-lah/TMPlayer), the
 sibling video player by the same author, under GPL-3.0-or-later with the same OpenSSL exception:
 the TDLib wiring and sign in flow, the streaming data source and its download window, the i18n
-catalog and its generator, the log redactor, and error handling. Each such file says so in its first
-lines, naming the TMPlayer file it came from. Copyright (c) 2026 dracu-lah.
+catalog and its generator, the log redactor, error handling, and the self-updater of the GitHub APK.
+Each such file says so in its first lines, naming the TMPlayer file it came from. Copyright (c) 2026
+dracu-lah. The updater's installer session handling follows Morphe's SessionInstaller
+([MorpheApp/morphe-manager](https://github.com/MorpheApp/morphe-manager), GPL-3.0), as TMPlayer's does.
 
 ## Android
 

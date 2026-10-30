@@ -26,6 +26,8 @@ class MainActivity : ComponentActivity() {
                 AppRoot()
                 CrashOffer()
                 SupportAskHost()
+                // The update check when the app opens and its popup; nothing in a store build.
+                com.tmplayer.music.ui.update.UpdateHost()
             }
         }
     }

@@ -16,9 +16,10 @@ name: Release
 # published as a GitHub pre-release that is never marked latest. Every release is a tested
 # pre-release first.
 #
-# This is the GitHub APK. The app has no updater today, and the build is checked below to hold no
-# REQUEST_INSTALL_PACKAGES. If an updater is ever added, it belongs in this APK only: a store build
-# has no updater and no REQUEST_INSTALL_PACKAGES (AGENTS.md).
+# This is the GitHub APK, the one build with the self-updater, which reads these releases through
+# GitHub's API and installs the asset named TMPlayerMusic-<version>.apk (keep that name). The build
+# is checked below to hold REQUEST_INSTALL_PACKAGES. A store build (-PtmStore=true) has no updater
+# and no REQUEST_INSTALL_PACKAGES (AGENTS.md), and is never made here.
 on:
   push:
     tags: ["v*"]
@@ -145,10 +146,10 @@ jobs:
           BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
           # Signed with the release key: an unsigned APK would mean keystore.properties was not read.
           "$BT/apksigner" verify --print-certs "$SRC" | grep -E '^Signer #1 certificate (DN|SHA-256)'
-          # The GitHub APK stays without the install permission until an updater exists, and a store
-          # build must never have it (AGENTS.md).
-          if "$BT/aapt2" dump permissions "$SRC" | grep -q 'REQUEST_INSTALL_PACKAGES'; then
-            echo "::error::The APK asks for REQUEST_INSTALL_PACKAGES"
+          # The GitHub APK updates itself, so it needs the install permission; a store build
+          # (-PtmStore=true, never made here) must not have it (AGENTS.md).
+          if ! "$BT/aapt2" dump permissions "$SRC" | grep -q 'REQUEST_INSTALL_PACKAGES'; then
+            echo "::error::The GitHub APK lacks REQUEST_INSTALL_PACKAGES, so its updater could not install. Was it built with -PtmStore=true?"
             exit 1
           fi
           # The version the tag asked for, so an install over an older copy is accepted.

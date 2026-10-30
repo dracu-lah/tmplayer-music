@@ -33,10 +33,13 @@ pre-release option to get the test versions.
 
 ## Updating
 
-The app has no updater of its own. Download the newer APK from the Releases page (or let Obtainium do
-it) and install it over the old one: your library, playlists and sign in stay. Android refuses an APK
-signed with a different key, so only install builds from this repository's Releases page over each
-other.
+The APK from the Releases page checks for a newer release when it opens (at most every six hours;
+turn it off in Settings, Updates) and offers it: **Update now** downloads it, checks that it is signed
+with the same key as the app you have, and hands it to Android's installer. **Get test versions** in
+the same place offers the pre-releases too. You can also download the newer APK yourself (or let
+Obtainium do it) and install it over the old one: your library, playlists and sign in stay. Android
+refuses an APK signed with a different key, so only install builds from this repository's Releases
+page over each other.
 
 ## Storage
 

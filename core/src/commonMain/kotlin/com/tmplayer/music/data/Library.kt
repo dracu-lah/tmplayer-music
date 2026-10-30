@@ -75,6 +75,9 @@ object Library {
 
     /** The connection, from Android; metered until it says otherwise (the safe default). */
     private val net = MutableStateFlow(NetState.Metered)
+
+    /** The connection as Android last reported it; the update check reads it too. */
+    val network: StateFlow<NetState> get() = net
     private val foreground = MutableStateFlow(false)
     private val playing = MutableStateFlow(false)
 

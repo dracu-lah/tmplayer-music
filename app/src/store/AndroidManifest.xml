@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Merged over main's manifest in a store build only (-PtmStore=true, see app/build.gradle.kts). A
+  store installs and updates that build itself, and the app never fetches an APK there
+  (BuildConfig.UPDATE_CHECK is false), so it has no use for the permissions that hand one to
+  Android's installer, nor for the receiver that cleans up after one (AGENTS.md: a store build has
+  no updater and no REQUEST_INSTALL_PACKAGES).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION"
+        tools:node="remove" />
+
+    <application>
+        <receiver
+            android:name="com.tmplayer.music.data.UpdatedReceiver"
+            tools:node="remove" />
+    </application>
+
+</manifest>

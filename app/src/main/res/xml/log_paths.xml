@@ -7,4 +7,8 @@
     <cache-path
         name="logs"
         path="logs-share/" />
+    <!-- The downloaded update, only for as long as the system installer is reading it. -->
+    <cache-path
+        name="updates"
+        path="updates/" />
 </paths>

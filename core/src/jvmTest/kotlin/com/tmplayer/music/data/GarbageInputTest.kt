@@ -270,6 +270,46 @@ class GarbageInputTest {
     }
 
     @Test
+    fun `update feed answers that are garbage never crash`() {
+        val random = Random(29)
+        val good = """{"tag_name":"v0.2.0","html_url":"https://github.com/x","body":"- a\n- b",""" +
+            """"assets":[{"name":"TMPlayerMusic-0.2.0.apk","size":9,"digest":"sha256:${"e".repeat(64)}",""" +
+            """"browser_download_url":"https://github.com/x/TMPlayerMusic-0.2.0.apk"}]}"""
+        val odd = listOf(
+            "", "{", "[", "null", "1", "\"x\"", "[]", "{}", "[null,1,\"a\",[],{}]",
+            """{"tag_name":5,"assets":"x"}""", """{"tag_name":"v","assets":[1,null,{}]}""",
+            """{"tag_name":"v1.2.3","assets":[{"browser_download_url":5,"size":"big","digest":[]}]}""",
+            """{"tag_name":"v1.2.3","assets":[{"name":"TMPlayerMusic-1.2.3.apk","size":-5,"browser_download_url":"http://insecure/x.apk"}]}""",
+            """{"tag_name":"v99999999999.0.0","body":${"\"" + "- x\\n".repeat(20_000) + "\""}}""",
+            """{"tag_name":"${"9".repeat(100_000)}"}""",
+            "[" + "[".repeat(5_000), "{\"a\":" .repeat(3_000), "\uD800", "x".repeat(UpdateFeed.MAX_ANSWER_CHARS + 1),
+        )
+        val cuts = (0..good.length).map { good.take(it) }
+        repeat(1_500) {
+            val text = when {
+                it < odd.size -> odd[it]
+                it < odd.size + cuts.size -> cuts[it - odd.size]
+                else -> String(CharArray(random.nextInt(0, 400)) { random.nextInt(0, 0xFFFF).toChar() })
+            }
+            UpdateFeed.parseGitHub(text)?.let { release ->
+                assertTrue(release.changes.size <= 30)
+                assertTrue(release.assets.values.all { a -> a.url.startsWith("https://") && a.size >= 0 })
+            }
+            UpdateFeed.parseGitHubList(text)
+            UpdateFeed.parseGitHubList("[$text]")
+            UpdateFeed.leadingList(text)
+            UpdateFeed.keyFor(text)
+            UpdateFeed.compare(text, "0.1.0")
+            UpdateFeed.compare("0.1.0", text)
+            ReleaseVersion.parse(text)
+            ReleaseVersion.androidCode(text)
+            UpdateRestart.Pending.decode(text)
+            UpdateRestart.onLaunch(text, "0.1.0", 0L)
+            UpdateRestart.notifyAfterReplace(text, text)
+        }
+    }
+
+    @Test
     fun `name tidying and bar letters on garbage never crash`() {
         val random = Random(23)
         val odd = listOf(
