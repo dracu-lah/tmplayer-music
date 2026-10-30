@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <color name="ic_launcher_background">#5B4FE0</color>
     <!-- Before Android 8 the launcher icon is the flat vector; mipmap-anydpi-v26 overrides it. -->
-    <item name="ic_launcher" type="mipmap">@drawable/ic_launcher_legacy</item>
+    <item name="ic_launcher" type="mipmap" tools:ignore="ReferenceType">@drawable/ic_launcher_legacy</item>
 </resources>
