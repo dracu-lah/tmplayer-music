@@ -143,6 +143,10 @@ data class Song(
     val variant: String,
     /** The newest version's post date, for Recently added and the date sort. */
     val addedSec: Long,
+    /** The album the default version is on (or the first version that has one), for "Go to album"; blank when none. */
+    val albumKey: String = "",
+    /** The artist the default version is listed under, for "Go to artist"; blank when the file names nobody. */
+    val artistKey: String = "",
 )
 
 /** An album: album artist (or artist) plus album plus year, so two albums with one name stay apart. */

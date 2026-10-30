@@ -71,6 +71,30 @@ class IndexScaleTest {
                 timed("first page of artists") { runBlocking { index.artists(null, 100) } }
                 timed("first page of the 20000 chat") { runBlocking { index.chatSongs(1, null, 100) } }
 
+                // Search: a two-word query taken from a real row, a one-letter query that matches
+                // most of the library, and a query that matches nothing (a full pass of the index).
+                val sample = index.songs(SongSort.Title, null, 1_000).firstOrNull { it.title.split(' ').size >= 2 }
+                val twoWords = sample?.title?.split(' ')?.take(2)?.joinToString(" ").orEmpty()
+                for ((label, query) in listOf("two words '$twoWords'" to twoWords, "one letter 'k'" to "k", "no match" to "qqzzx")) {
+                    val (results, ms) = timed("search $label") { runBlocking { index.search(query) } }
+                    if (query != "qqzzx") assertTrue(results.songs.isNotEmpty(), label)
+                    assertTrue(ms < 100, "search $label took $ms ms")
+                }
+                timed("search two words again") { runBlocking { index.search(twoWords) } }
+
+                // Favourites: 2,000 hearts, all read back for the rows' heart icons.
+                val firstThousand = index.songs(SongSort.Title, null, 1_000)
+                val toFavourite = firstThousand +
+                    index.songs(SongSort.Title, firstThousand.lastOrNull()?.let { SongCursor.of(it, SongSort.Title) }, 1_000)
+                timed("setFavourite on ${toFavourite.size} songs") {
+                    runBlocking { toFavourite.forEach { index.setFavourite(it, true) } }
+                }
+                val (keys, keysMs) = timed("favouriteKeys") { runBlocking { index.favouriteKeys() } }
+                println("IndexScaleTest: ${keys.size} favourite keys")
+                assertEquals(2_000, keys.size, "favourites: ${keys.size}")
+                assertTrue(keysMs < 50, "favouriteKeys took $keysMs ms")
+                timed("first 50 favourites") { runBlocking { index.favourites(50) } }
+
                 val (_, removeMs) = timed("removeChat of the 20000 chat") { runBlocking { index.removeChat(1) } }
                 assertTrue(removeMs < 5_000, "removeChat took $removeMs ms")
                 assertEquals(80_000, index.fileCount())
