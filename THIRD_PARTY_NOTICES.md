@@ -97,8 +97,9 @@ are not shipped in any build.
 Nothing below ships in a build.
 
 - LRCLIB (<https://lrclib.net>): synced and plain lyrics, asked by the gateway with a track's title,
-  artist, album and duration only. The app does not call it yet; when it does, lookups are off until
-  the user turns them on.
+  artist, album and duration only. Lookups are on by default and the user can turn them off in Settings.
+- MusicBrainz (<https://musicbrainz.org>) and the Cover Art Archive (<https://coverartarchive.org>):
+  cover art, asked by the gateway with a track's title, artist and album only. Same switch in Settings.
 
 ## Visual assets
 

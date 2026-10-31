@@ -85,8 +85,7 @@ The app is in early testing. What is built:
   audio and never touches anything in Telegram.
 - **Send logs** from Settings and from every error, with chat names, ids, file names and phone numbers taken out first.
 
-Planned, not built yet: a TV app, a phone remote for the TV, Cast, online lyrics lookups and
-Keep offline.
+Planned, not built yet: a TV app, a phone remote for the TV, Cast and Keep offline.
 
 ## Runs on
 
@@ -127,9 +126,11 @@ A release build (`./gradlew :app:assembleRelease`) is signed only when a `keysto
 
 - The app talks to Telegram through TDLib with your own account. Everything it learns stays on your
   device.
-- Online lyrics lookups are not in the app yet. When they come, they are **off until you turn them
-  on**, and go through our own gateway, which sends only the track's title, artist, album and
-  duration. Never a chat name, a chat id, a file name or anything about your account.
+- Online lyrics lookups are **on by default** and can be turned off in Settings, Lyrics. They go
+  through our own gateway, which sends only the track's title, artist, album and duration (the
+  duration for lyrics only). Never a chat name, a chat id, a file name or anything about your account.
+- Cover lookups use the same switch and the same gateway, and send only the title, artist and album.
+  A cover is only fetched for a track that has none in its file or chat.
 - Send logs only shares a file when you choose to, through the share sheet, to wherever you pick.
   Chat names, ids, file names and phone numbers are removed from it first.
 - No ads, no analytics, no crash reporting service.
