@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.rememberedFocus
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -7,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -207,6 +209,30 @@ internal fun SpeedDialContent(
     val pager = rememberPagerState { pages.size }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(L.homeSpeedDial, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = SIDE))
+        if (com.tmplayer.music.ui.tv.LocalTv.current) {
+            // A TV: one row of cards the D-pad walks along, in place of swiped pages.
+            val row = androidx.compose.foundation.lazy.rememberLazyListState()
+            val all = pages.flatten()
+            TvRowStartsAtFirst(row, all.firstOrNull()?.key)
+            androidx.compose.foundation.lazy.LazyRow(
+                state = row,
+                contentPadding = PaddingValues(horizontal = SIDE),
+                horizontalArrangement = Arrangement.spacedBy(GAP),
+            ) {
+                items(all, key = { it.key }) { item ->
+                    Box(Modifier.rememberedFocus("dial:${item.key}")) {
+                        DialCard(
+                            item = item,
+                            size = TV_CELL,
+                            playing = if (item.track == current) playing else null,
+                            onTap = { onTap(item) },
+                            onRemove = { onRemove(item) }.takeIf { item.track != current },
+                        )
+                    }
+                }
+            }
+            return@Column
+        }
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             // Three across the width; on a wide screen (landscape, a tablet) the cards stop growing.
             val cell = min((maxWidth - SIDE * 2 - GAP * (COLUMNS - 1)) / COLUMNS, MAX_CELL)
@@ -346,6 +372,7 @@ private const val ROWS = 3
 private val SIDE = 16.dp
 private val GAP = 8.dp
 private val MAX_CELL = 160.dp
+private val TV_CELL = 150.dp
 
 /** Plays read for Speed dial: enough to fill three pages after folding and hiding. */
 private const val PLAYS_READ = 60

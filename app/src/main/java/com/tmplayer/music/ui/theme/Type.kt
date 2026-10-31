@@ -34,3 +34,29 @@ val MusicTypography: Typography = Typography(
     labelMedium = base.labelMedium.copy(fontSize = maxOf(base.labelMedium.fontSize.value, 12f).sp, fontWeight = FontWeight.Medium),
     labelSmall = base.labelSmall.copy(fontSize = maxOf(base.labelSmall.fontSize.value, 11f).sp, fontWeight = FontWeight.Medium),
 )
+
+/** The same scale [com.tmplayer.music.platform.TvLayout.TYPE_SCALE] times larger, for a TV read from across the room. */
+val TvTypography: Typography = MusicTypography.scaled(com.tmplayer.music.platform.TvLayout.TYPE_SCALE)
+
+private fun TextStyle.scaled(f: Float): TextStyle = copy(
+    fontSize = if (fontSize.isSp) (fontSize.value * f).sp else fontSize,
+    lineHeight = if (lineHeight.isSp) (lineHeight.value * f).sp else lineHeight,
+)
+
+private fun Typography.scaled(f: Float): Typography = Typography(
+    displayLarge = displayLarge.scaled(f),
+    displayMedium = displayMedium.scaled(f),
+    displaySmall = displaySmall.scaled(f),
+    headlineLarge = headlineLarge.scaled(f),
+    headlineMedium = headlineMedium.scaled(f),
+    headlineSmall = headlineSmall.scaled(f),
+    titleLarge = titleLarge.scaled(f),
+    titleMedium = titleMedium.scaled(f),
+    titleSmall = titleSmall.scaled(f),
+    bodyLarge = bodyLarge.scaled(f),
+    bodyMedium = bodyMedium.scaled(f),
+    bodySmall = bodySmall.scaled(f),
+    labelLarge = labelLarge.scaled(f),
+    labelMedium = labelMedium.scaled(f),
+    labelSmall = labelSmall.scaled(f),
+)

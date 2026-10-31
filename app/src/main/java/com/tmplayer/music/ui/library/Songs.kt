@@ -1,5 +1,12 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -84,7 +91,8 @@ fun SongsTab(sort: SongSort, actions: SongActions, header: @Composable () -> Uni
     // The bar has its own column, so it never covers a row's title or format badge.
     Row(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { SongList(pager, state, actions, header) }
-        if (sort != SongSort.Added) LetterBar(sort, pager, state, Modifier.fillMaxHeight())
+        // The A to Z bar is touch only; a TV moves through the list with the D-pad.
+        if (sort != SongSort.Added && !com.tmplayer.music.ui.tv.LocalTv.current) LetterBar(sort, pager, state, Modifier.fillMaxHeight())
     }
 }
 
@@ -230,6 +238,16 @@ fun SongRow(
     Row(
         Modifier
             .fillMaxWidth()
+            .rememberedFocus(song.groupKey)
+            // A TV remote's Menu key opens the song's menu, as a long press of OK does.
+            .onPreviewKeyEvent { e ->
+                if (e.key == Key.Menu && e.type == KeyEventType.KeyUp) {
+                    onLongClick()
+                    true
+                } else {
+                    false
+                }
+            }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -263,7 +281,7 @@ fun SongRow(
         if (song.variant.isNotBlank()) Badge(song.variant)
         if (song.bestFormat.lossless) Badge(song.bestFormat.label)
         if (song.versionCount > 1) {
-            AssistChip(onClick = onLongClick, label = { Text(L.libraryVersions(song.versionCount)) }, shape = com.tmplayer.music.ui.theme.Pill)
+            AssistChip(onClick = onLongClick, label = { Text(L.libraryVersions(song.versionCount)) }, shape = com.tmplayer.music.ui.theme.Pill, modifier = Modifier.tvFocusRing(com.tmplayer.music.ui.theme.Pill))
         }
         trailing?.invoke()
     }
@@ -332,7 +350,7 @@ fun EmptyLibrary() {
     ) {
         Text(L.libraryEmpty, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (signals != null) {
-            androidx.compose.material3.FilledTonalButton(onClick = signals.openManage, shape = com.tmplayer.music.ui.theme.Pill) {
+            androidx.compose.material3.FilledTonalButton(onClick = signals.openManage, shape = com.tmplayer.music.ui.theme.Pill, modifier = Modifier.tvFocusRing()) {
                 Text(L.manageTitle)
             }
         }

@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -64,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
@@ -213,10 +215,12 @@ fun CollapsingLayout(
     header: @Composable () -> Unit,
     body: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    collapse: Boolean = true,
 ) {
     Layout(
         contents = listOf(header, body),
-        modifier = modifier.clipToBounds().nestedScroll(state),
+        // [collapse] off (a TV): the header stays, so the D-pad moving up always finds the tabs.
+        modifier = modifier.clipToBounds().then(if (collapse) Modifier.nestedScroll(state) else Modifier),
     ) { (headerParts, bodyParts), constraints ->
         val loose = Constraints(maxWidth = constraints.maxWidth)
         val heads = headerParts.map { it.measure(loose) }
@@ -246,14 +250,30 @@ fun ShellTopBar(
     title: String?,
     onBack: (() -> Unit)?,
     onSearch: (() -> Unit)?,
+    tabs: (@Composable () -> Unit)? = null,
     menu: @Composable () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = if (onBack == null) 16.dp else 4.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (tabs != null && onBack == null) {
+            // A TV: the mark, then the tabs along the top in place of the bottom bar.
+            Image(painterResource(R.drawable.ic_launcher_legacy), contentDescription = null, modifier = Modifier.size(28.dp))
+            Text(
+                L.appShortName,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 8.dp, end = 24.dp).semantics { heading() },
+            )
+            Box(Modifier.weight(1f)) { tabs() }
+            if (onSearch != null) IconButton(onClick = onSearch, modifier = Modifier.tvFocusRing()) { Icon(MusicIcons.Search, contentDescription = L.searchTitle) }
+            menu()
+            return@Row
+        }
         if (onBack != null) {
-            IconButton(onClick = onBack) { Icon(MusicIcons.Back, contentDescription = L.commonBack) }
+            IconButton(onClick = onBack, modifier = Modifier.tvFocusRing()) { Icon(MusicIcons.Back, contentDescription = L.commonBack) }
             Text(
                 title.orEmpty(),
                 style = MaterialTheme.typography.titleLarge,
@@ -275,7 +295,7 @@ fun ShellTopBar(
                 modifier = Modifier.padding(start = 8.dp).weight(1f).semantics { heading() },
             )
         }
-        if (onSearch != null) IconButton(onClick = onSearch) { Icon(MusicIcons.Search, contentDescription = L.searchTitle) }
+        if (onSearch != null) IconButton(onClick = onSearch, modifier = Modifier.tvFocusRing()) { Icon(MusicIcons.Search, contentDescription = L.searchTitle) }
         menu()
     }
 }
@@ -298,7 +318,7 @@ fun AccountMenu(
     val profile by Account.profile.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { Account.load() }
     Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = L.shellAccountMenu }) {
+        IconButton(onClick = { open = true }, modifier = Modifier.tvFocusRing().semantics { contentDescription = L.shellAccountMenu }) {
             AccountAvatar(profile, size = 32.dp)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -547,6 +567,51 @@ fun ShellRail(selected: MainTab, sheet: PlayerSheetController?, onSelect: (MainT
     }
 }
 
+/**
+ * The TV's tabs: Home, Chats, Library as a row of pills in the top bar. The D-pad moves along them
+ * and OK changes the tab (focus alone does not, so moving past a tab never reloads a list). The
+ * focused tab is a white pill with dark text, the chosen one a grey pill, the others plain text: the
+ * focus always reads apart from the choice. [selectedFocus] is the chosen tab's requester, for the
+ * shell's first focus.
+ */
+@Composable
+fun TvTabs(selected: MainTab, onSelect: (MainTab) -> Unit, selectedFocus: androidx.compose.ui.focus.FocusRequester) {
+    val colors = MaterialTheme.colorScheme
+    Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        MainTab.entries.forEach { tab ->
+            val on = tab == selected
+            val press = remember { MutableInteractionSource() }
+            val focused by press.collectIsFocusedAsState()
+            Surface(
+                color = when {
+                    focused -> colors.onSurface
+                    on -> colors.surfaceContainerHighest
+                    else -> Color.Transparent
+                },
+                contentColor = when {
+                    focused -> colors.surface
+                    on -> colors.onSurface
+                    else -> colors.onSurfaceVariant
+                },
+                shape = Pill,
+                modifier = Modifier
+                    .then(if (on) Modifier.focusRequester(selectedFocus) else Modifier)
+                    .clip(Pill)
+                    .selectable(selected = on, interactionSource = press, indication = null, role = Role.Tab, onClick = { onSelect(tab) }),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(tabIcon(tab, on), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Text(tabLabel(tab), style = MaterialTheme.typography.titleSmall, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
 private fun shelfLabel(shelf: LibraryShelf): String = when (shelf) {
     LibraryShelf.Songs -> L.tabSongs
     LibraryShelf.Albums -> L.tabAlbums
@@ -578,12 +643,13 @@ fun LibraryChips(
                     onClick = { onSelect(shelf) },
                     label = { Text(shelfLabel(shelf), maxLines = 1) },
                     shape = Pill,
+                    modifier = Modifier.tvFocusRing(Pill),
                 )
             }
         }
         if (grid != null) {
             // Kept clear of the screen edge; the scrolling chips end before it.
-            IconButton(onClick = { onGrid(!grid) }, modifier = Modifier.padding(end = 4.dp)) {
+            IconButton(onClick = { onGrid(!grid) }, modifier = Modifier.padding(end = 4.dp).tvFocusRing()) {
                 Icon(
                     if (grid) MusicIcons.ListRows else MusicIcons.Grid,
                     contentDescription = if (grid) L.libraryShowList else L.libraryShowGrid,

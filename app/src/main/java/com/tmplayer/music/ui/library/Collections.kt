@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,7 +58,7 @@ fun AlbumsTab(grid: Boolean = false, onAlbum: (Album) -> Unit, header: @Composab
             itemKey = { it.key },
             header = header,
         ) { album, size ->
-            GridCell(album.title, ArtistDisplay.of(album.artist), onClick = { onAlbum(album) }) { AlbumCover(album, size) }
+            GridCell(album.title, ArtistDisplay.of(album.artist), onClick = { onAlbum(album) }, focusKey = album.key) { AlbumCover(album, size) }
         }
         return
     }
@@ -112,9 +113,14 @@ private fun <T : Any> CoverGrid(
 }
 
 @Composable
-private fun GridCell(title: String, subtitle: String, onClick: () -> Unit, round: Boolean = false, cover: @Composable () -> Unit) {
+private fun GridCell(title: String, subtitle: String, onClick: () -> Unit, round: Boolean = false, focusKey: Any = title, cover: @Composable () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        Modifier
+            .fillMaxWidth()
+            .rememberedFocus(focusKey)
+            .clickable(onClick = onClick)
+            // A TV's focus ring sits inside the cell: keep the cover and words clear of it.
+            .then(if (com.tmplayer.music.ui.tv.LocalTv.current) Modifier.padding(8.dp) else Modifier),
         horizontalAlignment = if (round) Alignment.CenterHorizontally else Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -135,7 +141,7 @@ private fun GridCell(title: String, subtitle: String, onClick: () -> Unit, round
 @Composable
 private fun AlbumRow(album: Album, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().rememberedFocus(album.key).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -164,7 +170,7 @@ fun ArtistsTab(grid: Boolean = false, onArtist: (Artist) -> Unit, header: @Compo
             itemKey = { it.key },
             header = header,
         ) { artist, size ->
-            GridCell(artist.name.ifBlank { L.libraryUnknownArtist }, L.librarySongs(artist.songCount), onClick = { onArtist(artist) }, round = true) {
+            GridCell(artist.name.ifBlank { L.libraryUnknownArtist }, L.librarySongs(artist.songCount), onClick = { onArtist(artist) }, round = true, focusKey = artist.key) {
                 Cover(name = artist.name, fileId = 0, round = true, size = size)
             }
         }
@@ -177,7 +183,7 @@ fun ArtistsTab(grid: Boolean = false, onArtist: (Artist) -> Unit, header: @Compo
         item(key = "header") { header() }
         items(pager.items, key = { it.key }) { artist ->
             Row(
-                Modifier.fillMaxWidth().clickable { onArtist(artist) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().rememberedFocus(artist.key).clickable { onArtist(artist) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -225,7 +231,7 @@ fun ArtistScreen(artist: Artist, actions: SongActions, onAlbum: (Album) -> Unit)
             if (list.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(list, key = { it.key }) { album ->
-                        Column(Modifier.width(120.dp).clickable { onAlbum(album) }) {
+                        Column(Modifier.width(120.dp).rememberedFocus(album.key).clickable { onAlbum(album) }) {
                             AlbumCover(album, 120.dp)
                             Text(album.title, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }

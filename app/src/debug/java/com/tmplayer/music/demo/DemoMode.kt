@@ -244,11 +244,13 @@ internal object DemoMode {
             }
             val state by PlayerConnection.state.collectAsStateWithLifecycle()
             var queueOpen by remember { mutableStateOf(false) }
-            PlayerSheetHost {
-                LibraryHome(onLogOut = {}, startTab = options.screen.tab)
-                Driver(model, options, openQueue = { queueOpen = true })
+            com.tmplayer.music.ui.tv.TvFrame {
+                PlayerSheetHost {
+                    LibraryHome(onLogOut = {}, startTab = options.screen.tab)
+                    Driver(model, options, openQueue = { queueOpen = true })
+                }
+                if (queueOpen && state.count > 0) QueueSheet(onDismiss = { queueOpen = false })
             }
-            if (queueOpen && state.count > 0) QueueSheet(onDismiss = { queueOpen = false })
         }
     }
 

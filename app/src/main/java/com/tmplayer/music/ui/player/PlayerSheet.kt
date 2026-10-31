@@ -1,5 +1,8 @@
 package com.tmplayer.music.ui.player
 
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import com.tmplayer.music.ui.tv.tvFocusRing
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animate
@@ -186,6 +189,8 @@ val LocalPlayerSheet = staticCompositionLocalOf<PlayerSheetController?> { null }
 @Composable
 fun PlayerSheetHost(content: @Composable () -> Unit) {
     val controller = remember { PlayerSheetController() }
+    val tv = com.tmplayer.music.ui.tv.LocalTv.current
+    val library = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val state by PlayerConnection.state.collectAsStateWithLifecycle()
     val hasQueue = state.count > 0 && state.item != null
     val visible = hasQueue && controller.hideRequests == 0
@@ -209,7 +214,14 @@ fun PlayerSheetHost(content: @Composable () -> Unit) {
         Box(Modifier.fillMaxSize()) {
             // Read only while drawing: hiding the library is a draw change, not a recomposition.
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (visible && controller.covering) 0f else 1f }) {
-                content()
+                // A TV leaves the library out while Now Playing covers it: the D-pad cannot wander
+                // into rows nobody sees, and nothing under it costs a frame. Its saved state (tab,
+                // pages, scroll places) comes back with it.
+                if (!tv) {
+                    content()
+                } else if (!(visible && controller.covering)) {
+                    library.SaveableStateProvider("library") { content() }
+                }
             }
             if (visible) PlayerSheet(state, sheet, controller, onQueue = { queueOpen = true })
         }
@@ -273,7 +285,10 @@ private fun PlayerSheet(
         // One lambda per size: handed to the shell (the bar and rail follow it), so a new one on
         // every recomposition would redraw them for nothing.
         val progress = remember(sheet, collapsedTop) { { SheetLogic.progress(sheet.offset, collapsedTop) } }
-        val showMini by remember(collapsedTop) { derivedStateOf { progress() < 0.5f } }
+        val tv = com.tmplayer.music.ui.tv.LocalTv.current
+        // A TV keeps the (fading) mini-player until Now Playing is open, so the D-pad focus it holds
+        // is handed straight to Now Playing and never dropped half way.
+        val showMini by remember(collapsedTop, tv) { derivedStateOf { progress() < if (tv) 0.99f else 0.5f } }
         val showFull by remember(collapsedTop) { derivedStateOf { progress() > 0f } }
         val fullyOpen by remember(collapsedTop) { derivedStateOf { progress() >= 0.99f } }
         var back by remember { mutableFloatStateOf(0f) }
@@ -291,6 +306,11 @@ private fun PlayerSheet(
                 controller.progressSource = { 0f }
             }
         }
+        // A TV moves the D-pad with the sheet: into Now Playing once it is open, to the mini-player
+        // once it has closed. No focus modifier sits inside Now Playing: one there stopped the open
+        // animation part way (2026-10-31), so the first move goes by the focus search instead.
+        val miniFocus = remember { FocusRequester() }
+        if (tv) TvSheetFocus(fullyOpen, showMini, expandedOrGoing, miniFocus)
         // A request from outside (the Continue card); the count only moves on a tap, so this is idle.
         var handledExpand by remember { mutableIntStateOf(controller.expandRequests) }
         LaunchedEffect(controller.expandRequests) {
@@ -382,7 +402,9 @@ private fun PlayerSheet(
                     // Fully open and still, the sheet is the whole window: no clip to pay for on every frame.
                     clip = p < 1f || back > 0f
                 }
-                .nestedScroll(nested)
+                // Touch only: on a TV the scroll that brings a focused control into view would move
+                // the sheet itself (it stopped the open animation part way, 2026-10-31).
+                .then(if (tv) Modifier else Modifier.nestedScroll(nested))
                 .anchoredDraggable(sheet, reverseDirection = false, orientation = Orientation.Vertical, interactionSource = sheetDrags, flingBehavior = fling)
                 .drawBehind {
                     val p = progress()
@@ -414,11 +436,44 @@ private fun PlayerSheet(
                     canDismiss = allowDismiss,
                     onExpand = { scope.launch { sheet.animateTo(SheetValue.Expanded, spatial) } },
                     onDismiss = { scope.launch { sheet.animateTo(SheetValue.Dismissed, spatial) } },
+                    focusRequester = miniFocus.takeIf { tv },
                 )
             }
         }
     }
 }
+
+/**
+ * The TV's focus for the sheet: Now Playing takes it once open, the mini-player once the sheet has
+ * closed. Every request gives up by itself.
+ */
+@Composable
+private fun TvSheetFocus(
+    fullyOpen: Boolean,
+    showMini: Boolean,
+    expandedOrGoing: Boolean,
+    miniFocus: FocusRequester,
+) {
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    var wasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(fullyOpen, showMini) {
+        if (fullyOpen) {
+            wasOpen = true
+            // The library is out while Now Playing covers it, so a search from nothing lands in
+            // Now Playing. A few tries while the mini-player leaves; then it stops.
+            repeat(FOCUS_MOVE_TRIES) {
+                delay(FOCUS_MOVE_WAIT_MS)
+                if (runCatching { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }.getOrDefault(false)) return@LaunchedEffect
+            }
+        } else if (wasOpen && showMini && !expandedOrGoing) {
+            wasOpen = false
+            com.tmplayer.music.ui.tv.requestFocusSoon(miniFocus)
+        }
+    }
+}
+
+private const val FOCUS_MOVE_TRIES = 10
+private const val FOCUS_MOVE_WAIT_MS = 60L
 
 /**
  * The sheet's visible part: the full width and as tall as the sheet has grown, so the same surface
@@ -512,6 +567,7 @@ internal fun MiniPlayer(
     onExpand: () -> Unit,
     onDismiss: () -> Unit,
     fraction: (() -> Float)? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     val error by PlaybackErrors.last.collectAsStateWithLifecycle()
     // Read only by the progress line while it draws: a tick redraws the line, not the row.
@@ -527,8 +583,13 @@ internal fun MiniPlayer(
             .fillMaxWidth()
             .height(miniHeight())
             .graphicsLayer { alpha = (1f - progress() / 0.25f).coerceIn(0f, 1f) }
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             // No ripple over the whole row (its buttons keep theirs); TalkBack still has the action.
-            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClickLabel = L.nowplayingExpand, onClick = onExpand)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                // A TV draws its focus ring here, so the D-pad shows it is on the mini-player.
+                indication = if (com.tmplayer.music.ui.tv.LocalTv.current) androidx.compose.foundation.LocalIndication.current else null,
+                onClickLabel = L.nowplayingExpand, onClick = onExpand)
             .semantics {
                 if (canDismiss) customActions = listOf(CustomAccessibilityAction(dismissAction) { onDismiss(); true })
             }
@@ -573,11 +634,11 @@ internal fun MiniPlayer(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = { haptics.tap(); PlayerConnection.previous() }) {
+            IconButton(onClick = { haptics.tap(); PlayerConnection.previous() }, modifier = Modifier.tvFocusRing()) {
                 Icon(MusicIcons.Previous, contentDescription = L.playerPrevious)
             }
-            PlayPauseButton(state, Modifier.size(44.dp), iconSize = 22.dp)
-            IconButton(onClick = { haptics.tap(); PlayerConnection.next() }, enabled = state.hasNext) {
+            PlayPauseButton(state, Modifier.tvFocusRing().size(44.dp), iconSize = 22.dp)
+            IconButton(onClick = { haptics.tap(); PlayerConnection.next() }, enabled = state.hasNext, modifier = Modifier.tvFocusRing()) {
                 Icon(MusicIcons.Next, contentDescription = L.playerNext)
             }
         }
