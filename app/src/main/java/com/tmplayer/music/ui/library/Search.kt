@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -89,7 +91,7 @@ fun SearchScreen(actions: SongActions, onAlbum: (Album) -> Unit, onArtist: (Arti
                     item(key = "recentHead") {
                         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(L.searchRecent, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { scope.launch { guarded({}) { Library.index().clearRecentSearches(); bump++ } } }) {
+                            TextButton(modifier = Modifier.tvFocusRing(), onClick = { scope.launch { guarded({}) { Library.index().clearRecentSearches(); bump++ } } }) {
                                 Text(L.searchClear)
                             }
                         }
@@ -142,7 +144,7 @@ private fun Section(title: String) {
 @Composable
 private fun Line(title: String, subtitle: String, album: com.tmplayer.music.library.Album? = null, round: Boolean = false, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().rememberedFocus(title + subtitle).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {

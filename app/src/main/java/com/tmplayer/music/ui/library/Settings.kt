@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
 import android.content.Intent
 import androidx.core.net.toUri
 import androidx.compose.foundation.clickable
@@ -102,7 +103,7 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
         )
-        Button(onClick = { confirm = true }, enabled = used > 0, modifier = Modifier.padding(16.dp)) { Text(L.settingsFreeUp) }
+        Button(onClick = { confirm = true }, enabled = used > 0, modifier = Modifier.padding(16.dp).tvFocusRing()) { Text(L.settingsFreeUp) }
         message?.let { Line(it) }
 
         HapticSettingsSection()
@@ -119,7 +120,7 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
             title = { Text(L.settingsFreeUpTitle(Format.size(used))) },
             text = { Text(L.settingsFreeUpBody) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(modifier = Modifier.tvFocusRing(), onClick = {
                     confirm = false
                     scope.launch {
                         val freed = Storage.freeUp()
@@ -128,7 +129,7 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
                     }
                 }) { Text(L.settingsFreeUp) }
             },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { confirm = false }) { Text(L.commonCancel) } },
         )
     }
 }
@@ -192,7 +193,7 @@ private fun LibrarySection(onManageChats: () -> Unit) {
         },
     )
     Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = { if (paused) Library.resume() else Library.pause() }) {
+        TextButton(modifier = Modifier.tvFocusRing(), onClick = { if (paused) Library.resume() else Library.pause() }) {
             Text(if (paused) L.scanResume else L.scanPause)
         }
         TextButton(
@@ -240,7 +241,7 @@ private fun LibrarySection(onManageChats: () -> Unit) {
                     )
                 }
                 if (failed != null) {
-                    TextButton(onClick = { Library.scanner.scan(listOf(chat.chatId)) }) { Text(L.commonRetry) }
+                    TextButton(modifier = Modifier.tvFocusRing(), onClick = { Library.scanner.scan(listOf(chat.chatId)) }) { Text(L.commonRetry) }
                 }
             }
         }
@@ -255,7 +256,7 @@ private fun LibrarySection(onManageChats: () -> Unit) {
     Text(L.chatfirstNotFindingTitle, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp))
     Hint(L.chatfirstNotFindingBody)
     Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onManageChats) { Text(L.manageTitle) }
+        TextButton(modifier = Modifier.tvFocusRing(), onClick = onManageChats) { Text(L.manageTitle) }
         TextButton(
             enabled = !scan.running && !checking,
             onClick = {

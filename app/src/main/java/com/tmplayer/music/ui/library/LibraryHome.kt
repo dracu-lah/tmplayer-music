@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
 import android.Manifest
 import android.content.Context
 import android.content.ContextWrapper
@@ -60,6 +61,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusGroup
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import com.tmplayer.music.ui.tv.FocusMemory
+import com.tmplayer.music.ui.tv.FocusRescue
+import com.tmplayer.music.ui.tv.LocalFocusScope
+import com.tmplayer.music.ui.tv.LocalTv
+import com.tmplayer.music.ui.tv.requestFocusSoon
+import kotlinx.coroutines.delay
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
@@ -177,6 +189,33 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
     }
     val sendLogs = rememberSendLogs()
     val page = stack.lastOrNull()
+    // A TV: tabs along the top, a header that stays, and the D-pad focus kept somewhere sensible.
+    val tv = LocalTv.current
+    val tabFocus = remember { FocusRequester() }
+    val bodyFocus = remember { FocusRequester() }
+    var bodyHasFocus by remember { mutableStateOf(false) }
+    val tabKey: (MainTab) -> String = { t ->
+        when (t) {
+            MainTab.Home -> "home:$homeRound"
+            MainTab.Chats -> "chats"
+            MainTab.Library -> when (shelf) {
+                LibraryShelf.Albums -> "albums:$albumsGrid"
+                LibraryShelf.Artists -> "artists:$artistsGrid"
+                else -> "shelf:${shelf.name}"
+            }
+        }
+    }
+    val focusScopeOf: (Int) -> String = { depth ->
+        stack.getOrNull(depth - 1)?.let { "page:$depth:${it.hashCode()}" } ?: tabKey(tab)
+    }
+    // Back one level: the page below (or the tab) shows again, with the D-pad on the row that opened it.
+    val pop: () -> Unit = {
+        header.show()
+        if (stack.isNotEmpty()) {
+            stack.removeAt(stack.lastIndex)
+            if (tv) FocusMemory.restore(focusScopeOf(stack.size))
+        }
+    }
 
     LaunchedEffect(changes) {
         chatTitles = runCatching { Library.index().pickedChats().associate { it.chatId to it.title } }.getOrDefault(chatTitles)
@@ -184,8 +223,35 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
     // Composed first and always, so a sheet opened later wins Back; it also steps aside while the
     // sheet is open, so Back collapses Now Playing before it leaves a page or a tab.
     BackHandler(enabled = (page != null || tab != MainTab.Home) && sheet?.expanded != true) {
-        header.show()
-        if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) else tab = MainTab.Home
+        if (stack.isNotEmpty()) {
+            pop()
+        } else {
+            header.show()
+            tab = MainTab.Home
+        }
+    }
+    if (tv) {
+        DisposableEffect(bodyFocus) {
+            FocusRescue.target = bodyFocus
+            onDispose { if (FocusRescue.target === bodyFocus) FocusRescue.target = null }
+        }
+        // The first focus of each screen: a page opened, its first item; a tab, its tab in the top
+        // bar (so Back to Home lands there too). A page closed puts the D-pad back on the row that
+        // opened it ([FocusMemory]); if that row is gone, the first item in view, never the list's top.
+        LaunchedEffect(page, tab) {
+            val pending = FocusMemory.pending
+            when {
+                pending != null -> {
+                    delay(RESTORE_WAIT_MS)
+                    if (FocusMemory.pending == pending) {
+                        FocusMemory.giveUp()
+                        if (!bodyHasFocus) requestFocusSoon(bodyFocus) { bodyHasFocus }
+                    }
+                }
+                page != null -> requestFocusSoon(bodyFocus) { bodyHasFocus }
+                !bodyHasFocus -> requestFocusSoon(tabFocus)
+            }
+        }
     }
     var lastHomeRound by remember { mutableIntStateOf(homeRound) }
     LaunchedEffect(homeRound) {
@@ -245,10 +311,10 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
         ChatPicker(
             directory = Library.directory,
             already = chatTitles.keys,
-            onBack = { stack.removeAt(stack.lastIndex) },
+            onBack = pop,
             onDone = { picked ->
                 scope.launch { runCatching { Library.pick(picked.map { ChatPick(it.chatId, it.title) }) } }
-                stack.removeAt(stack.lastIndex)
+                pop()
             },
         )
         return
@@ -268,8 +334,9 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
                 Page.Search -> L.searchTitle
                 Page.Settings -> L.settingsTitle
             },
-            onBack = if (page != null) ({ stack.removeAt(stack.lastIndex) }) else null,
+            onBack = if (page != null) pop else null,
             onSearch = if (page != Page.Search) ({ open(Page.Search) }) else null,
+            tabs = if (tv) ({ TvTabs(tab, select, tabFocus) }) else null,
         ) {
             AccountMenu(
                 onSettings = { open(Page.Settings) },
@@ -293,19 +360,11 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
                 transitionSpec = { tabFadeThrough(reduced, riseByPx) },
                 label = "tabFadeThrough",
             ) { shownTab ->
-                val key = when (shownTab) {
-                    MainTab.Home -> "home:$homeRound"
-                    MainTab.Chats -> "chats"
-                    MainTab.Library -> when (shelf) {
-                        LibraryShelf.Albums -> "albums:$albumsGrid"
-                        LibraryShelf.Artists -> "artists:$artistsGrid"
-                        else -> "shelf:${shelf.name}"
-                    }
-                }
+                val key = tabKey(shownTab)
                 // Each tab and chip keeps its own saved state (scroll place included), here and
                 // after a rotation or process death.
                 holder.SaveableStateProvider(key) {
-                    RefreshBox {
+                    RefreshBox(enabled = !tv) {
                         when (shownTab) {
                             MainTab.Home -> HomeTab(actions, onShuffleAll = { scope.launch { runCatching { actions.shuffle(allSongs()) } } })
                             MainTab.Chats -> ChatsTab(actions, onChat = { open(Page.ChatPage(it)) }, onAdd = { open(Page.Picker) })
@@ -328,7 +387,7 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
             is Page.AlbumPage -> AlbumScreen(page.album, actions)
             is Page.ArtistPage -> ArtistScreen(page.artist, actions, onAlbum = { open(Page.AlbumPage(it)) })
             is Page.ChatPage -> ChatScreen(page.chat, actions, onGone = { stack.remove(page) })
-            is Page.PlaylistPage -> PlaylistScreen(page.playlist, actions, onDeleted = { stack.removeAt(stack.lastIndex) })
+            is Page.PlaylistPage -> PlaylistScreen(page.playlist, actions, onDeleted = pop)
             Page.About -> AboutScreen()
             Page.Settings -> SettingsScreen(onManageChats = { open(Page.Manage) })
             Page.Search -> SearchScreen(actions, onAlbum = { open(Page.AlbumPage(it)) }, onArtist = { open(Page.ArtistPage(it)) })
@@ -347,7 +406,7 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
                         .fillMaxWidth()
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                 ) {
-                    if (rail) ShellRail(tab, sheet, select)
+                    if (rail && !tv) ShellRail(tab, sheet, select)
                     CollapsingLayout(
                         state = header,
                         modifier = Modifier.weight(1f).fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
@@ -379,11 +438,24 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
                                 }
                             }
                         },
-                        body = body,
+                        body = {
+                            // One focus group for the page or tab under the header: a page opened
+                            // asks it for focus (its first item), and its rows remember their place.
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .focusRequester(bodyFocus)
+                                    .onFocusChanged { bodyHasFocus = it.hasFocus }
+                                    .focusGroup(),
+                            ) {
+                                CompositionLocalProvider(LocalFocusScope provides focusScopeOf(stack.size)) { body() }
+                            }
+                        },
+                        collapse = !tv,
                     )
                 }
-                PlayerSheetSpacer(aboveBar = !rail)
-                if (!rail) {
+                PlayerSheetSpacer(aboveBar = !rail && !tv)
+                if (!rail && !tv) {
                     ShellBottomBar(tab, sheet, select)
                 } else if (sheet?.showing != true) {
                     NavigationInsetSpacer()
@@ -459,7 +531,12 @@ private fun MobileDataQuestion() {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RefreshBox(content: @Composable () -> Unit) {
+private fun RefreshBox(enabled: Boolean = true, content: @Composable () -> Unit) {
+    // Pull to refresh is touch only: a TV checks for new tracks from Settings and Manage chats.
+    if (!enabled) {
+        Box(Modifier.fillMaxSize()) { content() }
+        return
+    }
     val scope = rememberCoroutineScope()
     val scan by Library.scanner.status.collectAsStateWithLifecycle()
     var pulled by remember { mutableStateOf(false) }
@@ -596,7 +673,7 @@ private fun SongsHeader(sort: SongSort, onSort: (SongSort) -> Unit) {
             modifier = Modifier.weight(1f),
         )
         Box {
-            TextButton(onClick = { open = true }) { Text(sortName(sort)) }
+            TextButton(onClick = { open = true }, modifier = Modifier.tvFocusRing()) { Text(sortName(sort)) }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                 SongSort.entries.forEach { s ->
                     DropdownMenuItem(text = { Text(sortName(s)) }, onClick = {
@@ -675,6 +752,9 @@ private fun ScanBar(onOpen: () -> Unit) {
         }
     }
 }
+
+/** How long a closed page's row has to take focus back before the shell gives the page its first item. */
+private const val RESTORE_WAIT_MS = 600L
 
 /** The tab change: out in 90 ms, in over 200 ms from [riseByPx] lower; none with animations off. */
 private fun tabFadeThrough(reduced: Boolean, riseByPx: Int): ContentTransform =

@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -72,7 +74,7 @@ fun PlaylistsTab(onPlaylist: (Playlist) -> Unit) {
     ScrollToTopOnReselect(listState)
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "new") {
-            Button(onClick = { naming = true }, modifier = Modifier.padding(16.dp)) { Text(L.playlistNew) }
+            Button(onClick = { naming = true }, modifier = Modifier.padding(16.dp).tvFocusRing()) { Text(L.playlistNew) }
         }
         error?.let { item(key = "error") { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) } }
         val list = playlists.orEmpty()
@@ -81,7 +83,7 @@ fun PlaylistsTab(onPlaylist: (Playlist) -> Unit) {
         }
         items(list, key = { it.id }) { playlist ->
             Row(
-                Modifier.fillMaxWidth().clickable { onPlaylist(playlist) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().rememberedFocus(playlist.id).clickable { onPlaylist(playlist) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -129,8 +131,8 @@ fun PlaylistScreen(playlist: Playlist, actions: SongActions, onDeleted: () -> Un
                 Text(name, style = MaterialTheme.typography.headlineSmall)
                 Text(L.librarySongs(songs?.size ?: 0), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { renaming = true }) { Text(L.playlistRename) }
-                    TextButton(onClick = { deleting = true }) { Text(L.playlistDelete) }
+                    TextButton(modifier = Modifier.tvFocusRing(), onClick = { renaming = true }) { Text(L.playlistRename) }
+                    TextButton(modifier = Modifier.tvFocusRing(), onClick = { deleting = true }) { Text(L.playlistDelete) }
                 }
             }
             PlayButtons({ songs.orEmpty() }) { list, shuffle -> if (shuffle) actions.shuffle(list) else actions.play(list, 0) }
@@ -146,13 +148,13 @@ fun PlaylistScreen(playlist: Playlist, actions: SongActions, onDeleted: () -> Un
                 onClick = { actions.play(list, i) },
                 onLongClick = { actions.menu(song) },
                 trailing = {
-                    IconButton(onClick = { edit { Library.index().movePlaylistItem(playlist.id, i, i - 1) } }, enabled = i > 0) {
+                    IconButton(modifier = Modifier.tvFocusRing(), onClick = { edit { Library.index().movePlaylistItem(playlist.id, i, i - 1) } }, enabled = i > 0) {
                         Icon(MusicIcons.Up, contentDescription = L.playlistMoveUp)
                     }
-                    IconButton(onClick = { edit { Library.index().movePlaylistItem(playlist.id, i, i + 1) } }, enabled = i < list.lastIndex) {
+                    IconButton(modifier = Modifier.tvFocusRing(), onClick = { edit { Library.index().movePlaylistItem(playlist.id, i, i + 1) } }, enabled = i < list.lastIndex) {
                         Icon(MusicIcons.Down, contentDescription = L.playlistMoveDown)
                     }
-                    IconButton(onClick = { edit { Library.index().removeFromPlaylist(playlist.id, i) } }) {
+                    IconButton(modifier = Modifier.tvFocusRing(), onClick = { edit { Library.index().removeFromPlaylist(playlist.id, i) } }) {
                         Icon(MusicIcons.Close, contentDescription = L.playlistRemoveSong)
                     }
                 },
@@ -172,12 +174,12 @@ fun PlaylistScreen(playlist: Playlist, actions: SongActions, onDeleted: () -> Un
             title = { Text(L.playlistDeleteTitle(name)) },
             text = { Text(L.playlistDeleteBody) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(modifier = Modifier.tvFocusRing(), onClick = {
                     deleting = false
                     scope.launch { guarded({ error = it }) { Library.index().deletePlaylist(playlist.id); onDeleted() } }
                 }) { Text(L.playlistDelete) }
             },
-            dismissButton = { TextButton(onClick = { deleting = false }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { deleting = false }) { Text(L.commonCancel) } },
         )
     }
 }
@@ -266,7 +268,7 @@ private fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, on
                 singleLine = true,
             )
         },
-        confirmButton = { TextButton(onClick = { onDone(name.trim().ifBlank { L.playlistDefaultName }) }) { Text(L.commonContinue) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(L.commonCancel) } },
+        confirmButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { onDone(name.trim().ifBlank { L.playlistDefaultName }) }) { Text(L.commonContinue) } },
+        dismissButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = onDismiss) { Text(L.commonCancel) } },
     )
 }

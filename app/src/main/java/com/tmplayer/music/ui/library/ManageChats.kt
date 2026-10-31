@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -66,8 +68,8 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(L.manageBody, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onAddChats) { Text(L.manageAdd) }
-                    TextButton(onClick = { scope.launch { runCatching { Library.refresh() } } }) { Text(L.manageRefresh) }
+                    Button(modifier = Modifier.tvFocusRing(), onClick = onAddChats) { Text(L.manageAdd) }
+                    TextButton(modifier = Modifier.tvFocusRing(), onClick = { scope.launch { runCatching { Library.refresh() } } }) { Text(L.manageRefresh) }
                 }
             }
         }
@@ -92,7 +94,7 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
                 else -> L.manageScanning(chat.trackCount)
             }
             Row(
-                Modifier.fillMaxWidth().clickable { onChat(chat) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().rememberedFocus(chat.chatId).clickable { onChat(chat) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -106,9 +108,9 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
                     )
                 }
                 if (failed != null) {
-                    TextButton(onClick = { Library.scanner.scan(listOf(chat.chatId)) }) { Text(L.commonRetry) }
+                    TextButton(modifier = Modifier.tvFocusRing(), onClick = { Library.scanner.scan(listOf(chat.chatId)) }) { Text(L.commonRetry) }
                 }
-                TextButton(onClick = { removing = chat }) { Text(L.manageRemove) }
+                TextButton(modifier = Modifier.tvFocusRing(), onClick = { removing = chat }) { Text(L.manageRemove) }
             }
         }
     }
@@ -119,7 +121,7 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
             title = { Text(L.manageRemoveTitle(chat.title)) },
             text = { Text(L.manageRemoveBody(chat.trackCount)) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(modifier = Modifier.tvFocusRing(), onClick = {
                     removing = null
                     scope.launch {
                         try {
@@ -132,7 +134,7 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
                     }
                 }) { Text(L.manageRemove) }
             },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { removing = null }) { Text(L.commonCancel) } },
         )
     }
 }

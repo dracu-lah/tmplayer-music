@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -83,7 +85,7 @@ fun HomeTab(actions: SongActions, onShuffleAll: () -> Unit) {
         item(key = "speed_dial") { SpeedDialSection(Modifier.padding(bottom = 16.dp)) }
         item(key = "buttons") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onShuffleAll, enabled = added.isNotEmpty()) { Text(L.homeShuffleAll) }
+                Button(onClick = onShuffleAll, enabled = added.isNotEmpty(), modifier = Modifier.tvFocusRing()) { Text(L.homeShuffleAll) }
             }
         }
         if (played.isNotEmpty()) item(key = "played") { SongShelf(L.homeRecentlyPlayed, played, actions) }
@@ -98,10 +100,12 @@ fun HomeTab(actions: SongActions, onShuffleAll: () -> Unit) {
 private fun SongShelf(title: String, songs: List<Song>, actions: SongActions) {
     Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val row = androidx.compose.foundation.lazy.rememberLazyListState()
+        TvRowStartsAtFirst(row, songs.firstOrNull()?.groupKey)
+        LazyRow(state = row, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(songs, key = { it.groupKey }) { song ->
                 Column(
-                    Modifier.width(128.dp).combinedClickable(
+                    Modifier.width(128.dp).rememberedFocus("$title:${song.groupKey}").combinedClickable(
                         onClick = { actions.play(songs, songs.indexOf(song)) },
                         onLongClick = { actions.menu(song) },
                     ),
@@ -132,9 +136,22 @@ fun PlayButtons(songs: suspend () -> List<Song>, onPlay: (List<Song>, Boolean) -
         scope.launch { runCatching { songs() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { onPlay(it, shuffle) } }
     }
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { press(false) }) { Text(L.homePlayAll) }
-        OutlinedButton(onClick = { press(true) }) { Text(L.homeShuffleAll) }
+        Button(onClick = { press(false) }, modifier = Modifier.tvFocusRing()) { Text(L.homePlayAll) }
+        OutlinedButton(onClick = { press(true) }, modifier = Modifier.tvFocusRing()) { Text(L.homeShuffleAll) }
     }
 }
 
 private const val ROW = 20
+
+/**
+ * A TV row whose first item changed (a song played moves to the front) shows it again: a lazy row
+ * keeps its first item by key, so the new one would sit just off the left edge, where the D-pad
+ * user cannot see it. Only while the row is near its start; a row walked along stays where it is.
+ */
+@Composable
+internal fun TvRowStartsAtFirst(state: androidx.compose.foundation.lazy.LazyListState, firstKey: Any?) {
+    if (!com.tmplayer.music.ui.tv.LocalTv.current) return
+    LaunchedEffect(firstKey) {
+        if (firstKey != null && state.firstVisibleItemIndex <= 1) runCatching { state.scrollToItem(0) }
+    }
+}

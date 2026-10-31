@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.rememberedFocus
 import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -148,7 +150,7 @@ fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit)
                 else -> L.manageScanning(chat.trackCount)
             }
             Row(
-                Modifier.fillMaxWidth().clickable { onChat(chat) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().rememberedFocus(chat.chatId).clickable { onChat(chat) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -185,7 +187,7 @@ fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit)
                                 }
                             }
                         },
-                        modifier = Modifier.semantics { contentDescription = L.chatfirstPlayChat(chat.title) },
+                        modifier = Modifier.tvFocusRing().semantics { contentDescription = L.chatfirstPlayChat(chat.title) },
                     ) { Icon(MusicIcons.Play, contentDescription = null) }
                 }
             }
@@ -203,7 +205,7 @@ fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit)
 @Composable
 private fun AddChatsButton(onAdd: () -> Unit) {
     Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 24.dp), contentAlignment = Alignment.Center) {
-        FilledTonalButton(onClick = onAdd, shape = Pill, modifier = Modifier.heightIn(min = 48.dp)) {
+        FilledTonalButton(onClick = onAdd, shape = Pill, modifier = Modifier.tvFocusRing().heightIn(min = 48.dp)) {
             Icon(MusicIcons.Plus, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
             Spacer(Modifier.width(ButtonDefaults.IconSpacing))
             Text(L.chatfirstChatsAdd)
@@ -345,12 +347,12 @@ private fun ChatPageBody(
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = { play(0, false) }, enabled = state.rows.isNotEmpty(), shape = Pill) {
+                        Button(modifier = Modifier.tvFocusRing(), onClick = { play(0, false) }, enabled = state.rows.isNotEmpty(), shape = Pill) {
                             Icon(MusicIcons.Play, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
                             Text(L.chatfirstPlay)
                         }
-                        FilledTonalButton(onClick = { play(0, true) }, enabled = state.rows.isNotEmpty(), shape = Pill) {
+                        FilledTonalButton(modifier = Modifier.tvFocusRing(), onClick = { play(0, true) }, enabled = state.rows.isNotEmpty(), shape = Pill) {
                             Icon(MusicIcons.Shuffle, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
                             Text(L.chatfirstShuffle)
@@ -418,6 +420,7 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onLongClick: () -> Unit)
     Row(
         Modifier
             .fillMaxWidth()
+            .rememberedFocus(track.id)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = listOf(title, artist, length).filter { it.isNotBlank() }.joinToString(", ")
@@ -472,7 +475,7 @@ private fun ProblemLine(
             is ChatProblem.Failed -> {
                 Text(problem.message, color = MaterialTheme.colorScheme.error)
                 Row {
-                    TextButton(onClick = {
+                    TextButton(modifier = Modifier.tvFocusRing(), onClick = {
                         loader.retry()
                         scope.launch { loader.more() }
                     }) { Text(L.commonRetry) }
@@ -481,7 +484,7 @@ private fun ProblemLine(
             }
             ChatProblem.NotAvailable -> {
                 Text(L.chatfirstChatNotAvailable, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = {
+                TextButton(modifier = Modifier.tvFocusRing(), onClick = {
                     scope.launch {
                         runCatching { Library.removeChat(chat.chatId) }
                         onGone()
@@ -490,7 +493,7 @@ private fun ProblemLine(
             }
             ChatProblem.Removed -> {
                 Text(L.chatfirstChatRemoved, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Box { TextButton(onClick = onGone) { Text(L.commonBack) } }
+                Box { TextButton(modifier = Modifier.tvFocusRing(), onClick = onGone) { Text(L.commonBack) } }
             }
         }
     }
