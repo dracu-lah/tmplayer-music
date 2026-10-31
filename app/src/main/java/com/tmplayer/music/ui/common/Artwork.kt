@@ -29,7 +29,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tmplayer.music.covers.CoverOnline
+import com.tmplayer.music.data.FileFetch
 import com.tmplayer.music.data.FileIds
+import com.tmplayer.music.data.TdFileCalls
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.lyrics.LyricsOnline
@@ -50,6 +52,9 @@ import java.io.File
  */
 object Artwork {
     private const val TAG = "Artwork"
+
+    /** An inline preview is a few hundred bytes; anything far larger is not one. */
+    private const val MINI_MAX_BYTES = 64 * 1024
     private val memory = object : LruCache<String, ImageBitmap>(16 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
@@ -105,13 +110,30 @@ object Artwork {
 
     private suspend fun download(key: String, fileId: Int, sizePx: Int): ImageBitmap? {
         return gate.withPermit {
-            val path = withTimeoutOrNull(20_000) {
+            // Already on the disk: no download. Else asked for at a low priority and waited for through
+            // TDLib's file updates; withdrawn when the row leaves the screen or the time runs out.
+            val path = withTimeoutOrNull(FileFetch.TIMEOUT_MS) {
                 val td = Td.awaitAuthorizedSession().client
-                td.downloadFile(fileId, 8, 0, 0, true)
-            }?.let { (it as? dev.g000sha256.tdl.TdlResult.Success)?.result?.local }
-                // Only a finished download: a file still being written decodes as a strip of picture over a blank square.
-                ?.takeIf { it.isDownloadingCompleted }?.path
+                FileFetch.localPath(TdFileCalls(td), fileId)
+            }
             path?.takeIf { it.isNotEmpty() }?.let { decode(key, File(it), sizePx) }
+        }
+    }
+
+    /**
+     * Telegram's inline preview of a picture (a few hundred bytes of JPEG, about 40 pixels across),
+     * decoded once and remembered: what a chat row shows while its photo downloads. Null for bytes
+     * that are not a picture.
+     */
+    fun mini(data: ByteArray?): ImageBitmap? {
+        if (data == null || data.isEmpty() || data.size > MINI_MAX_BYTES) return null
+        val key = "m${data.size}:${data.contentHashCode()}"
+        memory.get(key)?.let { return it }
+        return try {
+            BitmapFactory.decodeByteArray(data, 0, data.size)?.asImageBitmap()?.also { memory.put(key, it) }
+        } catch (e: Throwable) {
+            Logger.w(TAG, "could not decode an inline preview", e)
+            null
         }
     }
 
@@ -199,6 +221,8 @@ fun Cover(
     track: TrackId? = null,
     /** The key of the generated cover shown when there is no picture ([com.tmplayer.music.library.CoverArt.keyOf]); null for initials. */
     art: String? = null,
+    /** Telegram's inline preview, shown blurred while the real picture downloads or when it cannot. */
+    mini: ByteArray? = null,
 ) {
     val px = with(LocalDensity.current) { size.roundToPx() }
     val source = if (coverPath.isNotEmpty()) "p$coverPath@$px" else Artwork.keyOf(fileId, px, track)
@@ -261,7 +285,8 @@ fun Cover(
     }
     val shape = if (round) RoundedCornerShape(50) else RoundedCornerShape(8.dp)
     Box(modifier.size(size).clip(shape), contentAlignment = Alignment.Center) {
-        val shown = image ?: online ?: generated?.takeIf { looked && onlineChecked }
+        val preview = remember(mini) { Artwork.mini(mini) }
+        val shown = image ?: online ?: generated?.takeIf { looked && onlineChecked } ?: preview
         if (shown != null) {
             Image(shown, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size))
         } else if (art != null) {

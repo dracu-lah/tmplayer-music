@@ -32,7 +32,7 @@ import com.tmplayer.music.diagnostics.SendLogsButton
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.ChatRow
-import com.tmplayer.music.ui.common.Cover
+import com.tmplayer.music.ui.common.ChatAvatar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -96,7 +96,7 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Cover(name = chat.title, fileId = 0, round = true, size = 44.dp)
+                ChatAvatar(chatId = chat.chatId, name = chat.title, size = 44.dp)
                 Column(Modifier.weight(1f)) {
                     Text(chat.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(

@@ -62,6 +62,7 @@ import com.tmplayer.music.library.ChatRow
 import com.tmplayer.music.library.Song
 import com.tmplayer.music.library.TagState
 import com.tmplayer.music.library.Track
+import com.tmplayer.music.ui.common.ChatAvatar
 import com.tmplayer.music.ui.common.Cover
 import com.tmplayer.music.ui.common.Format
 import com.tmplayer.music.ui.common.MusicIcons
@@ -152,7 +153,7 @@ fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit)
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Cover(name = chat.title, fileId = 0, round = true, size = 48.dp)
+                ChatAvatar(chatId = chat.chatId, name = chat.title, size = 48.dp)
                 Column(Modifier.weight(1f)) {
                     Text(chat.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(

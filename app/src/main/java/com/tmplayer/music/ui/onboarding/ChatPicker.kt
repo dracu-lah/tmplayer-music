@@ -315,7 +315,7 @@ private fun ChatRow(chat: ChatEntry, count: Int?, checked: Boolean, onToggle: ()
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Cover(name = title, fileId = chat.photoFileId, round = true, size = 44.dp)
+        Cover(name = title, fileId = chat.photoFileId, mini = chat.miniThumbnail, round = true, size = 44.dp)
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (count == null) {

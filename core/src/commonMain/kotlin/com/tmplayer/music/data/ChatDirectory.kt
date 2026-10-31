@@ -22,6 +22,8 @@ data class ChatEntry(
     val archived: Boolean,
     /** The small avatar's file id, 0 when the chat has none. */
     val photoFileId: Int,
+    /** Telegram's inline preview of the avatar, shown while the photo downloads; null when none. */
+    val miniThumbnail: ByteArray? = null,
 )
 
 /**
@@ -119,6 +121,7 @@ class ChatDirectory(private val client: suspend () -> TdlClient) {
             savedMessages = chatId == savedId,
             archived = archived,
             photoFileId = chat.photo?.small?.id ?: 0,
+            miniThumbnail = chat.photo?.minithumbnail?.data,
         )
     }
 

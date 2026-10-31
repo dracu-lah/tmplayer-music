@@ -62,6 +62,21 @@ object Library {
 
     val directory = ChatDirectory { Td.awaitAuthorizedSession().client }
 
+    /** The pictures of chats the rows know by id alone (Chats tab, Manage chats, a chat page). */
+    val chatPhotos = ChatPhotos(
+        lookup = { chatId ->
+            val td = withTimeoutOrNull(PHOTO_CONNECT_MS) { Td.awaitAuthorizedSession().client }
+            val chat = td?.let { withTimeoutOrNull(PHOTO_LOOKUP_MS) { it.getChat(chatId) } }
+            if (chat is TdlResult.Success) {
+                val photo = chat.result.photo
+                PhotoLookup.Found(photo?.let { ChatPhoto(it.small.id, it.minithumbnail?.data) })
+            } else {
+                PhotoLookup.Unavailable
+            }
+        },
+        generation = { Td.currentGeneration() },
+    )
+
     /** Bumped whenever the index changed, so open lists reload their first page. */
     private val _changes = MutableStateFlow(0L)
     val changes: StateFlow<Long> = _changes.asStateFlow()
@@ -134,6 +149,7 @@ object Library {
             batchSize = if (lowRam) TagEnricher.SMALL_BATCH else TagEnricher.BATCH,
             lowRam = lowRam,
         )
+        scope.launch { Td.chatPhotoChanged.collect { chatPhotos.changed(it) } }
         scope.launch {
             Td.auth.map { it is AuthState.Ready }.distinctUntilChanged().collect { signedIn ->
                 if (signedIn) onSignedIn() else _ready.value = false
@@ -526,6 +542,8 @@ object Library {
     private const val PAGE_TIMEOUT_MS = 30_000L
     private const val L_NOT_CONNECTED = "NETWORK_ERROR"
     private const val CHAT_CONNECT_MS = 20_000L
+    private const val PHOTO_CONNECT_MS = 10_000L
+    private const val PHOTO_LOOKUP_MS = 5_000L
     private const val MAX_LOADERS = 4
 }
 

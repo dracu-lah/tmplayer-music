@@ -23,7 +23,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -88,6 +92,10 @@ object Td {
 
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
+
+    /** Chats whose picture changed, as TDLib reports it ([ChatPhotos] drops the old one). */
+    private val _chatPhotoChanged = MutableSharedFlow<Long>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val chatPhotoChanged: SharedFlow<Long> = _chatPhotoChanged.asSharedFlow()
 
     @Volatile
     private var currentPaths: Paths? = null
@@ -171,6 +179,9 @@ object Td {
                     _connected.value = update.state is ConnectionStateReady || update.state is ConnectionStateUpdating
                 }
             }
+            val photos = launch {
+                td.chatPhotoUpdates.collect { _chatPhotoChanged.tryEmit(it.chatId) }
+            }
             // The first update may already have been emitted before we subscribed, so ask once
             // directly. Both paths go through the same mutex-guarded handler.
             val primer = launch {
@@ -184,6 +195,7 @@ object Td {
             closed.await()
             updates.cancel()
             connection.cancel()
+            photos.cancel()
             primer.cancel()
             _connected.value = false
             current = null
