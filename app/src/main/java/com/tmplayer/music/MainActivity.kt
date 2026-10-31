@@ -26,11 +26,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             // The one look: pure black, the same on every phone.
             MusicTheme {
-                AppRoot()
-                CrashOffer()
-                SupportAskHost()
-                // The update check when the app opens and its popup; nothing in a store build.
-                com.tmplayer.music.ui.update.UpdateHost()
+                // On a TV, everything inside the overscan-safe area; a phone is unchanged.
+                com.tmplayer.music.ui.tv.TvFrame {
+                    AppRoot()
+                    CrashOffer()
+                    SupportAskHost()
+                    // The update check when the app opens and its popup; nothing in a store build.
+                    com.tmplayer.music.ui.update.UpdateHost()
+                }
             }
         }
     }

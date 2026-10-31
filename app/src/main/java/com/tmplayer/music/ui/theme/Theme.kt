@@ -5,7 +5,13 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RippleConfiguration
+import androidx.compose.material3.ripple
+import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -54,14 +60,33 @@ fun MusicTheme(content: @Composable () -> Unit) {
     }
     // MaterialExpressiveTheme and MotionScheme are internal in material3 1.4.0, so the expressive
     // motion travels in our own local beside the Material theme (see [MusicMotion]).
-    MaterialTheme(colorScheme = MusicColors, shapes = MusicShapes, typography = MusicTypography) {
+    // A TV (one APK with the phone) gets the larger type, the focus ring on every clickable and a
+    // stronger focus layer on Material's buttons; a phone gets exactly what it had.
+    val tv = remember(context) { !preview && com.tmplayer.music.ui.tv.isTv(context) }
+    MaterialTheme(colorScheme = MusicColors, shapes = MusicShapes, typography = if (tv) TvTypography else MusicTypography) {
+        val focus = if (tv) {
+            arrayOf(
+                LocalIndication provides com.tmplayer.music.ui.tv.FocusRingIndication(ripple(), MusicColors.onSurface),
+                LocalRippleConfiguration provides TvRipple,
+            )
+        } else {
+            emptyArray()
+        }
         CompositionLocalProvider(
             LocalReducedMotion provides reduced,
             LocalMusicMotion provides if (reduced) SnapMotion else ExpressiveMotion,
+            com.tmplayer.music.ui.tv.LocalTv provides tv,
+            *focus,
             content = content,
         )
     }
 }
+
+/** Material's ripple with a focus layer strong enough to see from a sofa (the press stays as it was). */
+@OptIn(ExperimentalMaterial3Api::class)
+private val TvRipple = RippleConfiguration(
+    rippleAlpha = RippleAlpha(draggedAlpha = 0.16f, focusedAlpha = 0.36f, hoveredAlpha = 0.08f, pressedAlpha = 0.12f),
+)
 
 /** The system's animator duration scale is 0: the user does not want motion. */
 private fun animationsOff(context: Context): Boolean =
