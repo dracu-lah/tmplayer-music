@@ -117,8 +117,9 @@ Commits: do **not** add a `Co-Authored-By: Claude` (or any Claude or Anthropic) 
   The local HTTP server and the Cast SDK belong in the regular APK only.
 - Music in chats is often pirated, so: nothing is scanned until the user picks the chat, no public
   channel search, no catalogue, no recommendations of what to listen to (`private/RESEARCH.md` section 11).
-- Lyrics lookups are opt in and go through our own gateway, sending only title, artist, album and
-  duration, never chat names.
+- Lyrics and cover lookups are on by default, and one switch (Settings, Lyrics) turns them off. They
+  go through our own gateway, sending only title, artist, album and duration, never chat names or
+  file names.
 
 ## Process
 
