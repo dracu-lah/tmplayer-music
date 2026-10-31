@@ -221,6 +221,8 @@
     "shuffle": "Shuffle"
   },
   "picker": {
+    "all_chats": "All chats",
+    "archive_empty": "No archived chats.",
     "archived": "Archived chats",
     "body": "Tick the chats that hold your music. You can add or remove chats later in Manage chats.",
     "confirm_all_body": "Scanning many chats takes longer and uses more data. You can remove chats later.",
@@ -228,8 +230,11 @@
     "confirm_all_yes": "Add them",
     "count": "{count, plural, one {# audio file} other {# audio files}}",
     "empty": "No chats yet. Chats you join in Telegram show up here.",
+    "folder_empty": "No chats in this folder.",
     "later": "Add chats later",
+    "loading": "Loading your chats",
     "no_audio": "No audio messages. Files sent as documents are found by the scan.",
+    "no_match": "No chats match your search.",
     "saved_messages": "Saved Messages",
     "search": "Search chats",
     "select_all": "Select all",

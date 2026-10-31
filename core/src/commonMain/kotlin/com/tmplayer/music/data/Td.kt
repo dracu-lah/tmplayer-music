@@ -97,6 +97,13 @@ object Td {
     private val _chatPhotoChanged = MutableSharedFlow<Long>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val chatPhotoChanged: SharedFlow<Long> = _chatPhotoChanged.asSharedFlow()
 
+    /**
+     * The user's Telegram folders, in their order. Collected here because TDLib announces them once,
+     * shortly after the client starts, and again only when they change; emptied with the client.
+     */
+    private val _folders = MutableStateFlow<List<ChatFolder>>(emptyList())
+    val folders: StateFlow<List<ChatFolder>> = _folders.asStateFlow()
+
     @Volatile
     private var currentPaths: Paths? = null
     private lateinit var device: DeviceInfo
@@ -182,6 +189,16 @@ object Td {
             val photos = launch {
                 td.chatPhotoUpdates.collect { _chatPhotoChanged.tryEmit(it.chatId) }
             }
+            val folders = launch {
+                td.chatFoldersUpdates.collect { update ->
+                    // Only the plain characters of the name: a custom emoji this client cannot draw
+                    // would print as its placeholder.
+                    _folders.value = update.chatFolders.orEmpty().mapNotNull { folder ->
+                        val title = folder.name?.text?.text.orEmpty().trim()
+                        if (title.isEmpty()) null else ChatFolder(folder.id, title.take(MAX_FOLDER_TITLE))
+                    }
+                }
+            }
             // The first update may already have been emitted before we subscribed, so ask once
             // directly. Both paths go through the same mutex-guarded handler.
             val primer = launch {
@@ -196,6 +213,8 @@ object Td {
             updates.cancel()
             connection.cancel()
             photos.cancel()
+            folders.cancel()
+            _folders.value = emptyList()
             primer.cancel()
             _connected.value = false
             current = null
@@ -537,6 +556,7 @@ object Td {
         current === session.client && generation.get() == session.generation && _auth.value is AuthState.Ready
 
     private const val SIGN_IN_STALL_MS = 20_000L
+    private const val MAX_FOLDER_TITLE = 64
     private const val SUBMIT_TIMEOUT_MS = 30_000L
     private const val RESTART_TIMEOUT_MS = 10_000L
     private const val LOOKUP_TIMEOUT_MS = 10_000L

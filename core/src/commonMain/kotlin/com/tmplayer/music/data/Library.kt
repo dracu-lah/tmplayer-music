@@ -60,7 +60,7 @@ object Library {
     lateinit var enricher: TagEnricher
         private set
 
-    val directory = ChatDirectory { Td.awaitAuthorizedSession().client }
+    val directory = ChatDirectory(client = { Td.awaitAuthorizedSession().client }, folders = { Td.folders.value })
 
     /** The pictures of chats the rows know by id alone (Chats tab, Manage chats, a chat page). */
     val chatPhotos = ChatPhotos(

@@ -11,13 +11,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -41,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tmplayer.music.data.ChatDirectory
 import com.tmplayer.music.data.ChatEntry
+import com.tmplayer.music.data.ChatListing
 import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.FirstRun
 import com.tmplayer.music.ui.theme.Pill
@@ -62,7 +67,10 @@ data class PickedChat(val chatId: Long, val title: String)
 
 /**
  * Pick the chats with music. Saved Messages first, then the user's chats in
- * Telegram's order, then the archive. Each row asks for its audio count only once it is on screen,
+ * Telegram's order, then the archive under its heading; chips above the list show only the archive
+ * or one of the user's folders. The list shows TDLib's own copy at once and fills as pages are loaded
+ * from Telegram ([ChatDirectory.listing]); a chat archived or brought back meanwhile moves to its list.
+ * Each row asks for its audio count only once it is on screen,
  * and remembers it. Nothing is ticked for the user except Saved Messages, and only when it has
  * audio in it. An empty choice is allowed and lands on an empty library.
  *
@@ -79,8 +87,11 @@ fun ChatPicker(
     onDone: (List<PickedChat>) -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
-    var chats by remember { mutableStateOf<List<ChatEntry>?>(null) }
+    var listing by remember { mutableStateOf<ChatListing?>(null) }
+    val chats = listing?.chats
     var failure by remember { mutableStateOf<String?>(null) }
+    // Which list is shown: all chats, the archive, or one of the user's folders.
+    var tab by rememberSaveable { mutableStateOf(TAB_ALL) }
     var attempt by remember { mutableStateOf(0) }
     val ticked = remember { mutableStateMapOf<Long, Boolean>().apply { already.forEach { put(it, true) } } }
     val counts = remember { mutableStateMapOf<Long, Int>() }
@@ -128,14 +139,26 @@ fun ChatPicker(
         }
     }
 
+    // TDLib's copy of the lists first, then each page loaded from Telegram, then the folders.
     LaunchedEffect(attempt) {
         failure = null
         try {
-            chats = directory.chats()
+            directory.listing().collect { listing = it }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             failure = Failures.humanise(e)
+        }
+    }
+
+    // A chat archived or brought back in Telegram while the picker is open moves to its list.
+    LaunchedEffect(Unit) {
+        try {
+            directory.moves().collect { entry -> listing = listing?.moved(entry) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The list still shows; the move shows the next time it is opened.
         }
     }
 
@@ -152,17 +175,44 @@ fun ChatPicker(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+            val now = listing
             val all = chats
+            if (now != null && all != null && all.isNotEmpty()) {
+                ListTabs(now, tab, onTab = { tab = it })
+            }
+            if (now != null && now.loading && !all.isNullOrEmpty()) {
+                // More pages are coming in; the rows already here can be ticked meanwhile.
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp).semantics { contentDescription = L.pickerLoading })
+            }
+            now?.failure?.takeIf { failure == null && !all.isNullOrEmpty() }?.let { stopped ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stopped, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { attempt++ }) { Text(L.commonRetry) }
+                    SendLogsButton()
+                }
+            }
             when {
                 failure != null -> Message(failure.orEmpty()) {
                     TextButton(onClick = { attempt++ }) { Text(L.commonRetry) }
                     SendLogsButton()
                 }
-                all == null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                all.isEmpty() -> Message(L.pickerEmpty) {}
+                all == null || (all.isEmpty() && now?.loading == true) ->
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                all.isEmpty() -> Message(now?.failure ?: L.pickerEmpty) {
+                    if (now?.failure != null) {
+                        TextButton(onClick = { attempt++ }) { Text(L.commonRetry) }
+                        SendLogsButton()
+                    }
+                }
                 else -> {
                     val needle = fold(query)
-                    val shown = if (needle.isEmpty()) all else all.filter { fold(it.title).contains(needle) }
+                    val folderId = tab.removePrefix(TAB_FOLDER).toIntOrNull()?.takeIf { tab.startsWith(TAB_FOLDER) }
+                    val inTab = when {
+                        tab == TAB_ARCHIVE -> now?.archived.orEmpty()
+                        folderId != null -> now?.inFolder(folderId).orEmpty()
+                        else -> all
+                    }
+                    val shown = if (needle.isEmpty()) inTab else inTab.filter { fold(it.title).contains(needle) }
                     val row: @Composable (ChatEntry) -> Unit = { chat ->
                         LaunchedEffect(chat.chatId) {
                             if (counts.containsKey(chat.chatId)) return@LaunchedEffect
@@ -189,7 +239,18 @@ fun ChatPicker(
                         )
                     }
                     LazyColumn(Modifier.weight(1f)) {
-                        if (firstRun && needle.isEmpty()) {
+                        if (shown.isEmpty()) {
+                            item(key = "tabEmpty") {
+                                Message(
+                                    when {
+                                        needle.isNotEmpty() -> L.pickerNoMatch
+                                        tab == TAB_ARCHIVE -> L.pickerArchiveEmpty
+                                        else -> L.pickerFolderEmpty
+                                    },
+                                ) {}
+                            }
+                        }
+                        if (firstRun && needle.isEmpty() && tab == TAB_ALL) {
                             item(key = "startWithSaved") { StartCard(starting, startNone, startWithSaved) }
                         }
                         if (shown.isNotEmpty()) {
@@ -211,7 +272,8 @@ fun ChatPicker(
                                 }
                             }
                         }
-                        val (archived, main) = shown.partition { it.archived }
+                        // In All chats the archive follows the main list under its own heading, as in Telegram.
+                        val (archived, main) = if (tab == TAB_ALL) shown.partition { it.archived } else emptyList<ChatEntry>() to shown
                         items(main, key = { it.chatId }) { chat -> row(chat) }
                         if (archived.isNotEmpty()) {
                             item(key = "archivedHeader") {
@@ -332,6 +394,31 @@ private fun ChatRow(chat: ChatEntry, count: Int?, checked: Boolean, onToggle: ()
     }
 }
 
+/**
+ * The lists the picker can show, as chips: All chats, each of the user's folders that has chats, and
+ * Archived when the archive has chats (or is the one shown, so a chat moved out does not drop the chip
+ * from under the user). Scrolls sideways for an account with many folders.
+ */
+@Composable
+private fun ListTabs(listing: ChatListing, tab: String, onTab: (String) -> Unit) {
+    val archived = listing.chats.count { it.archived }
+    val tabs = buildList {
+        add(TAB_ALL to L.pickerAllChats)
+        listing.folders.forEach { add("$TAB_FOLDER${it.id}" to it.title) }
+        if (archived > 0 || tab == TAB_ARCHIVE) add(TAB_ARCHIVE to L.pickerArchived)
+    }
+    if (tabs.size < 2) return
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+    ) {
+        items(tabs, key = { it.first }) { (key, label) ->
+            FilterChip(selected = tab == key, onClick = { onTab(key) }, label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+        }
+    }
+}
+
 @Composable
 private fun Message(text: String, action: @Composable () -> Unit) {
     Column(
@@ -349,6 +436,10 @@ private fun fold(text: String): String =
     Normalizer.normalize(text.trim().lowercase(), Normalizer.Form.NFKD).replace(Regex("\\p{Mn}+"), "")
 
 private const val LARGE_SELECTION = 50
+
+private const val TAB_ALL = "all"
+private const val TAB_ARCHIVE = "archive"
+private const val TAB_FOLDER = "folder:"
 
 /** How long the one tap waits for the counts it lacks before it picks from what is known. */
 private const val START_BUDGET_MS = 4_000L
