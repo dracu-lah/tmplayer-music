@@ -46,14 +46,16 @@ sealed interface OnlineLyrics {
 }
 
 /**
- * The user's lyrics choices, kept across restarts: "Look up lyrics online" (off by default; only the
- * user turns it on) and whether the first-time question was answered.
+ * The user's lyrics choices, kept across restarts: "Look up lyrics and covers online" (on by default;
+ * a user who answered Not now before, or turned it off, stays off) and whether the first-time question was answered.
  */
 class LyricsChoices(private val store: KeyValues) {
-    private val _online = MutableStateFlow(runCatching { store.getBoolean(ONLINE, false) }.getOrDefault(false))
+    private val _online = MutableStateFlow(
+        runCatching { store.getBoolean(ONLINE, !store.getBoolean(ASKED, false)) }.getOrDefault(true),
+    )
     val online: StateFlow<Boolean> = _online.asStateFlow()
 
-    private val _asked = MutableStateFlow(runCatching { store.getBoolean(ASKED, false) }.getOrDefault(false) || _online.value)
+    private val _asked = MutableStateFlow(runCatching { store.getBoolean(ASKED, false) }.getOrDefault(false))
 
     /** True once the user answered the question (either way) or set the switch in Settings. */
     val asked: StateFlow<Boolean> = _asked.asStateFlow()
@@ -67,10 +69,14 @@ class LyricsChoices(private val store: KeyValues) {
         }
     }
 
-    /** "Not now" in the question: the switch stays off and the question is not asked again by itself. */
+    /** "Not now" in the question: the switch goes off and the question is not asked again by itself. */
     fun declined() {
+        _online.value = false
         _asked.value = true
-        runCatching { store.putBoolean(ASKED, true) }
+        runCatching {
+            store.putBoolean(ONLINE, false)
+            store.putBoolean(ASKED, true)
+        }
     }
 
     private companion object {

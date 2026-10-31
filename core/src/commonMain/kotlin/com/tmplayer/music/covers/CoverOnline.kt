@@ -11,7 +11,7 @@ import java.io.File
  * The app's one cover client, started by the app with a folder in its cache directory. Until then (and
  * always in the debug demo, which never starts it) it is off: no lookup, no request.
  *
- * Its switch is the lyrics one, "Look up lyrics and covers online" ([LyricsOnline.choices]), off by
+ * Its switch is the lyrics one, "Look up lyrics and covers online" ([LyricsOnline.choices]), on by
  * default. Its network rule is the tag reader's: Wi-Fi, or mobile data when the user said yes to it
  * ([com.tmplayer.music.data.LibraryChoices.mobileAllowed]).
  */

@@ -258,15 +258,23 @@ class OnlineLyricsTest {
     }
 
     @Test
-    fun `choices start off and remember the answer`() {
+    fun `choices start on and remember the answer`() {
         val store = MemoryKeyValues()
         val choices = LyricsChoices(store)
-        assertFalse(choices.online.value)
+        assertTrue(choices.online.value)
         assertFalse(choices.asked.value)
         choices.declined()
+        assertFalse(choices.online.value)
         assertTrue(LyricsChoices(store).asked.value)
         assertFalse(LyricsChoices(store).online.value)
         choices.setOnline(true)
         assertTrue(LyricsChoices(store).online.value)
+    }
+
+    @Test
+    fun `someone who answered before the default changed stays off`() {
+        val store = MemoryKeyValues()
+        store.putBoolean("lyrics_online_asked", true)
+        assertFalse(LyricsChoices(store).online.value)
     }
 }
