@@ -87,7 +87,9 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            ndk.abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+            // x86_64 for emulators, Chromebooks and x86 TV boxes: every native lib (TDLib, FFmpeg,
+            // sqlite, graphics-path) ships it. x86 also ships but is left out (32-bit x86 devices are rare).
+            ndk.abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
