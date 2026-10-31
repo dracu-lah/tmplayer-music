@@ -2,8 +2,6 @@ package com.tmplayer.music.data
 
 import com.tmplayer.music.platform.Logger
 import dev.g000sha256.tdl.TdlClient
-import dev.g000sha256.tdl.TdlResult
-import dev.g000sha256.tdl.dto.SearchMessagesFilterAudio
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -11,10 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.last
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.ConcurrentHashMap
 
 /** One row of the chat picker. */
 data class ChatEntry(
@@ -82,17 +77,17 @@ data class ChatListing(
  * short, else the load stops there and says so; a failure stops it the same way, keeping what is
  * shown. Chats are read from TDLib in chunks, each only once. The folders are read last, from what is
  * loaded (loading a folder would read the whole account again). Each chat's audio count is asked for
- * only when its row is on screen ([audioCount]), a few at a time, and remembered.
+ * only when its row is on screen ([count]), a few at a time, and remembered.
  */
 class ChatDirectory(
     private val client: suspend () -> TdlClient,
     private val folders: () -> List<ChatFolder> = { emptyList() },
     private val callsOf: suspend () -> ChatListCalls = { TdChatListCalls(client()) },
     private val wait: suspend (seconds: Int) -> Unit = { delay(it * 1000L) },
+    generation: () -> Long? = { 0L },
+    private val counter: AudioCounter = AudioCounter(calls = { TdCountCalls(client()) }, generation = generation),
 ) {
 
-    private val counts = ConcurrentHashMap<Long, Int>()
-    private val countGate = Semaphore(COUNT_PARALLEL)
 
     /**
      * The list as it fills: TDLib's copy first, then after each page loaded from Telegram, then with
@@ -203,39 +198,11 @@ class ChatDirectory(
         miniThumbnail = facts.miniThumbnail,
     )
 
-    /** The count already known for [chatId], without asking Telegram. */
-    fun knownCount(chatId: Long): Int? = counts[chatId]
+    /** The count already found for [chatId] in this session, without asking Telegram. */
+    fun knownCount(chatId: Long): ChatCount.Known? = counter.cached(chatId)
 
-    /**
-     * How many audio messages [chatId] has, from Telegram, or null when it would not say. Audio
-     * sent as documents (most FLAC) is not in this count: the scan finds it.
-     */
-    suspend fun audioCount(chatId: Long): Int? {
-        counts[chatId]?.let { return it }
-        return countGate.withPermit {
-            counts[chatId]?.let { return@withPermit it }
-            val td = client()
-            var answer: Int? = null
-            for (attempt in 0 until COUNT_TRIES) {
-                val result = withTimeoutOrNull(COUNT_TIMEOUT_MS) {
-                    td.getChatMessageCount(chatId, null, SearchMessagesFilterAudio(), false)
-                } ?: break
-                when (result) {
-                    is TdlResult.Success -> {
-                        answer = result.result.count.coerceAtLeast(0)
-                        break
-                    }
-                    is TdlResult.Failure -> {
-                        // A flood wait is waited out by this call alone; the other rows go on.
-                        val wait = Failures.floodWaitSeconds(result.message) ?: break
-                        if (wait > MAX_WAIT_S) break
-                        delay(wait * 1000L)
-                    }
-                }
-            }
-            answer?.also { counts[chatId] = it }
-        }
-    }
+    /** How much audio [chatId] holds ([AudioCounter]): [ChatCount.Unknown] when Telegram would not say, never 0. */
+    suspend fun count(chatId: Long): ChatCount = counter.count(chatId)
 
     companion object {
         const val TAG = "ChatDirectory"
@@ -258,9 +225,6 @@ class ChatDirectory(
 
         /** Flood waits a list's load waits out before it stops and says so. */
         const val MAX_WAITS = 3
-        const val COUNT_PARALLEL = 3
-        const val COUNT_TRIES = 3
-        const val COUNT_TIMEOUT_MS = 15_000L
         const val MAX_WAIT_S = 60
     }
 }

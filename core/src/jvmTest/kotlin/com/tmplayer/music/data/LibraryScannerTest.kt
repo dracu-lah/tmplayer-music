@@ -24,6 +24,12 @@ class LibraryScannerTest {
         var failNext = 0
         var floodNext = 0
 
+        /** Audio pages starting at these cursors come back empty, with the cursor moved on as usual. */
+        val hollowFrom = HashSet<Long>()
+
+        /** An audio page that is empty and does not move the cursor: Telegram's real end. */
+        var stuckFrom: Long? = null
+
         fun page(chatId: Long, pass: ScanPass, from: Long): PageResult {
             if (pass == ScanPass.Audio) asked += from
             if (floodNext > 0) {
@@ -35,10 +41,12 @@ class LibraryScannerTest {
                 return PageResult.Failed("NETWORK_ERROR")
             }
             if (pass == ScanPass.Documents) return PageResult.Page(emptyList(), emptyList(), 0)
+            if (from == stuckFrom) return PageResult.Page(emptyList(), emptyList(), from)
             val top = if (from == 0L) count.toLong() else from - 1
             val ids = (top downTo maxOf(1, top - pageSize + 1)).toList()
             val items = ids.filter { it % 3 == 0L }.map { Mapped.Audio(track(chatId, it)) }
             val next = ids.lastOrNull()?.takeIf { it > 1 } ?: 0L
+            if (from in hollowFrom) return PageResult.Page(emptyList(), emptyList(), next)
             return PageResult.Page(ids, items, next)
         }
     }
@@ -71,6 +79,28 @@ class LibraryScannerTest {
         assertTrue(store.cursors.getValue(1L to ScanPass.Audio).done)
         assertEquals(95L, store.cursors.getValue(1L to ScanPass.Audio).newestMessageId)
         assertFalse(s.status.value.running)
+    }
+
+    @Test
+    fun `an empty page that moves the cursor on is not the end of the chat`() = runTest {
+        // A supergroup whose first page (and one in the middle) Telegram answers with no messages.
+        val store = FakeStore()
+        val chat = FakeChat(95).apply { hollowFrom += listOf(0L, 56L) }
+        scanner(store, mapOf(1L to chat)).scan(listOf(1L))
+        advanceUntilIdle()
+        // Only the tracks of the two hollow pages are missing: 31 in all, 3 on 95..86 and 3 on 55..46.
+        assertEquals(31 - 3 - 3, store.tracks.size)
+        assertTrue(store.cursors.getValue(1L to ScanPass.Audio).done)
+    }
+
+    @Test
+    fun `an empty page that does not move the cursor ends the chat`() = runTest {
+        val store = FakeStore()
+        val chat = FakeChat(95).apply { stuckFrom = 56L }
+        scanner(store, mapOf(1L to chat)).scan(listOf(1L))
+        advanceUntilIdle()
+        assertTrue(store.cursors.getValue(1L to ScanPass.Audio).done)
+        assertEquals(listOf(0L, 86L, 76L, 66L, 56L), chat.asked)
     }
 
     @Test

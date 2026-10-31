@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.tmplayer.music.data.ChatCount
 import com.tmplayer.music.data.ChatDirectory
 import com.tmplayer.music.data.ChatEntry
 import com.tmplayer.music.data.ChatListing
@@ -94,7 +95,8 @@ fun ChatPicker(
     var tab by rememberSaveable { mutableStateOf(TAB_ALL) }
     var attempt by remember { mutableStateOf(0) }
     val ticked = remember { mutableStateMapOf<Long, Boolean>().apply { already.forEach { put(it, true) } } }
-    val counts = remember { mutableStateMapOf<Long, Int>() }
+    // Each row's count as it comes in: a number, or not known (shown as such, never as 0).
+    val counts = remember { mutableStateMapOf<Long, ChatCount>() }
     var touchedSaved by rememberSaveable { mutableStateOf(already.isNotEmpty()) }
     var query by rememberSaveable { mutableStateOf("") }
     var confirmAll by remember { mutableStateOf<List<ChatEntry>?>(null) }
@@ -104,15 +106,16 @@ fun ChatPicker(
     val scope = rememberCoroutineScope()
     val name: (ChatEntry) -> String = { if (it.savedMessages) L.pickerSavedMessages else it.title.ifBlank { L.pickerUntitled } }
 
-    suspend fun countOf(chat: ChatEntry): Int? {
+    suspend fun countOf(chat: ChatEntry): ChatCount {
         val count = try {
-            directory.audioCount(chat.chatId)
+            directory.count(chat.chatId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            null
+            ChatCount.Unknown
         }
-        if (count != null) counts[chat.chatId] = count
+        counts[chat.chatId] = count
+        if (chat.savedMessages && !touchedSaved && totalOf(count) > 0) ticked[chat.chatId] = true
         return count
     }
 
@@ -133,7 +136,7 @@ fun ChatPicker(
             withTimeoutOrNull(START_BUDGET_MS) {
                 FirstRun.toCount(all).map { chat -> async { counts[chat.chatId] ?: countOf(chat) } }.awaitAll()
             }
-            val picked = FirstRun.pick(all, counts.toMap())
+            val picked = FirstRun.pick(all, counts.mapValues { totalOf(it.value) })
             starting = false
             if (picked.isEmpty()) startNone = true else onDone(picked.map { PickedChat(it.chatId, name(it)) })
         }
@@ -215,18 +218,7 @@ fun ChatPicker(
                     val shown = if (needle.isEmpty()) inTab else inTab.filter { fold(it.title).contains(needle) }
                     val row: @Composable (ChatEntry) -> Unit = { chat ->
                         LaunchedEffect(chat.chatId) {
-                            if (counts.containsKey(chat.chatId)) return@LaunchedEffect
-                            val count = try {
-                                directory.audioCount(chat.chatId)
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                null
-                            }
-                            if (count != null) {
-                                counts[chat.chatId] = count
-                                if (chat.savedMessages && !touchedSaved && count > 0) ticked[chat.chatId] = true
-                            }
+                            if (!counts.containsKey(chat.chatId)) countOf(chat)
                         }
                         ChatRow(
                             chat = chat,
@@ -290,7 +282,7 @@ fun ChatPicker(
                 }
             }
             val picked = all.orEmpty().filter { ticked[it.chatId] == true }
-            val known = picked.sumOf { counts[it.chatId] ?: 0 }
+            val known = picked.sumOf { totalOf(counts[it.chatId]) }
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (picked.isNotEmpty()) {
                     Text(L.pickerTotal(picked.size, known), style = MaterialTheme.typography.bodyMedium)
@@ -361,12 +353,16 @@ private fun StartCard(starting: Boolean, none: Boolean, onStart: () -> Unit) {
 }
 
 @Composable
-private fun ChatRow(chat: ChatEntry, count: Int?, checked: Boolean, onToggle: () -> Unit) {
+private fun ChatRow(chat: ChatEntry, count: ChatCount?, checked: Boolean, onToggle: () -> Unit) {
     val title = if (chat.savedMessages) L.pickerSavedMessages else chat.title.ifBlank { L.pickerUntitled }
-    val line = when {
-        count == null -> ""
-        count == 0 -> L.pickerNoAudio
-        else -> L.pickerCount(count)
+    val line = when (count) {
+        null -> L.pickerCounting
+        ChatCount.Unknown -> L.pickerCountUnknown
+        is ChatCount.Known -> when {
+            count.total == 0 -> L.pickerNoAudio
+            count.more -> L.pickerCountAtLeast(count.total)
+            else -> L.pickerCount(count.total)
+        }
     }
     Row(
         Modifier
@@ -436,6 +432,9 @@ private fun fold(text: String): String =
     Normalizer.normalize(text.trim().lowercase(), Normalizer.Form.NFKD).replace(Regex("\\p{Mn}+"), "")
 
 private const val LARGE_SELECTION = 50
+
+/** The files a count found, 0 while it is not known. */
+private fun totalOf(count: ChatCount?): Int = (count as? ChatCount.Known)?.total ?: 0
 
 private const val TAB_ALL = "all"
 private const val TAB_ARCHIVE = "archive"

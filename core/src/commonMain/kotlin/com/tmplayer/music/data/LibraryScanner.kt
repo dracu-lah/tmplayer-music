@@ -186,7 +186,12 @@ class LibraryScanner(
             val fresh = if (topUp) page.items.filter { itemId(it) > cursor.newestMessageId } else page.items
             store(fresh)
             val reachedSeen = topUp && ids.any { it <= cursor.newestMessageId }
-            val end = page.nextFromMessageId == 0L || ids.isEmpty() || reachedSeen
+            // Telegram can answer a page with nothing but a cursor further down (a supergroup or channel
+            // whose page held only messages TDLib leaves out): that is not the end, the next page goes
+            // on from there. The cursor only ever moves down, so this cannot loop.
+            val next = page.nextFromMessageId
+            val movedOn = next != 0L && (from == 0L || next < from)
+            val end = next == 0L || (ids.isEmpty() && !movedOn) || reachedSeen
             cursor = if (topUp) {
                 cursor.copy(newestMessageId = newest)
             } else {
