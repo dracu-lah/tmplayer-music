@@ -6,6 +6,7 @@ import com.tmplayer.music.library.ClipRules
 import com.tmplayer.music.lyrics.Lyrics
 import com.tmplayer.music.lyrics.LyricsParser
 import com.tmplayer.music.library.LibraryIndex
+import com.tmplayer.music.library.ReplayGain
 import com.tmplayer.music.library.LyricsFile
 import com.tmplayer.music.library.ScanCursor
 import com.tmplayer.music.library.TagCounts
@@ -493,6 +494,10 @@ object Library {
         }
 
         override suspend fun counts(): TagCounts = index().tagCounts()
+
+        override suspend fun track(id: TrackId): Track? = index().track(id)
+
+        override suspend fun applyGain(id: TrackId, gain: ReplayGain) = index().applyGain(id, gain)
     }
 
     private object IndexChatStore : ChatStore {

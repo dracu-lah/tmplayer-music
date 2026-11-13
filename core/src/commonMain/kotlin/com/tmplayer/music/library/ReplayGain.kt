@@ -12,6 +12,11 @@ data class ReplayGain(
     val albumGainDb: Float? = null,
     val trackPeak: Float? = null,
     val albumPeak: Float? = null,
+    /**
+     * True when the file's tags were read for a gain and carry none, so nobody reads them again for
+     * it. A track whose tags were read before the gain column existed is [NONE] (unknown), not this.
+     */
+    val checked: Boolean = false,
 ) {
     /** No gain at all: playing it changes nothing. */
     val isEmpty: Boolean get() = trackGainDb == null && albumGainDb == null
@@ -21,7 +26,11 @@ data class ReplayGain(
      * blank when missing; an empty value is the empty string.
      */
     fun encode(): String =
-        if (this == NONE) "" else listOf(trackGainDb, albumGainDb, trackPeak, albumPeak).joinToString(";") { it?.toString().orEmpty() }
+        when {
+            this == NONE -> ""
+            isEmpty -> CHECKED_TEXT
+            else -> listOf(trackGainDb, albumGainDb, trackPeak, albumPeak).joinToString(";") { it?.toString().orEmpty() }
+        }
 
     /**
      * The linear factor to play this track with: the track gain, else the album gain, clamped to
@@ -40,6 +49,10 @@ data class ReplayGain(
 
     companion object {
         val NONE = ReplayGain()
+
+        /** Read and found none: stored as "-", so the backfill ([com.tmplayer.music.data.GainBackfill]) leaves it alone. */
+        val CHECKED = ReplayGain(checked = true)
+        private const val CHECKED_TEXT = "-"
 
         const val MIN_GAIN_DB = -24f
         const val MAX_GAIN_DB = 12f
@@ -70,6 +83,7 @@ data class ReplayGain(
         /** The inverse of [ReplayGain.encode]; anything that does not read as that gives [NONE]. */
         fun decode(text: String?): ReplayGain {
             if (text.isNullOrBlank() || text.length > 128) return NONE
+            if (text == CHECKED_TEXT) return CHECKED
             val parts = text.split(';')
             if (parts.size != 4) return NONE
             return ReplayGain(

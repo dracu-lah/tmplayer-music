@@ -623,6 +623,19 @@ class LibraryIndex private constructor(
         n
     }
 
+    /**
+     * Stores the gain a backfill read for a track whose tags were read before the gain column was
+     * there. Only a track still unknown is written, so a gain from a later full read is never
+     * overwritten; an empty [gain] is stored as the "checked, none" mark.
+     */
+    suspend fun applyGain(id: TrackId, gain: ReplayGain) = io {
+        val stored = gain.takeIf { !it.isEmpty }?.encode() ?: ReplayGain.CHECKED.encode()
+        exec(
+            "UPDATE tracks SET replay_gain = ? WHERE chat_id = ? AND message_id = ? AND tag_state = ? AND replay_gain = ''",
+            stored, id.chatId, id.messageId, TagState.Read.name,
+        )
+    }
+
     /** The files among [ids] still waiting for their tags, for reading what is on screen first. */
     suspend fun pendingAmong(ids: Collection<TrackId>): List<Track> = io {
         ids.take(MAX_PAGE).mapNotNull { id ->
@@ -650,7 +663,8 @@ class LibraryIndex private constructor(
             sampleRate = tags.sampleRate.takeIf { it > 0 } ?: track.sampleRate,
             bitDepth = tags.bitDepth.takeIf { it > 0 } ?: track.bitDepth,
             channels = tags.channels.takeIf { it > 0 } ?: track.channels,
-            replayGain = tags.replayGain.takeIf { !it.isEmpty } ?: track.replayGain,
+            // Read for a gain and none found: marked, so playing it never reads its head again.
+            replayGain = tags.replayGain.takeIf { !it.isEmpty } ?: track.replayGain.takeIf { !it.isEmpty || it.checked } ?: ReplayGain.CHECKED,
             tagState = TagState.Read,
             coverKey = coverKey.ifBlank { track.coverKey },
             groupKey = GroupKey.of(title, artist, duration),
