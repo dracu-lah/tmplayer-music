@@ -5,6 +5,8 @@ import androidx.annotation.OptIn
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.tmplayer.music.cast.CastHost
+import com.tmplayer.music.cast.NoCastHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,7 +31,8 @@ sealed interface SleepSetting {
  * off and the app closed. By minutes, the last [FADE_MS] fade the volume down before the pause, and
  * the volume is put back for the next play. At the end of the track it is Media3's own "pause at
  * the end of the item", which also holds with repeat one. Either way the timer turns itself off
- * once it has paused, and nothing ticks while it waits.
+ * once it has paused, and nothing ticks while it waits. While casting, [CastHost.onSleep] pauses the
+ * receiver and ends the cast.
  */
 object SleepTimer {
     private val _setting = MutableStateFlow<SleepSetting>(SleepSetting.Off)
@@ -55,7 +58,7 @@ object SleepTimer {
      * `pauseAtEndOfMediaItems`, which Media3 still marks unstable.
      */
     @OptIn(UnstableApi::class)
-    fun attach(player: ExoPlayer, scope: CoroutineScope) {
+    fun attach(player: ExoPlayer, scope: CoroutineScope, cast: CastHost = NoCastHost) {
         var job: Job? = null
         player.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -81,6 +84,8 @@ object SleepTimer {
                                 delay(FADE_MS / steps)
                             }
                             player.pause()
+                            // While casting the music is on the receiver: it is paused and the cast ends (the end of a track is [cast]'s own watch).
+                            cast.onSleep()
                         } finally {
                             // Also when the timer is turned off part way through the fade.
                             player.volume = volume

@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.media3.cast.CastParams
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.RemoteCastPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import com.google.android.gms.cast.CastMediaControlIntent
 import com.google.android.gms.cast.framework.CastContext
@@ -14,6 +16,8 @@ import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.SessionProvider
 import com.google.android.gms.cast.framework.media.CastMediaOptions
 import com.tmplayer.music.platform.Logger
+import com.tmplayer.music.player.SleepSetting
+import com.tmplayer.music.player.SleepTimer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -116,8 +120,33 @@ internal class GoogleCastHost(
         override fun onSessionResumeFailed(session: CastSession, error: Int) = Unit
     }
 
+    /** The sleep timer's end of track while casting: the receiver has no "pause at the end of the item", so it is seen here. */
+    private val sleepWatch = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) endOfTrack()
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) endOfTrack()
+        }
+    }
+
     init {
         cast.addSessionManagerListener(listener)
+        castPlayer.addListener(sleepWatch)
+    }
+
+    private fun endOfTrack() {
+        if (SleepTimer.setting.value != SleepSetting.EndOfTrack || !castPlayer.isCastSessionAvailable) return
+        SleepTimer.off()
+        onSleep()
+    }
+
+    override fun onSleep() {
+        if (!castPlayer.isCastSessionAvailable) return
+        // Paused on the receiver first, so it is silent whatever the session end does; then the cast ends and the queue comes back here, paused.
+        runCatching { castPlayer.pause() }
+        controller.endSessionSoon(EndReason.Sleep)
     }
 
     override fun onTaskRemoved(done: () -> Unit) {
@@ -137,6 +166,7 @@ internal class GoogleCastHost(
 
     override fun release() {
         runCatching { cast.removeSessionManagerListener(listener) }
+        runCatching { castPlayer.removeListener(sleepWatch) }
         controller.release()
     }
 

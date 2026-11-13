@@ -126,6 +126,12 @@ interface CastHost {
      */
     fun onTaskRemoved(done: () -> Unit)
 
+    /**
+     * The sleep timer ran out. While casting, the receiver is paused and the cast ends, so the queue is
+     * back on this phone, paused at the same place. Nothing when no cast is on.
+     */
+    fun onSleep() = Unit
+
     fun release()
 }
 
