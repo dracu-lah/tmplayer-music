@@ -83,13 +83,28 @@ The app is in early testing. What is built:
 - **Sleep timer** by minutes or at the end of the track.
 - **Your storage:** a cache limit, how much is used and free, and Free up space, which deletes cached
   audio and never touches anything in Telegram.
+- **Sound:** an equalizer with presets, playback speed with a keep-pitch switch, skip silence, and
+  loudness normalisation from the ReplayGain tags in the file.
+- **Keep offline** for a track, album, playlist or chat, with a free-space check first. Kept audio
+  plays with no network and is never touched by Free up space.
+- **Lyrics extras:** word by word highlighting when the lyrics carry word times, a timing offset per
+  track, and sharing a line or the whole lyrics as text.
+- **Playlists to and from other apps:** export a playlist as M3U8, import one by matching titles to
+  your library, and back up or restore favourites, playlists, play counts and chosen chats in one file.
+- **Android Auto and a home screen widget:** browse recent, favourites, playlists, albums, artists and
+  your chats in the car; the widget shows the cover and the play, previous and next buttons. Nothing
+  starts playing by itself when a car connects.
+- **Android TV:** a D-pad app with a QR sign in, focus that comes back after every action, and large type.
+- **Desktop (Windows, Linux, macOS):** the same library, search and playback in a window, playing
+  through libmpv, with keyboard shortcuts. Early, built from source for now.
 - **Send logs** from Settings and from every error, with chat names, ids, file names and phone numbers taken out first.
 
-Planned, not built yet: a TV app, a phone remote for the TV, Cast and Keep offline.
+Planned, not built yet: a phone remote for the TV and Cast.
 
 ## Runs on
 
-**Android 6.0 and up**, phones and tablets. Low-end phones are a target, not an afterthought.
+**Android 6.0 and up**, phones, tablets and Android TV. Low-end phones are a target, not an afterthought.
+A desktop app for Windows, Linux and macOS is in the repository (`./gradlew :desktop:run`, JDK 21).
 
 ## Install
 
