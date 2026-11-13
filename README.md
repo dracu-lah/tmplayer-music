@@ -99,7 +99,10 @@ The app is in early testing. What is built:
   through libmpv, with keyboard shortcuts. Early, built from source for now.
 - **Send logs** from Settings and from every error, with chat names, ids, file names and phone numbers taken out first.
 
-Planned, not built yet: a phone remote for the TV and Cast.
+- **Cast and a phone remote (GitHub APK only, not in a store build):** cast the queue to a Chromecast
+  from the phone, and pair the phone with the TV app to control it and send tracks to it.
+
+Planned, not built yet: the desktop app as a target for the phone remote.
 
 ## Runs on
 
