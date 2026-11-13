@@ -218,6 +218,8 @@ private fun TopBar(
             )
         }
         IconButton(onClick = onEffects) { Icon(EffectsIcon, contentDescription = L.effectsTitle) }
+        // Draws nothing in a store build, on a television, or on a phone that cannot cast.
+        com.tmplayer.music.cast.CastButton()
         IconButton(onClick = onQueue, modifier = Modifier.tvFocusRing()) { Icon(MusicIcons.Queue, contentDescription = L.playerQueue) }
     }
 }
