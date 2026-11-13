@@ -640,6 +640,8 @@ internal fun MiniPlayer(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // The same Cast button as Now Playing: phones only, where there is room, nothing where casting is not offered.
+            com.tmplayer.music.cast.MiniCastButton(Modifier.tvFocusRing())
             IconButton(onClick = { haptics.tap(); PlayerConnection.previous() }, modifier = Modifier.tvFocusRing()) {
                 Icon(MusicIcons.Previous, contentDescription = L.playerPrevious)
             }
