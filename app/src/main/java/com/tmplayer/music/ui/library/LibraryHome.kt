@@ -439,6 +439,7 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
                             Surface(color = MaterialTheme.colorScheme.background) {
                                 Column(Modifier.fillMaxWidth()) {
                                     topBar()
+                                    IndexRecoveryBanner()
                                     if (page != Page.Settings) ScanBar(onOpen = { open(Page.Settings) })
                                     if (page == null && tab == MainTab.Library) {
                                         LibraryChips(
@@ -718,6 +719,38 @@ private fun sortName(sort: SongSort): String = when (sort) {
     SongSort.Artist -> L.sortArtist
     SongSort.Album -> L.sortAlbum
     SongSort.Added -> L.sortAdded
+}
+
+/**
+ * Said once when the library file could not be used and was moved aside (damaged, or from a newer
+ * app): what happened, that nothing was deleted, Send logs and Dismiss. Both are plain buttons, so a
+ * remote's D-pad reaches them. Gone once dismissed; a new recovery shows it again.
+ */
+@Composable
+private fun IndexRecoveryBanner() {
+    val recovery by Library.indexRecovery.collectAsStateWithLifecycle()
+    val shown = recovery ?: return
+    val sendLogs = rememberSendLogs()
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp)) {
+            Text(
+                if (shown.schema != null) L.scanIndexNewer else L.scanIndexDamaged,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            if (shown.keptAs != null) {
+                Text(L.scanIndexKept, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = sendLogs) { Text(L.logsSend) }
+                TextButton(onClick = { Library.dismissIndexRecovery() }) { Text(L.scanIndexDismiss) }
+            }
+        }
+    }
 }
 
 /**

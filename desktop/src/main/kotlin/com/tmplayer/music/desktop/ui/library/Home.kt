@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tmplayer.music.data.ChatOrder
 import com.tmplayer.music.data.Library
+import com.tmplayer.music.desktop.diagnostics.SendLogs
 import com.tmplayer.music.desktop.player.PlayerController
 import com.tmplayer.music.desktop.ui.common.Cover
 import com.tmplayer.music.desktop.ui.common.EmptyState
@@ -110,6 +111,7 @@ fun HomeScreen(player: PlayerController, actions: SongActions, onPlayAll: (Boole
     }
     val queued by player.ui.collectAsState()
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
+        item(key = "recovery") { IndexRecoveryBanner() }
         item(key = "head") {
             ScreenHeader(
                 title = L.tabHome,
@@ -129,6 +131,38 @@ fun HomeScreen(player: PlayerController, actions: SongActions, onPlayAll: (Boole
             item(key = "empty") {
                 EmptyState(L.libraryEmpty) { FilledTonalButton(onClick = onManage) { Text(L.manageTitle) } }
             }
+        }
+    }
+}
+
+/**
+ * Said when the library file could not be used and was moved aside (damaged, or from a newer app):
+ * what happened, that nothing was deleted, Send logs and Dismiss. Nothing is shown otherwise.
+ */
+@Composable
+private fun IndexRecoveryBanner() {
+    val recovery by Library.indexRecovery.collectAsState()
+    val shown = recovery ?: return
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val busy by SendLogs.busy.collectAsState()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SIDE, vertical = 8.dp)
+            .background(MaterialTheme.colorScheme.errorContainer, MaterialTheme.shapes.medium)
+            .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp),
+    ) {
+        Text(
+            if (shown.schema != null) L.scanIndexNewer else L.scanIndexDamaged,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+        )
+        if (shown.keptAs != null) {
+            Text(L.scanIndexKept, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { scope.launch { SendLogs.run() } }, enabled = !busy) { Text(L.logsSend) }
+            TextButton(onClick = { Library.dismissIndexRecovery() }) { Text(L.scanIndexDismiss) }
         }
     }
 }
