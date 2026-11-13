@@ -113,6 +113,7 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
 
         HapticSettingsSection()
         EffectsSettingsRow()
+        com.tmplayer.music.cast.CastSettingsRow()
         LyricsSettingsSection()
         // The phone as a remote for the TV app; nothing in a store build.
         com.tmplayer.music.ui.connect.ConnectSettingsSection()

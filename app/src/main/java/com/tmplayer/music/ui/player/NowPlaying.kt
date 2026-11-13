@@ -226,6 +226,8 @@ private fun TopBar(
         if (com.tmplayer.music.ui.connect.hasPairedTv()) {
             IconButton(onClick = onRemote) { Icon(MusicIcons.Tv, contentDescription = L.connectNowPlayingAction) }
         }
+        // Draws nothing in a store build, on a television, or on a phone that cannot cast.
+        com.tmplayer.music.cast.CastButton()
         IconButton(onClick = onQueue, modifier = Modifier.tvFocusRing()) { Icon(MusicIcons.Queue, contentDescription = L.playerQueue) }
     }
 }

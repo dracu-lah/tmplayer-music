@@ -1,0 +1,198 @@
+package com.tmplayer.music.cast
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tmplayer.music.i18n.L
+import com.tmplayer.music.ui.tv.TvSheet
+import com.tmplayer.music.ui.tv.tvFocusRing
+
+/**
+ * A television screen, the outline of one with the waves of a signal in its corner, the icon of the Cast
+ * button; drawn like the other icons (1.5 wide round strokes on a 24 dp grid).
+ */
+val CastIcon: ImageVector = ImageVector.Builder(
+    name = "Cast",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+)
+    .addPath(
+        pathData = addPathNodes(
+            "M3 8V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-6 " +
+                "M3 12.5a8.5 8.5 0 0 1 8.5 8.5 M3 16.5a4.5 4.5 0 0 1 4.5 4.5 M3 21h.01",
+        ),
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 1.5f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+    )
+    .build()
+
+/**
+ * The Cast button of Now Playing: opens the Cast sheet. Nothing is drawn where casting is not offered (a
+ * store build, a television, a phone without Google Play services), so no screen has a dead button.
+ */
+@Composable
+fun CastButton(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val support = remember { Cast.support(context) }
+    if (!support.available) return
+    val state by support.state.collectAsStateWithLifecycle()
+    var open by rememberSaveable { mutableStateOf(false) }
+    val casting = state is CastState.Connected
+    IconButton(onClick = { open = true }, modifier = modifier) {
+        Icon(
+            CastIcon,
+            contentDescription = if (state is CastState.Connected) L.castCastingTo((state as CastState.Connected).name) else L.castTitle,
+            tint = if (casting) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+        )
+    }
+    if (open) CastSheet(support) { open = false }
+}
+
+/**
+ * The Cast sheet: the devices found on the Wi-Fi while it is open (looking stops when it closes), the
+ * state of the connection, and, once connected, the device's volume and Stop casting. It says what
+ * is going on in words: no Wi-Fi, no devices yet, a failed connection, a track that was left out.
+ */
+@Composable
+internal fun CastSheet(support: CastSupport, onDismiss: () -> Unit) {
+    DisposableEffect(support) {
+        support.startDiscovery()
+        onDispose { support.stopDiscovery() }
+    }
+    val devices by support.devices.collectAsStateWithLifecycle()
+    val state by support.state.collectAsStateWithLifecycle()
+    val volume by support.volume.collectAsStateWithLifecycle()
+    val onWifi by support.onWifi.collectAsStateWithLifecycle()
+    val notice by CastNotices.last.collectAsStateWithLifecycle()
+    TvSheet(onDismiss) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            Text(L.castTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            val connected = state as? CastState.Connected
+            if (connected != null) {
+                Text(
+                    L.castCastingTo(connected.name),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+                if (!volume.fixed) {
+                    val label = L.castVolume(connected.name)
+                    Slider(
+                        value = volume.level.toFloat(),
+                        onValueChange = { support.setVolume(it.toDouble()) },
+                        modifier = Modifier.padding(horizontal = 20.dp).semantics { contentDescription = label },
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        support.endSession()
+                        onDismiss()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp).tvFocusRing(),
+                ) { Text(L.castDisconnect) }
+            } else {
+                if (!onWifi) {
+                    Note(L.castNoWifi)
+                } else {
+                    for (device in devices) DeviceLine(device, enabled = state !is CastState.Connecting) { support.connect(device.id) }
+                    if (devices.isEmpty()) Note(if (state is CastState.Connecting) L.castConnecting((state as CastState.Connecting).name) else L.castEmpty)
+                }
+                (state as? CastState.Failed)?.let { Note(L.castConnectFailed(it.name), error = true) }
+                (state as? CastState.Connecting)?.let { if (devices.isNotEmpty()) Note(L.castConnecting(it.name)) }
+            }
+            notice?.let { Note(it) }
+            Text(
+                L.castSentNote,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeviceLine(device: CastDeviceInfo, enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick).tvFocusRing().padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(CastIcon, contentDescription = null)
+        Column(Modifier.weight(1f)) {
+            Text(device.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (device.model.isNotBlank()) {
+                Text(device.model, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (device.connecting) Text(L.castConnecting(device.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+@Composable
+private fun Note(text: String, error: Boolean = false) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+    )
+}
+
+/** Settings: one row saying whether this version of the app can cast, and what it does. Not drawn on a television. */
+@Composable
+fun CastSettingsRow() {
+    val context = LocalContext.current
+    if (com.tmplayer.music.ui.tv.isTv(context)) return
+    val support = remember { Cast.support(context) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(L.castSettingsTitle, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            when (support.availability) {
+                CastAvailability.Yes -> L.castSettingsAvailable
+                CastAvailability.NotInThisBuild -> L.castSettingsUnavailable
+                CastAvailability.NoPlayServices -> L.castSettingsNoServices
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}

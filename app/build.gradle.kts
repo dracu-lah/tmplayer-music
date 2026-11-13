@@ -106,7 +106,16 @@ android {
     if (storeBuild) {
         sourceSets.getByName("debug").manifest.srcFile("src/store/AndroidManifest.xml")
         sourceSets.getByName("release").manifest.srcFile("src/store/AndroidManifest.xml")
+    } else {
+        // Casting: the Cast framework's options provider and the Wi-Fi permissions its discovery and the
+        // local audio server use. A store build declares none of it (src/store keeps the manifest bare).
+        sourceSets.getByName("debug").manifest.srcFile("src/cast/AndroidManifest.xml")
+        sourceSets.getByName("release").manifest.srcFile("src/cast/AndroidManifest.xml")
     }
+    // Casting (AGENTS.md: the local HTTP server and the Cast SDK belong in the regular APK only). The code
+    // that speaks to Google's Cast framework and runs the audio server lives in src/cast; a store build
+    // compiles src/nocast instead, a stand-in that offers nothing, so it has no Cast classes at all.
+    sourceSets.getByName("main").kotlin.directories += if (storeBuild) "src/nocast/java" else "src/cast/java"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -151,6 +160,10 @@ dependencies {
 
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
+    // Casting to a Chromecast or Google Cast device (Media3's CastPlayer over Google's Cast framework). The
+    // regular APK only: a store build has neither the framework nor the local audio server, and gets the no-op
+    // in src/nocast instead (AGENTS.md: the Cast SDK belongs in the regular APK only).
+    if (!storeBuild) implementation(libs.androidx.media3.cast)
     // FFmpeg audio decoders for what the phone's own codecs lack (FLAC and Opus before Android 8, ALAC).
     implementation(libs.nextlib.media3ext)
 

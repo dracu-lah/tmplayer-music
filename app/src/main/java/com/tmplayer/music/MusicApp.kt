@@ -50,6 +50,9 @@ class MusicApp : Application() {
         OfflineDownloads.onForeground = { on -> if (on) OfflineHost.start(this) }
         OfflineDownloads.start(File(filesDir, "offline"), Prefs(this), lowRam = weakDevice())
         NetworkWatch.start(this)
+        // Casting (regular APK only; nothing in a store build or on a television): starts Google's Cast framework,
+        // which looks for no device until the Cast sheet is opened.
+        if (!com.tmplayer.music.ui.tv.isTv(this)) com.tmplayer.music.cast.CastBuild.initialize(this)
         // Covers found online (opt in, the lyrics switch); never started in the demo, which returned above.
         com.tmplayer.music.covers.CoverOnline.start(File(cacheDir, "covers-online"))
         // What this build is, for the update check; off in a store build (BuildConfig.UPDATE_CHECK).

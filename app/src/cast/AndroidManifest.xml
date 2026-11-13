@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Merged over main's manifest in the regular build only (a store build, -PtmStore=true, uses
+  src/store/AndroidManifest.xml and has none of this). Casting to a Chromecast or Google Cast
+  device (app/src/cast): Google's Cast framework reads its options from the class named below
+  (Default Media Receiver, no session resumed behind the user's back). No permission of its own is
+  needed: finding the Wi-Fi uses ACCESS_NETWORK_STATE, the Wi-Fi and CPU locks held while music plays
+  use WAKE_LOCK, and the audio server uses INTERNET, all in main's manifest. Nothing here starts by
+  itself: the framework looks for devices only while the Cast sheet is open, and the audio server runs
+  only while a cast is on.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.tmplayer.music.cast.CastOptionsProvider" />
+    </application>
+
+</manifest>

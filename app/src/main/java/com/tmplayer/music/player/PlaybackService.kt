@@ -20,6 +20,12 @@ import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import com.tmplayer.music.widget.WidgetSync
+import com.tmplayer.music.cast.CAST_FORMAT_KEY
+import com.tmplayer.music.cast.CAST_SIZE_KEY
+import com.tmplayer.music.cast.CastBuild
+import com.tmplayer.music.cast.CastHost
+import com.tmplayer.music.cast.CastHostParts
+import com.tmplayer.music.cast.NoCastHost
 import com.tmplayer.music.MainActivity
 import com.tmplayer.music.R
 import com.tmplayer.music.data.Failures
@@ -67,6 +73,9 @@ class PlaybackService : MediaLibraryService() {
     private var checkpointJob: Job? = null
     private var effects: AudioEffectsEngine? = null
 
+    /** Casting's side of the service; [NoCastHost] in a store build. */
+    private var castHost: CastHost = NoCastHost
+
     /** When the cache was last trimmed to its ceiling, so a run of skips does not trim each time. */
     private var trimmedAt = 0L
 
@@ -90,7 +99,12 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
-        player.addListener(Watcher(player))
+        // The session plays with this phone's player, or with the Cast device's when the user casts (the regular
+        // build only; a store build gets the local player back). The watcher follows whichever is active, so plays,
+        // resume points and the saved queue stay right while casting.
+        val cast = CastBuild.host(CastHostParts(this, player, sources, scope))
+        castHost = cast.host
+        player.addListener(Watcher(cast.player))
         SleepTimer.attach(player, scope)
         effects = AudioEffectsEngine(player, gain, scope).also { it.start() }
         val open = PendingIntent.getActivity(
@@ -100,7 +114,7 @@ class PlaybackService : MediaLibraryService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         // The system sees the cover as bytes, not as the app's own URIs it cannot open (SessionArtwork.kt).
-        val shown = SessionArtworkPlayer(player, scope)
+        val shown = SessionArtworkPlayer(cast.player, scope)
         // The home screen widget follows the session: redrawn when the track or the state changes, never on a timer.
         shown.addListener(WidgetSync(this, shown))
         com.tmplayer.music.widget.NowPlayingWidget.attach(shown)
@@ -115,6 +129,11 @@ class PlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        // A cast ends first (the queue comes back to this phone, paused), so what follows sees the phone's own player.
+        castHost.onTaskRemoved { afterTaskRemoved() }
+    }
+
+    private fun afterTaskRemoved() {
         val player = session?.player
         save()
         player?.let { keepCurrent(it, announce = false) }
@@ -123,6 +142,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        castHost.release()
         Library.setPlaying(false)
         com.tmplayer.music.widget.NowPlayingWidget.serviceStopped()
         save()
@@ -352,6 +372,9 @@ class PlaybackService : MediaLibraryService() {
                 .setExtras(android.os.Bundle().apply {
                     putString(MediaIds.COVER_ART, CoverArt.keyOf(track))
                     putString(AudioEffectsState.GAIN_KEY, track.replayGain.encode())
+                    // What a Cast device needs to know before it is sent the track (cast/CastFormats).
+                    putString(CAST_FORMAT_KEY, track.format.name)
+                    putLong(CAST_SIZE_KEY, track.sizeBytes.coerceAtLeast(0))
                 })
                 .build()
             return MediaItem.Builder()

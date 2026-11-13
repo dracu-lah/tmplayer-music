@@ -59,6 +59,18 @@ additional permission to be combined with it; see
   2.0: <https://github.com/androidx/androidx>
 - AndroidX Media3 1.11.1 (ExoPlayer and Session): Apache License 2.0:
   <https://github.com/androidx/media>
+- AndroidX Media3 Cast 1.11.1 and AndroidX MediaRouter 1.8.1 (casting to a Chromecast or other Google Cast
+  device): Apache License 2.0: <https://github.com/androidx/media>, <https://github.com/androidx/androidx>
+- Google Play services Cast framework 22.3.1 (`com.google.android.gms:play-services-cast-framework`,
+  brought in by Media3 Cast), in the APKs published on GitHub only: a store build is made without it, with
+  no Cast button and no local audio server, and says so in Settings. It is Google's proprietary software,
+  not open source, used under Google's terms (<https://developers.google.com/terms>) and the Android
+  Software Development Kit License that covers the Play services libraries
+  (<https://developer.android.com/studio/terms>). It is not part of the GPL-licensed source of this app:
+  it is a separate library the app links against and the user's phone runs through Google Play services.
+  The app uses Google's Default Media Receiver, so no receiver app of its own is registered with Google.
+  Casting is unofficial and not affiliated with Google. "Google Cast" and "Chromecast" are trademarks of
+  Google LLC.
 - AndroidX SQLite bundled 2.7.1, which carries its own build of SQLite: Apache License 2.0
   (<https://github.com/androidx/androidx>); SQLite itself is in the public domain
   (<https://sqlite.org/copyright.html>)
