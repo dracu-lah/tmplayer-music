@@ -66,6 +66,11 @@ class AudioEffectsEngine(
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = applyGain()
 
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) = applyGain()
+
+            // What plays next changes with these.
+            override fun onRepeatModeChanged(repeatMode: Int) = applyGain()
+
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = applyGain()
         })
         openEqualizer(player.audioSessionId)
         jobs += scope.launch {
@@ -86,10 +91,24 @@ class AudioEffectsEngine(
         closeEqualizer()
     }
 
-    /** The factor of the item that plays now, or 1 when the switch is off or the item has no gain. */
+    /**
+     * The factor of the item that plays now, or 1 when the switch is off or the item has no gain.
+     * The sink works ahead of the position, so the change of item is seen late: the next item's
+     * factor is also handed to the processor, which takes it at the boundary between the two
+     * streams, before the next track's first buffer. This is the fallback when that boundary never
+     * comes (a skip, a seek, a new queue): the factor of the item that plays then ramps in.
+     */
     private fun applyGain() {
-        val factor = if (choices.normalise.value) factorOf(player.currentMediaItem) else 1f
-        gain.setFactor(factor)
+        val on = choices.normalise.value
+        gain.setFactor(if (on) factorOf(player.currentMediaItem) else 1f)
+        val upcoming = player.nextMediaItemIndex
+        gain.setNext(
+            when {
+                !on -> 1f
+                upcoming == C.INDEX_UNSET || upcoming !in 0 until player.mediaItemCount -> null
+                else -> factorOf(player.getMediaItemAt(upcoming))
+            },
+        )
     }
 
     private fun openEqualizer(session: Int) {
@@ -98,34 +117,38 @@ class AudioEffectsEngine(
         sessionId = session
         // Session 0 is the global mix: never put an effect there.
         if (session == C.AUDIO_SESSION_ID_UNSET || session == 0) return
+        // Held outside the try so every failure path can release it.
+        var eq: Equalizer? = null
         try {
-            val eq = Equalizer(0, session)
-            val bands = eq.numberOfBands.toInt()
-            val range = eq.bandLevelRange
+            val made = Equalizer(0, session)
+            eq = made
+            val bands = made.numberOfBands.toInt()
+            val range = made.bandLevelRange
             if (bands <= 0 || bands > EqPresets.MAX_BANDS || range.size < 2) {
-                eq.release()
+                runCatching { made.release() }
                 return
             }
             val minMb = range[0].toInt()
             val maxMb = range[1].toInt()
-            val centers = List(bands) { (eq.getCenterFreq(it.toShort()) / 1000).coerceAtLeast(1) }
+            val centers = List(bands) { (made.getCenterFreq(it.toShort()) / 1000).coerceAtLeast(1) }
             val device = ArrayList<EqPreset>()
-            for (i in 0 until eq.numberOfPresets.toInt()) {
-                val name = runCatching { eq.getPresetName(i.toShort()) }.getOrNull()?.trim().orEmpty()
+            for (i in 0 until made.numberOfPresets.toInt()) {
+                val name = runCatching { made.getPresetName(i.toShort()) }.getOrNull()?.trim().orEmpty()
                 if (name.isEmpty()) continue
-                eq.usePreset(i.toShort())
-                device += EqPreset(EqPresets.deviceId(name), name, List(bands) { eq.getBandLevel(it.toShort()).toInt() })
+                made.usePreset(i.toShort())
+                device += EqPreset(EqPresets.deviceId(name), name, List(bands) { made.getBandLevel(it.toShort()).toInt() })
             }
             val builtIn = EqPresets.builtIn(centers, minMb, maxMb)
             // A device preset that is just flat or one of ours adds nothing.
             val extra = device.filter { d -> builtIn.none { it.levels == d.levels } }.distinctBy { it.id }
-            equalizer = eq
+            equalizer = made
             info = EqualizerInfo(centers, minMb, maxMb, builtIn + extra)
             AudioEffectsState.publish(info)
             applyEqualizer()
         } catch (e: Throwable) {
             // No audio effects here (a TV box without them, an effect limit reached): the equalizer is just hidden.
             Logger.w(TAG, "the equalizer could not start: ${e.javaClass.simpleName}")
+            runCatching { eq?.release() }
             closeEqualizer()
         }
     }

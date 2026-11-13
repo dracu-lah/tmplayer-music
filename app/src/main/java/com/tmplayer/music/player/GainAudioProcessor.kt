@@ -18,23 +18,39 @@ import kotlin.math.roundToInt
  * clips nothing: results are held to the sample range (the factor itself is already held below the
  * track's peak, see [com.tmplayer.music.library.ReplayGain.factor]).
  *
- * A change of factor ramps over [RAMP_SAMPLES] samples (about 45 ms of stereo at 44.1 kHz) so a
- * track change never clicks. A format it does not know (24 bit and wider PCM that reaches it
- * unconverted) makes it inactive: the audio passes untouched and playback is not affected.
+ * A change of factor ramps over [RAMP_FRAMES] frames (about 45 ms at 44.1 kHz), one step per frame
+ * so every channel of a frame has the same gain, and a track change never clicks. A track change
+ * inside a queue does not ramp at all: the engine hands over the next item's factor with [setNext],
+ * and it takes hold at the stream boundary (the end of the last stream), before the next track's
+ * first buffer, so there is no stretch at the old gain. A format it does not know (24 bit and
+ * wider PCM that reaches it unconverted) makes it inactive: the audio passes untouched.
  */
 @OptIn(UnstableApi::class)
 class GainAudioProcessor : BaseAudioProcessor() {
 
     @Volatile
     private var target = 1f
+
+    /** The factor the next stream starts at, or NaN for none; read and cleared at the stream boundary. */
+    @Volatile
+    private var next = Float.NaN
+
+    // Only the playback thread touches these.
     private var current = 1f
     private var aimedAt = 1f
     private var step = 0f
 
     /** Sets the factor for what is played next; 1 is no change. */
     fun setFactor(factor: Float) {
-        target = if (factor.isNaN() || factor.isInfinite()) 1f else factor.coerceIn(0f, MAX_FACTOR)
+        target = held(factor)
     }
+
+    /** The factor the stream after this one starts at, applied at the boundary between them; null for none. */
+    fun setNext(factor: Float?) {
+        next = if (factor == null) Float.NaN else held(factor)
+    }
+
+    private fun held(factor: Float) = if (factor.isNaN() || factor.isInfinite()) 1f else factor.coerceIn(0f, MAX_FACTOR)
 
     override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat =
         if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT || inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) {
@@ -42,6 +58,17 @@ class GainAudioProcessor : BaseAudioProcessor() {
         } else {
             AudioFormat.NOT_SET
         }
+
+    override fun onQueueEndOfStream() {
+        // Everything of this stream has been processed; what comes next is the next track, at its own gain.
+        val upcoming = next
+        if (upcoming.isNaN()) return
+        next = Float.NaN
+        target = upcoming
+        current = upcoming
+        aimedAt = upcoming
+        step = 0f
+    }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val size = inputBuffer.remaining()
@@ -53,14 +80,16 @@ class GainAudioProcessor : BaseAudioProcessor() {
         } else {
             if (goal != aimedAt) {
                 aimedAt = goal
-                step = if (goal == current) 0f else (goal - current) / RAMP_SAMPLES
+                step = if (goal == current) 0f else (goal - current) / RAMP_FRAMES
             }
-            if (inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) floats(inputBuffer, out) else shorts(inputBuffer, out)
+            val channels = inputAudioFormat.channelCount.coerceAtLeast(1)
+            if (inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) floats(inputBuffer, out, channels) else shorts(inputBuffer, out, channels)
         }
         out.flip()
     }
 
-    private fun next(): Float {
+    /** The gain of the next frame: every channel of a frame shares it, so the ramp advances once per frame. */
+    private fun advance(): Float {
         if (step != 0f) {
             current += step
             if ((step > 0f && current >= aimedAt) || (step < 0f && current <= aimedAt)) {
@@ -71,25 +100,34 @@ class GainAudioProcessor : BaseAudioProcessor() {
         return current
     }
 
-    private fun shorts(input: ByteBuffer, out: ByteBuffer) {
+    private fun shorts(input: ByteBuffer, out: ByteBuffer, channels: Int) {
         var i = input.position()
-        val end = input.limit() - 1
-        while (i < end) {
-            val scaled = (input.getShort(i) * next()).roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-            out.putShort(scaled.toShort())
-            i += 2
+        val limit = input.limit()
+        while (i + 2 <= limit) {
+            // A cut-off last frame keeps the gain of the last whole one.
+            val gain = if (i + 2 * channels <= limit) advance() else current
+            val count = minOf(channels, (limit - i) / 2)
+            for (c in 0 until count) {
+                val scaled = (input.getShort(i) * gain).roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                out.putShort(scaled.toShort())
+                i += 2
+            }
         }
-        input.position(input.limit())
+        input.position(limit)
     }
 
-    private fun floats(input: ByteBuffer, out: ByteBuffer) {
+    private fun floats(input: ByteBuffer, out: ByteBuffer, channels: Int) {
         var i = input.position()
-        val end = input.limit() - 3
-        while (i < end) {
-            out.putFloat((input.getFloat(i) * next()).coerceIn(-1f, 1f))
-            i += 4
+        val limit = input.limit()
+        while (i + 4 <= limit) {
+            val gain = if (i + 4 * channels <= limit) advance() else current
+            val count = minOf(channels, (limit - i) / 4)
+            for (c in 0 until count) {
+                out.putFloat((input.getFloat(i) * gain).coerceIn(-1f, 1f))
+                i += 4
+            }
         }
-        input.position(input.limit())
+        input.position(limit)
     }
 
     override fun onReset() {
@@ -102,7 +140,7 @@ class GainAudioProcessor : BaseAudioProcessor() {
     companion object {
         /** About 3.99, the most the factor of a track can be (+12 dB). */
         private const val MAX_FACTOR = 4f
-        const val RAMP_SAMPLES = 4096f
+        const val RAMP_FRAMES = 2048f
     }
 }
 
