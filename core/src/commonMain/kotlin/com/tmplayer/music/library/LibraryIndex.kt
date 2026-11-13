@@ -643,6 +643,7 @@ class LibraryIndex private constructor(
             sampleRate = tags.sampleRate.takeIf { it > 0 } ?: track.sampleRate,
             bitDepth = tags.bitDepth.takeIf { it > 0 } ?: track.bitDepth,
             channels = tags.channels.takeIf { it > 0 } ?: track.channels,
+            replayGain = tags.replayGain.takeIf { !it.isEmpty } ?: track.replayGain,
             tagState = TagState.Read,
             coverKey = coverKey.ifBlank { track.coverKey },
             groupKey = GroupKey.of(title, artist, duration),
@@ -1538,8 +1539,8 @@ class LibraryIndex private constructor(
         private const val TRACK_COLUMNS =
             "chat_id, message_id, file_id, unique_id, file_name, mime, size_bytes, date_sec, title, artist, album, " +
                 "album_artist, year, track_number, disc_number, duration_ms, format, bitrate_kbps, sample_rate, " +
-                "bit_depth, tag_state, thumb_file_id, cover_key, group_key, variant, channels"
-        private const val TRACK_COLUMN_COUNT = 26
+                "bit_depth, tag_state, thumb_file_id, cover_key, group_key, variant, channels, replay_gain"
+        private const val TRACK_COLUMN_COUNT = 27
         private const val SONG_COLUMNS =
             "song_key, title, artist, album, duration_ms, default_chat_id, default_message_id, version_count, " +
                 "best_format, thumb_file_id, cover_key, variant, added_sec, album_key, artist_key"
@@ -1660,7 +1661,7 @@ class LibraryIndex private constructor(
             t.chatId, t.messageId, t.fileId, t.uniqueId, t.fileName, t.mime, t.sizeBytes, t.dateSec, t.title,
             t.artist, t.album, t.albumArtist, t.year, t.trackNumber, t.discNumber, t.durationMs, t.format.name,
             t.bitrateKbps, t.sampleRate, t.bitDepth, t.tagState.name, t.thumbFileId, t.coverKey, base, t.variant,
-            t.channels,
+            t.channels, t.replayGain.encode(),
         )
 
         private fun readTrack(s: SQLiteStatement) = Track(
@@ -1690,6 +1691,7 @@ class LibraryIndex private constructor(
             groupKey = text(s, 23),
             variant = text(s, 24),
             channels = s.getLong(25).toInt(),
+            replayGain = ReplayGain.decode(text(s, 26)),
         )
 
         private fun readSong(s: SQLiteStatement) = Song(

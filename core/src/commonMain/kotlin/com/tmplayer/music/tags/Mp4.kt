@@ -13,6 +13,9 @@ internal object Mp4 {
     private const val MAX_DEPTH = 8
     private const val MAX_ATOMS = 4096
 
+    /** A ReplayGain value is a short number; a longer one is not read. */
+    private const val MAX_GAIN_VALUE = 48
+
     private val containers = setOf("moov", "udta", "trak", "mdia", "minf", "stbl")
 
     private class State {
@@ -146,10 +149,33 @@ internal object Mp4 {
             if (size < 8) return
             val name = b.ascii(p + 4, 4)
             val end = minOf(p + size, e.toLong()).toInt()
+            if (name == "----") freeform(b, p + 8, end, out)
             val data = firstData(b, p + 8, end)
             if (data != null) item(name, b, data.first, data.second, end, out)
             if (p + size >= e) return
             p = (p + size).toInt()
+        }
+    }
+
+    /**
+     * An iTunes style freeform item ("----"): a "mean" atom (the owner, such as com.apple.iTunes), a
+     * "name" atom and a "data" atom. Only the ReplayGain names are read, from a text value.
+     */
+    private fun freeform(b: ByteArray, s: Int, e: Int, out: TagBuilder) {
+        var p = s
+        var name = ""
+        var n = 0
+        while (p + 8 <= e && n++ < 16) {
+            val size = b.u32be(p)
+            if (size < 8 || p + size > e) return
+            val end = (p + size).toInt()
+            val type = b.ascii(p + 4, 4)
+            if (type == "name" && size in 13L..80L) name = String(b, p + 12, end - p - 12, Charsets.UTF_8)
+            if (type == "data" && size in 17L..(16L + MAX_GAIN_VALUE) && name.startsWith("REPLAYGAIN_", ignoreCase = true)) {
+                out.replayGain(name, String(b, p + 16, end - p - 16, Charsets.UTF_8))
+                return
+            }
+            p = end
         }
     }
 

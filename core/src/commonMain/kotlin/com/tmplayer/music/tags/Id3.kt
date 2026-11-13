@@ -179,6 +179,7 @@ internal object Id3 {
                 out.fallbackDurationMs = text(data, s, e).takeWhile { it in '0'..'9' }.take(12).toLongOrNull() ?: 0
             }
             "USLT", "ULT" -> lyrics(data, s, e, out)
+            "TXXX", "TXX" -> userText(data, s, e, out)
             "APIC" -> picture(data, s, e, out, v22 = false)
             "PIC" -> picture(data, s, e, out, v22 = true)
         }
@@ -186,7 +187,7 @@ internal object Id3 {
 
     private val wantedIds = setOf(
         "TIT2", "TT2", "TPE1", "TP1", "TALB", "TAL", "TPE2", "TP2", "TYER", "TYE", "TDRC", "TORY", "TOR",
-        "TDOR", "TRCK", "TRK", "TPOS", "TPA", "TLEN", "TLE", "USLT", "ULT", "APIC", "PIC",
+        "TDOR", "TRCK", "TRK", "TPOS", "TPA", "TLEN", "TLE", "USLT", "ULT", "APIC", "PIC", "TXXX", "TXX",
     )
 
     private fun wanted(id: String): Boolean = id in wantedIds
@@ -202,6 +203,19 @@ internal object Id3 {
         val textStart = descEnd + termLength(enc)
         if (textStart >= e) return
         out.lyrics(decode(enc, arr, textStart, terminator(enc, arr, textStart, e)))
+    }
+
+    /** A TXXX frame: encoding, a description, then the value. Only the ReplayGain descriptions are used. */
+    private fun userText(arr: ByteArray, s: Int, e: Int, out: TagBuilder) {
+        val enc = arr.u8(s)
+        val descStart = s + 1
+        if (descStart >= e) return
+        val descEnd = terminator(enc, arr, descStart, e)
+        val valueStart = descEnd + termLength(enc)
+        if (valueStart >= e || descEnd - descStart > 64) return
+        val description = decode(enc, arr, descStart, descEnd)
+        if (!description.startsWith("REPLAYGAIN_", ignoreCase = true)) return
+        out.replayGain(description, firstValue(enc, arr, valueStart, e))
     }
 
     private fun picture(arr: ByteArray, s: Int, e: Int, out: TagBuilder, v22: Boolean) {
