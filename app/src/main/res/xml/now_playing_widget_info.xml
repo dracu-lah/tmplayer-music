@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- updatePeriodMillis 0: the widget is redrawn by the media session when the track or state changes, never on a timer. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_compact"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:resizeMode="horizontal"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

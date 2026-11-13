@@ -87,7 +87,9 @@
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
 
@@ -100,6 +102,35 @@
             android:name=".data.OfflineService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!--
+          Lists the app in Android Auto as a media app (res/xml/automotive_app_desc.xml). Auto only
+          browses and plays through the media session (BrowseCallback); it cannot start a download,
+          sign in or open settings. Nothing starts playback when a car connects.
+        -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <!--
+          The now playing home screen widget (NowPlayingWidgetProvider). No periodic update: the media
+          session redraws it. Its buttons go to WidgetActionReceiver through the widget's own
+          PendingIntents; that receiver is not exported.
+        -->
+        <receiver
+            android:name=".widget.NowPlayingWidgetProvider"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/now_playing_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.WidgetActionReceiver"
+            android:exported="false" />
 
         <!-- The sponsor reminder's daily check (SupportChecks); only the system's job scheduler binds it. -->
         <service
