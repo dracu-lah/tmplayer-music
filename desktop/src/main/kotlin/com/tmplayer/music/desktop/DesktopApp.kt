@@ -29,6 +29,12 @@ import java.io.File
 object DesktopApp {
     val prefs: DesktopPrefs by lazy { DesktopPrefs(DesktopPaths.prefsFile) }
 
+    /**
+     * The volume is written about half a second after the last change, off the UI thread: a held
+     * volume key or a dragged slider would otherwise rewrite the settings file at every step.
+     */
+    private val volumeSaver = DebouncedVolume(prefs, JobFailures.scope("VolumeSaver", Dispatchers.IO))
+
     /** The one player: the queue, libmpv, and the saved queue file. */
     val player: PlayerController by lazy {
         newPlayer().also { watchSound(it) }
@@ -41,10 +47,7 @@ object DesktopApp {
             engineFactory = { MpvNatives.create() },
             initialVolume = prefs.getLong(VOLUME, 100).toInt(),
             initialMuted = prefs.getBoolean(MUTED, false),
-            onVolume = { volume, muted ->
-                prefs.putLong(VOLUME, volume.toLong())
-                prefs.putBoolean(MUTED, muted)
-            },
+            onVolume = { volume, muted -> volumeSaver.set(volume, muted) },
             onPlayingChanged = { Library.setPlaying(it) },
         )
 
@@ -87,6 +90,7 @@ object DesktopApp {
     /** The queue is saved and the player let go; the window is closing. */
     fun stop() {
         runCatching { player.close() }
+        runCatching { volumeSaver.flush() }
         runCatching { OfflineDownloads.flush() }
         runCatching { Library.choices.flush() }
     }
@@ -110,4 +114,37 @@ object DesktopApp {
     const val CACHE_CEILING = "cache_ceiling"
     const val CLOSE_TO_TRAY = "close_to_tray"
     private const val TAG = "DesktopApp"
+}
+
+/** Writes the latest volume and mute to [prefs] [delayMs] after the last change; [flush] writes at once. */
+internal class DebouncedVolume(
+    private val prefs: DesktopPrefs,
+    private val scope: kotlinx.coroutines.CoroutineScope,
+    private val delayMs: Long = 500,
+) {
+    private val lock = Any()
+    private var pending: Pair<Int, Boolean>? = null
+    private var job: kotlinx.coroutines.Job? = null
+
+    fun set(volume: Int, muted: Boolean) {
+        synchronized(lock) {
+            pending = volume to muted
+            job?.cancel()
+            job = scope.launch {
+                kotlinx.coroutines.delay(delayMs)
+                flush()
+            }
+        }
+    }
+
+    /** Writes what is waiting, if anything; safe to call from any thread and more than once. */
+    fun flush() {
+        val (volume, muted) = synchronized(lock) {
+            job?.cancel()
+            job = null
+            pending.also { pending = null }
+        } ?: return
+        prefs.putLong(DesktopApp.VOLUME, volume.toLong())
+        prefs.putBoolean(DesktopApp.MUTED, muted)
+    }
 }

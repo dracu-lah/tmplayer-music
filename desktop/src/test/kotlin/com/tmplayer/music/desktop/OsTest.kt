@@ -159,4 +159,28 @@ class OsTest {
         assertEquals("playlist", UserFiles.safeName("   "))
         assertTrue(UserFiles.safeName("x".repeat(500)).length <= 60)
     }
+
+    @Test
+    fun `a name Windows keeps for a device is never a file name`() {
+        for (reserved in listOf("CON", "con", "Prn", "AUX", "NUL", "COM1", "com9", "LPT1", "lpt9", "CON ", "NUL.", "COM¹")) {
+            val safe = UserFiles.safeName(reserved)
+            assertFalse(UserFiles.isReservedOnWindows(safe), "$reserved gave $safe")
+            assertFalse(UserFiles.isReservedOnWindows("$safe.m3u8"), "$reserved gave $safe")
+        }
+        assertTrue(UserFiles.isReservedOnWindows("nul.txt"))
+        assertTrue(UserFiles.isReservedOnWindows("COM3"))
+        assertFalse(UserFiles.isReservedOnWindows("COM10"))
+        assertFalse(UserFiles.isReservedOnWindows("Console"))
+        assertEquals("Console", UserFiles.safeName("Console"))
+        assertEquals("COM10", UserFiles.safeName("COM10"))
+    }
+
+    @Test
+    fun `a file name has no trailing dot or space and stays short`() {
+        assertEquals("mix", UserFiles.safeName("mix. . "))
+        assertEquals("playlist", UserFiles.safeName("..."))
+        val long = UserFiles.safeName("a".repeat(59) + " " + "b".repeat(40))
+        assertTrue(long.length <= 60)
+        assertFalse(long.endsWith(" "))
+    }
 }

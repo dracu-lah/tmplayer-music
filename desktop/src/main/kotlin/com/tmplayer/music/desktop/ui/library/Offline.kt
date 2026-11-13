@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.KeepPhase
 import com.tmplayer.music.data.KeepSkip
 import com.tmplayer.music.data.KeepState
@@ -42,6 +43,8 @@ import com.tmplayer.music.library.Song
 import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.platform.JobFailures
+import com.tmplayer.music.platform.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -80,40 +83,61 @@ object OfflineUi {
 
     /** Keeps the default version of each of [songs]. */
     fun keepSongs(songs: List<Song>, bulk: Boolean = songs.size > 1) =
-        keep(bulk) { songs.mapNotNull { runCatching { Library.index().track(it.defaultTrack) }.getOrNull() } }
+        keep(bulk) {
+            OfflineDownloads.plan(songs.mapNotNull { runCatching { Library.index().track(it.defaultTrack) }.getOrNull() })
+        }
 
     /** Keeps the files of a chat page as they are (each one its own file, no song folding). */
-    fun keepTracks(tracks: List<Track>) = keep(tracks.size > 1) { tracks }
+    fun keepTracks(tracks: List<Track>) = keep(tracks.size > 1) { OfflineDownloads.plan(tracks) }
 
-    /** Keeps every file of a picked chat that the library shows (the clip switches apply). */
+    /**
+     * Keeps every file of a picked chat that the library shows (the clip switches apply). Planned a
+     * page at a time: only the small queue entries of the new tracks are held, never 100,000 tracks.
+     */
     fun keepChat(chatId: Long) = keep(true) {
         val index = Library.index()
         val mask = Library.choices.hiddenMask
-        val out = ArrayList<Track>()
+        val kept = OfflineDownloads.kept.value
+        val planner = PagedPlanner(
+            kept = kept.keys,
+            queued = OfflineDownloads.pending.value,
+            keptUniques = kept.values.mapTo(HashSet()) { it.uniqueId },
+            freeBytes = OfflineDownloads.freeBytes(),
+        )
+        var seen = 0
         var after: Long? = null
-        while (out.size < MAX_CHAT_TRACKS) {
+        while (seen < MAX_CHAT_TRACKS) {
             val page = index.chatTracks(chatId, true, after, PAGE)
             if (page.isEmpty()) break
-            page.filterTo(out) { !ClipRules.hidden(it, mask) }
+            planner.add(page.filter { !ClipRules.hidden(it, mask) })
+            seen += page.size
             after = page.last().messageId
         }
-        out
+        planner.finish()
     }
 
-    private fun keep(bulk: Boolean, load: suspend () -> List<Track>) {
+    /** [plan] runs off the window's thread; a failure to read or count is said, not shown as an empty list. */
+    private fun keep(bulk: Boolean, plan: suspend () -> OfflinePlanner.Plan) {
         // The same click twice (or a second entry while the first is counting) is one run.
         if (!working.compareAndSet(false, true)) return
         scope.launch {
             try {
                 if (bulk) notify(L.offlineCounting)
-                val tracks = runCatching { load() }.getOrDefault(emptyList())
-                val plan = OfflineDownloads.plan(tracks)
+                val counted = try {
+                    plan()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(TAG, "could not count the tracks to keep", e)
+                    notify(Failures.humanise(e))
+                    return@launch
+                }
                 when {
-                    plan.nothingNew -> notify(L.offlineNothingNew)
-                    plan.toKeep.isEmpty() -> ask.value = Ask.NoRoom(plan)
-                    !plan.fitsAll -> ask.value = Ask.Fit(plan)
-                    plan.needsConfirm -> ask.value = Ask.Confirm(plan)
-                    else -> start(plan)
+                    counted.nothingNew -> notify(L.offlineNothingNew)
+                    counted.toKeep.isEmpty() -> ask.value = Ask.NoRoom(counted)
+                    !counted.fitsAll -> ask.value = Ask.Fit(counted)
+                    counted.needsConfirm -> ask.value = Ask.Confirm(counted)
+                    else -> start(counted)
                 }
             } finally {
                 working.set(false)
@@ -150,6 +174,7 @@ object OfflineUi {
 
     private const val PAGE = 500
     private const val MAX_CHAT_TRACKS = 100_000
+    private const val TAG = "OfflineUi"
 }
 
 /** Shows the questions and the summary of Keep offline; placed once, in the shell. */
