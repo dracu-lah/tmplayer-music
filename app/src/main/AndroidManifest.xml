@@ -62,6 +62,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- The QR code a TV shows to pair a phone: the phone's camera app opens it here. The app only
+                 asks the user whether to pair; a store build ignores it (no Connect). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="tmplayermusic" android:host="pair" />
+            </intent-filter>
         </activity>
 
         <!-- Hands the Send logs file to the app the user picks in the share sheet, and the

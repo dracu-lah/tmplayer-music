@@ -248,6 +248,34 @@ object PhoneRemote {
         return result
     }
 
+    /**
+     * Pairs with the TV a scanned [link] named, with its one time token (nothing typed). Stores the
+     * pairing when it works, like [pair].
+     */
+    suspend fun pairLink(link: PairLink): PairResult {
+        val result = withContext(Dispatchers.IO) { ConnectClient.pair(link, me()) }
+        if (result is PairResult.Success) {
+            Connect.tvs.add(result.paired)
+            Connect.setActiveTv(result.paired.id)
+        }
+        return result
+    }
+
+    private val _pendingLink = MutableStateFlow<PairLink?>(null)
+
+    /** A TV's pairing link that was just opened (from the phone's camera app), waiting for the user to confirm. */
+    val pendingLink: StateFlow<PairLink?> = _pendingLink.asStateFlow()
+
+    /** Takes the text a camera app opened us with; ignored unless it is a well formed link. */
+    fun offerLink(text: String?) {
+        if (!Connect.available) return
+        _pendingLink.value = PairLink.parse(text) ?: return
+    }
+
+    fun dismissLink() {
+        _pendingLink.value = null
+    }
+
     /** Forgets [id] on this phone (the TV keeps listing this phone until it forgets it too). */
     fun forget(id: String) {
         if (_ui.value.tv?.id == id) close()
