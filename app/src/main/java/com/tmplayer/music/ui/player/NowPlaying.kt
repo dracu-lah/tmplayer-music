@@ -90,6 +90,7 @@ internal fun NowPlayingContent(
     onQueue: () -> Unit,
 ) {
     var sleepOpen by rememberSaveable { mutableStateOf(false) }
+    var effectsOpen by rememberSaveable { mutableStateOf(false) }
     var showLyrics by rememberSaveable { mutableStateOf(com.tmplayer.music.BuildHooks.takeLyricsAtStart()) }
     val anchor = remember { CoverAnchor() }
     val density = LocalDensity.current
@@ -142,6 +143,7 @@ internal fun NowPlayingContent(
             onLyrics = { showLyrics = it },
             onCollapse = onCollapse,
             onSleep = { sleepOpen = true },
+            onEffects = { effectsOpen = true },
             onQueue = onQueue,
             modifier = fade,
         )
@@ -181,6 +183,7 @@ internal fun NowPlayingContent(
         }
     }
     if (sleepOpen) SleepSheet(onDismiss = { sleepOpen = false })
+    if (effectsOpen) EffectsSheet(onDismiss = { effectsOpen = false })
 }
 
 @Composable
@@ -189,6 +192,7 @@ private fun TopBar(
     onLyrics: (Boolean) -> Unit,
     onCollapse: () -> Unit,
     onSleep: () -> Unit,
+    onEffects: () -> Unit,
     onQueue: () -> Unit,
     modifier: Modifier,
 ) {
@@ -210,6 +214,7 @@ private fun TopBar(
                 },
             )
         }
+        IconButton(onClick = onEffects) { Icon(EffectsIcon, contentDescription = L.effectsTitle) }
         IconButton(onClick = onQueue) { Icon(MusicIcons.Queue, contentDescription = L.playerQueue) }
     }
 }

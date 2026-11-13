@@ -59,6 +59,26 @@
     "retry": "Try again",
     "start_over": "Start over"
   },
+  "effects": {
+    "band_description": "{frequency}, {level}",
+    "bass": "Bass boost",
+    "custom": "Custom",
+    "equalizer": "Equalizer",
+    "flat": "Flat",
+    "keep_pitch": "Keep pitch",
+    "keep_pitch_detail": "Faster and slower playback keeps voices at their normal pitch.",
+    "normalise": "Normalise loudness",
+    "normalise_detail": "Evens out loud and quiet tracks with the ReplayGain tags in the files. A track without tags plays as it is.",
+    "open_detail": "Equalizer, playback speed, skip silence and loudness",
+    "presets": "Presets",
+    "reset": "Reset",
+    "skip_silence": "Skip silence",
+    "skip_silence_detail": "Jumps over long quiet parts inside a track.",
+    "speed": "Playback speed",
+    "title": "Sound effects",
+    "treble": "Treble boost",
+    "vocal": "Vocal"
+  },
   "errors": {
     "code_expired": "That code has expired. Start over to have a new one sent.",
     "email_invalid": "That email address doesn't look right. Check it and try again.",
