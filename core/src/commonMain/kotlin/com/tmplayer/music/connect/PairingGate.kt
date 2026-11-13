@@ -4,8 +4,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** The code the TV shows and when it stops working. */
-data class PairingOffer(val code: String, val expiresAt: Long)
+/** The code (typed) and the one time token (in the QR code) the TV shows, and when they stop working. */
+data class PairingOffer(val code: String, val token: String, val expiresAt: Long)
 
 /** What a try at the code came to. */
 sealed interface PairingVerdict {
@@ -24,7 +24,8 @@ sealed interface PairingVerdict {
 
 /**
  * The one door a new phone goes through. The code is opened by the user on the TV, is 6 random
- * digits, lasts [CODE_MS] and works once. [MAX_TRIES] wrong tries in a row (counted for the whole TV,
+ * digits (and a 128 bit random token for the QR code, that fits the same offer), lasts [CODE_MS] and
+ * works once, by either way. [MAX_TRIES] wrong tries in a row (counted for the whole TV,
  * not per phone, so changing address does not help) lock every try for [LOCK_MS] and replace the
  * code. A paired phone never meets this: it proves its secret instead.
  *
@@ -33,6 +34,7 @@ sealed interface PairingVerdict {
 class PairingGate(
     private val clock: () -> Long,
     private val digits: () -> String = { (0 until CODE_DIGITS).joinToString("") { ConnectCrypto.randomBelow(10).toString() } },
+    private val tokens: () -> String = { ConnectCrypto.randomHex(TOKEN_BYTES) },
 ) {
     private val _offer = MutableStateFlow<PairingOffer?>(null)
 
@@ -62,14 +64,14 @@ class PairingGate(
     @Synchronized
     fun current(): PairingOffer? = _offer.value?.takeIf { clock() < it.expiresAt }
 
-    /** Tries [matches] against the code on show; [matches] says whether a phone's proof fits that code. */
+    /** Tries [matches] against the offer on show (its code and its token); [matches] says whether a phone's proof fits it. */
     @Synchronized
-    fun attempt(matches: (code: String) -> Boolean): PairingVerdict {
+    fun attempt(matches: (offer: PairingOffer) -> Boolean): PairingVerdict {
         val now = clock()
         val locked = _lockedUntil.value
         if (locked > now) return PairingVerdict.Locked(locked - now)
         val offer = current() ?: return PairingVerdict.Closed
-        if (matches(offer.code)) {
+        if (matches(offer)) {
             failures = 0
             _offer.value = null
             return PairingVerdict.Accepted
@@ -83,13 +85,14 @@ class PairingGate(
     }
 
     private fun fresh(): PairingOffer {
-        val offer = PairingOffer(digits(), clock() + CODE_MS)
+        val offer = PairingOffer(digits(), tokens(), clock() + CODE_MS)
         _offer.value = offer
         return offer
     }
 
     companion object {
         const val CODE_DIGITS = 6
+        const val TOKEN_BYTES = 16
         const val CODE_MS = 2 * 60_000L
         const val MAX_TRIES = 5
         const val LOCK_MS = 60_000L

@@ -177,6 +177,112 @@ class ConnectSocketTest {
     }
 
     @Test
+    fun aPhoneIsPairedWithTheTokenOfTheQrCodeAndNotWithAWrongOne() {
+        val offer = gate.open()
+        val link = PairLink("127.0.0.1", port, tvId, offer.token)
+        val wrong = ConnectClient.pair(link.copy(token = "00".repeat(16)), me) as PairResult.Refused
+        assertEquals(ConnectErrors.BAD_CODE, wrong.code)
+        // Another TV than the one the QR code named is not paired with.
+        assertEquals(ConnectErrors.DENIED, (ConnectClient.pair(link.copy(tvId = ConnectHandshake.newId()), me) as PairResult.Refused).code)
+        val paired = (ConnectClient.pair(link, me) as PairResult.Success).paired
+        assertEquals(tvId, paired.id)
+        assertEquals(paired.secret, phones.find(me.id)?.secret)
+        assertNull(gate.current())
+        assertTrue(connect(paired) is ConnectResult.Connected)
+        // The token is spent with the code.
+        assertEquals(ConnectErrors.CLOSED, (ConnectClient.pair(link, me) as PairResult.Refused).code)
+    }
+
+    @Test
+    fun aRecordedPairFrameIsUselessOnAnotherConnection() {
+        val code = gate.open().code
+        val recorded = ArrayList<String>()
+        // A phone pairs for real; what it sent is recorded off its own socket by speaking the protocol by hand.
+        val key = EphemeralKey.generate()
+        val cn = ConnectHandshake.newNonce()
+        var first: ConnectFrame.Pair? = null
+        Socket("127.0.0.1", port).use { socket ->
+            socket.soTimeout = 3_000
+            val input = socket.getInputStream().bufferedReader()
+            val hello = ConnectFrames.parse(input.readLine()) as ConnectFrame.Hello
+            assertEquals(ConnectLimits.VERSION, hello.version)
+            val th = ConnectHandshake.transcript("c", hello.version, hello.nonce, cn, hello.id, hello.key, me.id, me.name, key.publicHex)
+            val confirm = ConnectHandshake.confirmKey(key.agree(hello.key)!!, th, ConnectHandshake.Via.Code, code)
+            val frame = ConnectFrame.Pair(hello.version, me.id, me.name, cn, key.publicHex, ConnectHandshake.Via.Code, ConnectHandshake.pairMac(confirm, th))
+            first = frame
+            recorded += ConnectFrames.encode(frame)
+            socket.getOutputStream().write((recorded.last() + "\n").toByteArray())
+            socket.getOutputStream().flush()
+            assertTrue(ConnectFrames.parse(input.readLine()) is ConnectFrame.Paired)
+        }
+        assertNotNull(phones.find(me.id))
+        phones.forget(me.id)
+        // The attacker plays the recording at a new connection with a fresh code on show: refused, and it cost a try.
+        gate.open()
+        Socket("127.0.0.1", port).use { socket ->
+            socket.soTimeout = 3_000
+            val input = socket.getInputStream().bufferedReader()
+            input.readLine()
+            socket.getOutputStream().write((recorded.first() + "\n").toByteArray())
+            socket.getOutputStream().flush()
+            val answer = ConnectFrames.parse(input.readLine() ?: "") as ConnectFrame.Err
+            assertEquals(ConnectErrors.BAD_CODE, answer.code)
+            assertEquals(4, answer.left)
+        }
+        assertNull(phones.find(me.id))
+        assertNotNull(first)
+    }
+
+    @Test
+    fun aTamperedKeyIsRefusedWithoutCountingATry() {
+        gate.open()
+        Socket("127.0.0.1", port).use { socket ->
+            socket.soTimeout = 3_000
+            val input = socket.getInputStream().bufferedReader()
+            val hello = ConnectFrames.parse(input.readLine()) as ConnectFrame.Hello
+            // A well formed key that is not on the curve (the host's own key with its last digit changed).
+            val bad = hello.key.dropLast(1) + (if (hello.key.last() == '0') "1" else "0")
+            val frame = ConnectFrame.Pair(hello.version, me.id, me.name, "bb".repeat(8), bad, ConnectHandshake.Via.Code, "cc".repeat(32))
+            socket.getOutputStream().write((ConnectFrames.encode(frame) + "\n").toByteArray())
+            socket.getOutputStream().flush()
+            assertEquals(ConnectErrors.MALFORMED, (ConnectFrames.parse(input.readLine() ?: "") as ConnectFrame.Err).code)
+        }
+        // Still five tries: the bad key was not a guess.
+        val wrong = ConnectClient.pair("127.0.0.1", port, me, if (gate.current()!!.code == "000000") "111111" else "000000") as PairResult.Refused
+        assertEquals(4, wrong.left)
+    }
+
+    @Test
+    fun anOldPeerIsToldItsVersionDoesNotFit() {
+        // An old phone (version 1, no key) at this TV.
+        Socket("127.0.0.1", port).use { socket ->
+            socket.soTimeout = 3_000
+            val input = socket.getInputStream().bufferedReader()
+            input.readLine()
+            val old = """{"t":"auth","v":1,"id":"${me.id}","name":"Pixel","cn":"${"bb".repeat(8)}","m":"${"cc".repeat(32)}"}"""
+            socket.getOutputStream().write((old + "\n").toByteArray())
+            socket.getOutputStream().flush()
+            assertEquals(ConnectErrors.VERSION, (ConnectFrames.parse(input.readLine() ?: "") as ConnectFrame.Err).code)
+        }
+        // An old TV (version 1) at this phone: a clear refusal, not "unreachable".
+        java.net.ServerSocket(0, 1, lo).use { old ->
+            val thread = Thread {
+                runCatching {
+                    old.accept().use { s ->
+                        s.getOutputStream().write("""{"t":"hello","v":1,"sn":"${"aa".repeat(8)}","id":"$tvId","name":"Old TV"}""".toByteArray())
+                        s.getOutputStream().write("\n".toByteArray())
+                        s.getOutputStream().flush()
+                        Thread.sleep(500)
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+            val result = ConnectClient.pair("127.0.0.1", old.localPort, me, "123456")
+            assertEquals(PairResult.Refused(ConnectErrors.VERSION, 0, 0), result)
+            thread.join(2_000)
+        }
+    }
+
+    @Test
     fun aPeerOutsideTheLocalNetworkIsDroppedAtOnce() {
         server.stop()
         val strict = ConnectServer(lo, tvId, "TV", phones, gate, handler, allowed = { false })

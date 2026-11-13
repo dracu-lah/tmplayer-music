@@ -581,8 +581,19 @@ class GarbageInputTest {
         val book = com.tmplayer.music.connect.PairingBook.encode(
             listOf(com.tmplayer.music.connect.Paired("a".repeat(32), "n", "b".repeat(64), 1)),
         )
-        val cases = listOf(
+        val key = com.tmplayer.music.connect.EphemeralKey.generate()
+        val handshake = listOf(
+            com.tmplayer.music.connect.ConnectFrame.Hello(2, "aa".repeat(8), "bb".repeat(16), "TV", key.publicHex),
+            com.tmplayer.music.connect.ConnectFrame.Auth(2, "bb".repeat(16), "P", "cc".repeat(8), key.publicHex, "dd".repeat(32)),
+            com.tmplayer.music.connect.ConnectFrame.Pair(2, "bb".repeat(16), "P", "cc".repeat(8), key.publicHex, com.tmplayer.music.connect.ConnectHandshake.Via.Token, "dd".repeat(32)),
+            com.tmplayer.music.connect.ConnectFrame.Paired("ee".repeat(32), "dd".repeat(32)),
+        ).map { com.tmplayer.music.connect.ConnectFrames.encode(it) }
+        val link = com.tmplayer.music.connect.PairLink("192.168.1.2", 4100, "bb".repeat(16), "cc".repeat(16)).text()
+        val cases = handshake + handshake.map { it.substring(0, it.length / 2) } + listOf(
             "", " ", "{", "[]", "null", "42", "\"text\"", "{\"t\": 5}", "{\"t\":\"auth\",\"id\":[]}", "{\"s\":\"x\"}",
+            "{\"t\":\"hello\",\"v\":2,\"sn\":\"${"aa".repeat(8)}\",\"id\":\"${"bb".repeat(16)}\",\"ek\":[]}",
+            "{\"t\":\"pair\",\"v\":\"2\",\"via\":5,\"ek\":null}", "{\"t\":\"pair\",\"v\":2,\"ek\":\"" + "f".repeat(130) + "\"}",
+            "{\"t\":\"auth\",\"v\":2,\"ek\":\"" + "0".repeat(100_000) + "\"}", "{\"t\":\"paired\",\"w\":\"zz\",\"m\":1}",
             "{\"t\":\"hello\",\"v\":1,\"sn\":\"zz\",\"id\":\"a\"}", "{\"t\":\"seek\",\"ms\":1e999}",
             "{\"t\":\"send\",\"how\":\"add\",\"items\":{}}", "{\"t\":\"send\",\"how\":\"add\",\"items\":[1,null,\"x\",{\"c\":\"1\"}]}",
             "{\"t\":\"queue\",\"items\":[[],5]}", "{\"t\":\"sent\",\"how\":\"play\",\"names\":[1,null]}",
@@ -595,6 +606,10 @@ class GarbageInputTest {
             com.tmplayer.music.connect.ConnectFrames.parse(case)
             com.tmplayer.music.connect.ConnectBodies.parse(case)
             com.tmplayer.music.connect.PairingBook.decode(case)
+            // Scanned and received text is never trusted: a link, a point on the curve, a recorded transcript.
+            com.tmplayer.music.connect.PairLink.parse(case)
+            com.tmplayer.music.connect.PairLink.parse(link + case)
+            assertNull(key.agree(case))
         }
         assertNull(com.tmplayer.music.connect.ConnectBodies.parse("{\"t\":\"cover\",\"b\":\"" + "A".repeat(com.tmplayer.music.connect.ConnectLimits.MAX_COVER_CHARS + 1) + "\"}"))
         assertTrue(com.tmplayer.music.connect.PairingBook.decode("[]").isEmpty())
@@ -604,8 +619,11 @@ class GarbageInputTest {
             com.tmplayer.music.connect.ConnectFrames.parse(text)
             com.tmplayer.music.connect.ConnectBodies.parse(text)
             com.tmplayer.music.connect.PairingBook.decode(text)
-            for (good in listOf(frame, body, book)) {
+            com.tmplayer.music.connect.PairLink.parse(text)
+            assertNull(key.agree(text))
+            for (good in listOf(frame, body, book) + handshake + link) {
                 val cut = good.substring(0, random.nextInt(0, good.length))
+                com.tmplayer.music.connect.PairLink.parse(cut)
                 com.tmplayer.music.connect.ConnectFrames.parse(cut)
                 com.tmplayer.music.connect.ConnectBodies.parse(cut)
                 com.tmplayer.music.connect.PairingBook.decode(cut)

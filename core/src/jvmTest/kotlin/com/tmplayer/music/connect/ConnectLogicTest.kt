@@ -52,43 +52,12 @@ class ConnectLogicTest {
     }
 
     @Test
-    fun handshakeProofsFitOnlyTheRightSecret() {
-        val secret = ConnectHandshake.newSecret()
-        val other = ConnectHandshake.newSecret()
-        val sn = ConnectHandshake.newNonce()
-        val cn = ConnectHandshake.newNonce()
-        val id = ConnectHandshake.newId()
-        assertEquals(ConnectHandshake.authMac(secret, sn, cn, id), ConnectHandshake.authMac(secret, sn, cn, id))
-        assertFalse(ConnectHandshake.authMac(secret, sn, cn, id) == ConnectHandshake.authMac(other, sn, cn, id))
-        // A new nonce changes the proof: a recorded one is useless.
-        assertFalse(ConnectHandshake.authMac(secret, sn, cn, id) == ConnectHandshake.authMac(secret, ConnectHandshake.newNonce(), cn, id))
-    }
-
-    @Test
-    fun theSecretTravelsHiddenUnderTheCode() {
-        val secret = ConnectHandshake.newSecret()
-        val sn = ConnectHandshake.newNonce()
-        val cn = ConnectHandshake.newNonce()
-        val id = ConnectHandshake.newId()
-        val key = ConnectHandshake.codeKey("123456", sn, cn)
-        val wrapped = ConnectHandshake.wrap(secret, key, sn, cn, id)
-        assertTrue(ConnectHandshake.unwrap(wrapped, key, sn, cn, id)!!.contentEquals(secret))
-        assertFalse(ConnectHandshake.unwrap(wrapped, ConnectHandshake.codeKey("123457", sn, cn), sn, cn, id)!!.contentEquals(secret))
-        assertNull(ConnectHandshake.unwrap("zz", key, sn, cn, id))
-    }
-
-    @Test
-    fun pbkdf2MatchesAKnownVector() {
-        // RFC 7914 section 11: PBKDF2-HMAC-SHA256("passwd", "salt", 1, 64), the first 32 bytes.
-        val out = ConnectCrypto.stretch("passwd", "salt".toByteArray(), 1)
-        assertEquals("55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc", ConnectCrypto.hex(out))
-    }
-
-    @Test
     fun theSecureChannelRefusesReplaysGapsAndForgeries() {
         val secret = ConnectHandshake.newSecret()
-        val host = ConnectHandshake.channel(secret, "aa".repeat(8), "bb".repeat(8), host = true)
-        val phone = ConnectHandshake.channel(secret, "aa".repeat(8), "bb".repeat(8), host = false)
+        val shared = ConnectCrypto.randomBytes(32)
+        val th = ConnectCrypto.sha256("transcript")
+        val host = ConnectHandshake.channel(shared, secret, th, host = true)
+        val phone = ConnectHandshake.channel(shared, secret, th, host = false)
         val first = phone.seal(ConnectBody.Ping)
         val second = phone.seal(ConnectBody.Resync)
         assertEquals(ConnectBody.Ping, host.open(first))
@@ -103,7 +72,7 @@ class ConnectLogicTest {
         assertNull(host.open(forged))
         // A frame the TV sent cannot be played back at the TV (the keys differ by direction).
         val reflected = host.seal(ConnectBody.Pong)
-        assertNull(ConnectHandshake.channel(secret, "aa".repeat(8), "bb".repeat(8), host = true).open(reflected))
+        assertNull(ConnectHandshake.channel(shared, secret, th, host = true).open(reflected))
     }
 
     @Test
@@ -121,7 +90,7 @@ class ConnectLogicTest {
         assertFalse(tried)
         assertFalse(gate.current()!!.code == first)
         now += 31_000
-        assertEquals(PairingVerdict.Accepted, gate.attempt { it == gate.current()!!.code })
+        assertEquals(PairingVerdict.Accepted, gate.attempt { it.code == gate.current()!!.code })
         // Spent: a second use is closed.
         assertEquals(PairingVerdict.Closed, gate.attempt { true })
     }

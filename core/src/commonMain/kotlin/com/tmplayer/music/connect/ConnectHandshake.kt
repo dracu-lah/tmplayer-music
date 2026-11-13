@@ -1,58 +1,90 @@
 package com.tmplayer.music.connect
 
 /**
- * The arithmetic of Connect's handshake, shared by the TV (host) and the phone (client), so the two
- * can only ever disagree on purpose.
+ * The arithmetic of Connect's handshake (protocol 2), shared by the TV (host) and the phone (client),
+ * so the two can only ever disagree on purpose.
  *
- * Paired phone: the host sends a nonce `sn`, the phone answers with its own `cn`, its id and
- * `HMAC(secret, auth|sn|cn|id)`; the host answers `HMAC(secret, ready|sn|cn)`. Each side has shown
- * it holds the secret without sending it, and a recorded exchange is useless: both nonces are new
- * every connection.
+ * Every connection starts with an ephemeral ECDH exchange on P-256 ([EphemeralKey]): the host's
+ * `Hello` carries its public key and a nonce `sn`, the phone answers with its key, its nonce `cn` and
+ * its id. Both then hold the same `shared` secret that nobody who only watched the wire can compute,
+ * and the same [transcript]: a hash of the version, both nonces, both ids, the phone's name and both
+ * public keys. Everything after is bound to that transcript, so a recorded exchange fits no other
+ * connection (every connection has new keys and nonces).
  *
- * Pairing: the phone has the code typed from the TV's screen. Both sides stretch it with the two
- * nonces into a one time key; the phone proves it with `HMAC(codeKey, pair|sn|cn|id)`; the host then
- * makes a random 256 bit secret and sends it hidden under `HMAC(codeKey, wrap|sn|cn|id)`, with
- * `HMAC(secret, paired|sn|cn)` so the phone can tell it came out right. After that the code is
- * spent and only the secret matters. A 6 digit code is weak against someone who recorded the
- * whole exchange and tries all million offline, which is why it lives for two minutes, works once
- * and is stretched; a wrong code on the wire is rate limited ([PairingGate]).
+ * Paired phone: `HMAC(secret, auth|transcript)` from the phone, `HMAC(secret, ready|transcript)` back.
+ *
+ * Pairing: the phone proves it knows the pairing proof, the 6 digit code typed from the TV's screen
+ * or the 128 bit token of its QR code, with a key confirmation MAC keyed by
+ * `HKDF(shared, transcript, proof)`. That key exists only inside the ECDH exchange, so a recording of
+ * the whole exchange gives nothing to test a code against offline, and an attacker who talks to the
+ * TV gets one guess per attempt ([PairingGate]: five tries, a lock, a new code). The host then makes
+ * a random 256 bit secret and sends it hidden under that same key, with `HMAC(secret, paired|transcript)`
+ * so the phone can tell the TV knew the proof. After that the code and token are spent and only
+ * the secret matters.
+ *
+ * Known limit: someone who sits in the middle of the exchange while the user types the code can
+ * relay it and learn the code from the phone's confirmation (every code-only scheme without a PAKE
+ * has this); the QR token is 128 bits and cannot be tested that way, which is why it is the primary path.
  */
 object ConnectHandshake {
-    /** Costly enough to slow a million guesses, cheap enough for a TV stick (about 0.1 s). */
-    const val STRETCH_ROUNDS = 20_000
-
     const val SECRET_BYTES = 32
     const val NONCE_BYTES = 16
     const val ID_BYTES = 16
+
+    /** What a pairing phone proves it knows. */
+    enum class Via(val wire: String) {
+        Code("c"),
+        Token("t");
+
+        companion object {
+            fun of(wire: String?): Via? = entries.firstOrNull { it.wire == wire }
+        }
+    }
 
     fun newNonce(): String = ConnectCrypto.randomHex(NONCE_BYTES)
     fun newId(): String = ConnectCrypto.randomHex(ID_BYTES)
     fun newSecret(): ByteArray = ConnectCrypto.randomBytes(SECRET_BYTES)
 
-    fun authMac(secret: ByteArray, sn: String, cn: String, id: String): String = ConnectCrypto.hmacHex(secret, "auth", sn, cn, id)
+    /** [kind] is "auth" for a paired phone, else the [Via] wire letter: a proof made for one cannot pass as the other. */
+    fun transcript(
+        kind: String, version: Int, sn: String, cn: String, hostId: String, hostKey: String,
+        clientId: String, clientName: String, clientKey: String,
+    ): ByteArray = ConnectCrypto.sha256(
+        listOf(
+            "tmpm2", kind, version.toString(), sn, cn, hostId, hostKey, clientId,
+            ConnectCrypto.hex(ConnectCrypto.sha256(clientName)), clientKey,
+        ).joinToString("|"),
+    )
 
-    fun readyMac(secret: ByteArray, sn: String, cn: String): String = ConnectCrypto.hmacHex(secret, "ready", sn, cn)
+    fun authMac(secret: ByteArray, transcript: ByteArray): String = ConnectCrypto.hmacHex(secret, "auth", ConnectCrypto.hex(transcript))
 
-    fun codeKey(code: String, sn: String, cn: String): ByteArray =
-        ConnectCrypto.stretch(code, "tmpmc1|$sn|$cn".toByteArray(Charsets.UTF_8), STRETCH_ROUNDS)
+    fun readyMac(secret: ByteArray, transcript: ByteArray): String = ConnectCrypto.hmacHex(secret, "ready", ConnectCrypto.hex(transcript))
 
-    fun pairMac(codeKey: ByteArray, sn: String, cn: String, id: String): String = ConnectCrypto.hmacHex(codeKey, "pair", sn, cn, id)
+    /** The key of the pairing proofs: from the ECDH secret, the transcript and the proof ([Via.Code] digits or [Via.Token] hex). */
+    fun confirmKey(shared: ByteArray, transcript: ByteArray, via: Via, proof: String): ByteArray =
+        ConnectCrypto.hkdf(shared, transcript, "tmpm2 confirm|${via.wire}|$proof".toByteArray(Charsets.UTF_8))
 
-    /** The secret hidden under the code's key, as hex; [unwrap] undoes it. */
-    fun wrap(secret: ByteArray, codeKey: ByteArray, sn: String, cn: String, id: String): String =
-        ConnectCrypto.hex(ConnectCrypto.xor(secret, ConnectCrypto.hmac(codeKey, "wrap", sn, cn, id)))
+    fun pairMac(confirmKey: ByteArray, transcript: ByteArray): String = ConnectCrypto.hmacHex(confirmKey, "pair", ConnectCrypto.hex(transcript))
 
-    fun unwrap(wrapped: String, codeKey: ByteArray, sn: String, cn: String, id: String): ByteArray? {
+    /** The secret hidden under the confirmation key, as hex; [unwrap] undoes it. */
+    fun wrap(secret: ByteArray, confirmKey: ByteArray, transcript: ByteArray): String =
+        ConnectCrypto.hex(ConnectCrypto.xor(secret, ConnectCrypto.hmac(confirmKey, "wrap", ConnectCrypto.hex(transcript))))
+
+    fun unwrap(wrapped: String, confirmKey: ByteArray, transcript: ByteArray): ByteArray? {
         val bytes = ConnectCrypto.unhex(wrapped, SECRET_BYTES)?.takeIf { it.size == SECRET_BYTES } ?: return null
-        return ConnectCrypto.xor(bytes, ConnectCrypto.hmac(codeKey, "wrap", sn, cn, id))
+        return ConnectCrypto.xor(bytes, ConnectCrypto.hmac(confirmKey, "wrap", ConnectCrypto.hex(transcript)))
     }
 
-    fun pairedMac(secret: ByteArray, sn: String, cn: String): String = ConnectCrypto.hmacHex(secret, "paired", sn, cn)
+    fun pairedMac(secret: ByteArray, transcript: ByteArray): String = ConnectCrypto.hmacHex(secret, "paired", ConnectCrypto.hex(transcript))
 
-    /** The two keys of one connection: phone to TV, TV to phone. New for every connection, from the secret and both nonces. */
-    fun channel(secret: ByteArray, sn: String, cn: String, host: Boolean): SecureChannel {
-        val toHost = ConnectCrypto.hmac(secret, "c2t", sn, cn)
-        val toClient = ConnectCrypto.hmac(secret, "t2c", sn, cn)
+    /**
+     * The two keys of one connection: phone to TV, TV to phone. New for every connection, from the
+     * ECDH secret (so a stolen pairing secret does not open recorded traffic), the pairing secret and the transcript.
+     */
+    fun channel(shared: ByteArray, secret: ByteArray, transcript: ByteArray, host: Boolean): SecureChannel {
+        val ikm = shared + secret
+        val toHost = ConnectCrypto.hkdf(ikm, transcript, "tmpm2 c2t".toByteArray(Charsets.UTF_8))
+        val toClient = ConnectCrypto.hkdf(ikm, transcript, "tmpm2 t2c".toByteArray(Charsets.UTF_8))
         return if (host) SecureChannel(sendKey = toClient, receiveKey = toHost) else SecureChannel(sendKey = toHost, receiveKey = toClient)
     }
 }

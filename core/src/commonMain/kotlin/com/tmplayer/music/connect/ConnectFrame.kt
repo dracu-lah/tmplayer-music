@@ -15,16 +15,16 @@ import kotlinx.serialization.json.put
  */
 sealed interface ConnectFrame {
     /** The host's first line: its fresh nonce, its id and its name. */
-    data class Hello(val version: Int, val nonce: String, val id: String, val name: String) : ConnectFrame
+    data class Hello(val version: Int, val nonce: String, val id: String, val name: String, val key: String = "") : ConnectFrame
 
     /** A paired phone proving it holds the secret. */
-    data class Auth(val version: Int, val id: String, val name: String, val nonce: String, val mac: String) : ConnectFrame
+    data class Auth(val version: Int, val id: String, val name: String, val nonce: String, val key: String, val mac: String) : ConnectFrame
 
     /** The host proving it holds the same secret. */
     data class Ready(val mac: String) : ConnectFrame
 
     /** A new phone proving it saw the code on the TV's screen. */
-    data class Pair(val version: Int, val id: String, val name: String, val nonce: String, val mac: String) : ConnectFrame
+    data class Pair(val version: Int, val id: String, val name: String, val nonce: String, val key: String, val via: ConnectHandshake.Via, val mac: String) : ConnectFrame
 
     /** The new secret (hidden under a key made from the code) and the host's proof of it. */
     data class Paired(val wrapped: String, val mac: String) : ConnectFrame
@@ -60,10 +60,10 @@ object ConnectFrames {
 
     fun encode(frame: ConnectFrame): String = buildJsonObject {
         when (frame) {
-            is ConnectFrame.Hello -> { put("t", "hello"); put("v", frame.version); put("sn", frame.nonce); put("id", frame.id); put("name", frame.name) }
-            is ConnectFrame.Auth -> { put("t", "auth"); put("v", frame.version); put("id", frame.id); put("name", frame.name); put("cn", frame.nonce); put("m", frame.mac) }
+            is ConnectFrame.Hello -> { put("t", "hello"); put("v", frame.version); put("sn", frame.nonce); put("id", frame.id); put("name", frame.name); put("ek", frame.key) }
+            is ConnectFrame.Auth -> { put("t", "auth"); put("v", frame.version); put("id", frame.id); put("name", frame.name); put("cn", frame.nonce); put("ek", frame.key); put("m", frame.mac) }
             is ConnectFrame.Ready -> { put("t", "ready"); put("m", frame.mac) }
-            is ConnectFrame.Pair -> { put("t", "pair"); put("v", frame.version); put("id", frame.id); put("name", frame.name); put("cn", frame.nonce); put("m", frame.mac) }
+            is ConnectFrame.Pair -> { put("t", "pair"); put("v", frame.version); put("id", frame.id); put("name", frame.name); put("cn", frame.nonce); put("ek", frame.key); put("via", frame.via.wire); put("m", frame.mac) }
             is ConnectFrame.Paired -> { put("t", "paired"); put("w", frame.wrapped); put("m", frame.mac) }
             is ConnectFrame.Err -> { put("t", "err"); put("c", frame.code); put("left", frame.left); put("retry", frame.retrySeconds) }
             is ConnectFrame.Secured -> { put("s", frame.seq); put("p", frame.payload); put("m", frame.mac) }
@@ -85,24 +85,41 @@ object ConnectFrames {
             return ConnectFrame.Secured(seq, payload, mac)
         }
         return when (o.str("t")) {
-            "hello" -> ConnectFrame.Hello(
-                o.int("v") ?: return null, o.hexField("sn", NONCE_CHARS) ?: return null,
-                o.hexField("id", ID_CHARS) ?: return null, o.text("name", NAME_MAX),
-            )
-            "auth" -> ConnectFrame.Auth(
-                o.int("v") ?: return null, o.hexField("id", ID_CHARS) ?: return null, o.text("name", NAME_MAX),
-                o.hexField("cn", NONCE_CHARS) ?: return null, o.hexField("m", MAC_CHARS) ?: return null,
-            )
+            // A peer of another protocol version has no ephemeral key (or another kind): its frame still
+            // parses, with an empty key, so it can be told "version" instead of being dropped as garbage.
+            "hello" -> {
+                val v = o.int("v") ?: return null
+                ConnectFrame.Hello(
+                    v, o.hexField("sn", NONCE_CHARS) ?: return null, o.hexField("id", ID_CHARS) ?: return null, o.text("name", NAME_MAX),
+                    key(o, v) ?: return null,
+                )
+            }
+            "auth" -> {
+                val v = o.int("v") ?: return null
+                ConnectFrame.Auth(
+                    v, o.hexField("id", ID_CHARS) ?: return null, o.text("name", NAME_MAX),
+                    o.hexField("cn", NONCE_CHARS) ?: return null, key(o, v) ?: return null, o.hexField("m", MAC_CHARS) ?: return null,
+                )
+            }
             "ready" -> ConnectFrame.Ready(o.hexField("m", MAC_CHARS) ?: return null)
-            "pair" -> ConnectFrame.Pair(
-                o.int("v") ?: return null, o.hexField("id", ID_CHARS) ?: return null, o.text("name", NAME_MAX),
-                o.hexField("cn", NONCE_CHARS) ?: return null, o.hexField("m", MAC_CHARS) ?: return null,
-            )
+            "pair" -> {
+                val v = o.int("v") ?: return null
+                ConnectFrame.Pair(
+                    v, o.hexField("id", ID_CHARS) ?: return null, o.text("name", NAME_MAX),
+                    o.hexField("cn", NONCE_CHARS) ?: return null, key(o, v) ?: return null,
+                    ConnectHandshake.Via.of(o.str("via")) ?: if (v != ConnectLimits.VERSION) ConnectHandshake.Via.Code else return null,
+                    o.hexField("m", MAC_CHARS) ?: return null,
+                )
+            }
             "paired" -> ConnectFrame.Paired(o.hexField("w", MAC_CHARS) ?: return null, o.hexField("m", MAC_CHARS) ?: return null)
             "err" -> ConnectFrame.Err(o.text("c", 40), (o.int("left") ?: 0).coerceIn(0, 100), (o.int("retry") ?: 0).coerceIn(0, 3600))
             else -> null
         }
     }
+
+    /** The ephemeral public key (a 130 digit point) of a current frame; empty for another version; null when malformed. */
+    private fun key(o: JsonObject, version: Int): String? =
+        if (version != ConnectLimits.VERSION) "" else o.hexField("ek", EphemeralKey.POINT_CHARS..EphemeralKey.POINT_CHARS)
 
     /** A hex field of exactly [chars] characters (an id is 16 to 64), or null. */
     private fun JsonObject.hexField(key: String, chars: IntRange): String? {

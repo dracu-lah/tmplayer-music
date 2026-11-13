@@ -48,19 +48,35 @@ object ConnectClient {
     private const val IDLE_MS = 75_000
 
     /** Pairs with the TV at [host]:[port] using [code] as typed (digits only). */
-    fun pair(host: String, port: Int, me: ClientIdentity, code: String): PairResult {
+    fun pair(host: String, port: Int, me: ClientIdentity, code: String): PairResult =
+        pair(host, port, me, ConnectHandshake.Via.Code, code.filter { it.isDigit() }, expectedTv = null)
+
+    /** Pairs with the TV of a scanned [link]: the token inside the key exchange, and only the TV the QR code named. */
+    fun pair(link: PairLink, me: ClientIdentity): PairResult =
+        pair(link.host, link.port, me, ConnectHandshake.Via.Token, link.token, expectedTv = link.tvId)
+
+    private fun pair(host: String, port: Int, me: ClientIdentity, via: ConnectHandshake.Via, proof: String, expectedTv: String?): PairResult {
         val socket = Socket()
         try {
-            val (lines, out, hello) = open(socket, host, port) ?: return PairResult.Unreachable("not a TV")
+            val opened = when (val o = open(socket, host, port)) {
+                is Opening.Ready -> o.opened
+                Opening.OtherVersion -> return PairResult.Refused(ConnectErrors.VERSION, 0, 0)
+                Opening.NotATv -> return PairResult.Unreachable("not a TV")
+            }
+            val (lines, out, hello) = opened
+            if (expectedTv != null && hello.id != expectedTv) return PairResult.Refused(ConnectErrors.DENIED, 0, 0)
             val cn = ConnectHandshake.newNonce()
-            val codeKey = ConnectHandshake.codeKey(code.filter { it.isDigit() }, hello.nonce, cn)
-            write(out, ConnectFrame.Pair(ConnectLimits.VERSION, me.id, me.name, cn, ConnectHandshake.pairMac(codeKey, hello.nonce, cn, me.id)))
+            val key = EphemeralKey.generate()
+            val shared = key.agree(hello.key) ?: return PairResult.Unreachable("not a TV")
+            val th = ConnectHandshake.transcript(via.wire, ConnectLimits.VERSION, hello.nonce, cn, hello.id, hello.key, me.id, me.name, key.publicHex)
+            val confirmKey = ConnectHandshake.confirmKey(shared, th, via, proof)
+            write(out, ConnectFrame.Pair(ConnectLimits.VERSION, me.id, me.name, cn, key.publicHex, via, ConnectHandshake.pairMac(confirmKey, th)))
             return when (val answer = ConnectFrames.parse(lines.next() ?: return PairResult.Unreachable("closed"))) {
                 is ConnectFrame.Paired -> {
-                    val secret = ConnectHandshake.unwrap(answer.wrapped, codeKey, hello.nonce, cn, me.id)
+                    val secret = ConnectHandshake.unwrap(answer.wrapped, confirmKey, th)
                         ?: return PairResult.Refused(ConnectErrors.DENIED, 0, 0)
-                    // The TV must also know the code: its proof is over the secret it made.
-                    if (!ConnectCrypto.same(answer.mac, ConnectHandshake.pairedMac(secret, hello.nonce, cn))) return PairResult.Refused(ConnectErrors.DENIED, 0, 0)
+                    // The TV must also know the proof: its answer is over the secret it hid under the key.
+                    if (!ConnectCrypto.same(answer.mac, ConnectHandshake.pairedMac(secret, th))) return PairResult.Refused(ConnectErrors.DENIED, 0, 0)
                     PairResult.Success(Paired(hello.id, hello.name.ifBlank { host }, ConnectCrypto.hex(secret), System.currentTimeMillis() / 1000, host, port))
                 }
                 is ConnectFrame.Err -> PairResult.Refused(answer.code, answer.left, answer.retrySeconds)
@@ -85,20 +101,28 @@ object ConnectClient {
         val socket = Socket()
         var handedOver = false
         try {
-            val (lines, out, hello) = open(socket, host, port) ?: return ConnectResult.Unreachable("not a TV")
+            val opened = when (val o = open(socket, host, port)) {
+                is Opening.Ready -> o.opened
+                Opening.OtherVersion -> return ConnectResult.Refused(ConnectErrors.VERSION)
+                Opening.NotATv -> return ConnectResult.Unreachable("not a TV")
+            }
+            val (lines, out, hello) = opened
             if (hello.id != tv.id) return ConnectResult.Refused(ConnectErrors.DENIED)
             val cn = ConnectHandshake.newNonce()
-            write(out, ConnectFrame.Auth(ConnectLimits.VERSION, me.id, me.name, cn, ConnectHandshake.authMac(secret, hello.nonce, cn, me.id)))
+            val key = EphemeralKey.generate()
+            val shared = key.agree(hello.key) ?: return ConnectResult.Unreachable("not a TV")
+            val th = ConnectHandshake.transcript("auth", ConnectLimits.VERSION, hello.nonce, cn, hello.id, hello.key, me.id, me.name, key.publicHex)
+            write(out, ConnectFrame.Auth(ConnectLimits.VERSION, me.id, me.name, cn, key.publicHex, ConnectHandshake.authMac(secret, th)))
             when (val answer = ConnectFrames.parse(lines.next() ?: return ConnectResult.Unreachable("closed"))) {
                 is ConnectFrame.Ready -> {
-                    if (!ConnectCrypto.same(answer.mac, ConnectHandshake.readyMac(secret, hello.nonce, cn))) return ConnectResult.Refused(ConnectErrors.DENIED)
+                    if (!ConnectCrypto.same(answer.mac, ConnectHandshake.readyMac(secret, th))) return ConnectResult.Refused(ConnectErrors.DENIED)
                 }
                 is ConnectFrame.Err -> return ConnectResult.Refused(answer.code)
                 else -> return ConnectResult.Unreachable("unexpected answer")
             }
             socket.soTimeout = IDLE_MS
             val wire = ConnectWire(
-                socket, lines, out, ConnectHandshake.channel(secret, hello.nonce, cn, host = false),
+                socket, lines, out, ConnectHandshake.channel(shared, secret, th, host = false),
                 pingEveryMs = PING_MS, onBody = onBody, onClosed = onClosed,
             )
             wire.start("connect-tv")
@@ -115,18 +139,26 @@ object ConnectClient {
 
     private data class Opened(val lines: BoundedLines, val out: java.io.OutputStream, val hello: ConnectFrame.Hello)
 
-    /** Connects and reads the host's hello; null when what answered is not a host of this protocol. */
-    private fun open(socket: Socket, host: String, port: Int): Opened? {
+    private sealed interface Opening {
+        class Ready(val opened: Opened) : Opening
+
+        /** A TV that speaks another protocol version (an older or newer build): both need the same one. */
+        data object OtherVersion : Opening
+        data object NotATv : Opening
+    }
+
+    /** Connects and reads the host's hello; says so when what answered is not a host of this protocol, or of another version. */
+    private fun open(socket: Socket, host: String, port: Int): Opening {
         // Only the local network: a typed address that is public is never connected to.
         val address = java.net.InetAddress.getByName(host)
-        if (!LocalNet.isLocal(address)) return null
+        if (!LocalNet.isLocal(address)) return Opening.NotATv
         socket.tcpNoDelay = true
         socket.connect(InetSocketAddress(address, port), CONNECT_MS)
         socket.soTimeout = HANDSHAKE_MS
         val lines = BoundedLines(socket.getInputStream())
-        val hello = ConnectFrames.parse(lines.next() ?: return null) as? ConnectFrame.Hello ?: return null
-        if (hello.version != ConnectLimits.VERSION) return null
-        return Opened(lines, socket.getOutputStream(), hello)
+        val hello = ConnectFrames.parse(lines.next() ?: return Opening.NotATv) as? ConnectFrame.Hello ?: return Opening.NotATv
+        if (hello.version != ConnectLimits.VERSION) return Opening.OtherVersion
+        return Opening.Ready(Opened(lines, socket.getOutputStream(), hello))
     }
 
     private fun write(out: java.io.OutputStream, frame: ConnectFrame) {
