@@ -96,6 +96,7 @@ dependencies {
     runtimeOnly(mpvRuntime)
     runtimeOnly(libs.slf4j.nop)
 
+    testImplementation(kotlin("test"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.cmp.ui.test.junit4)
