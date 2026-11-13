@@ -301,24 +301,27 @@ object Library {
     suspend fun pick(chats: List<ChatPick>) {
         val before = index().pickedChats().map { it.chatId }.toSet()
         val after = chats.map { it.chatId }.toSet()
-        (before - after).forEach {
+        val dropped = before - after
+        dropped.forEach {
             scanner.forget(it)
             dropLoaders(it)
-            // Kept offline files of a chat that is no longer picked go with its rows.
-            OfflineDownloads.purgeChat(it)
         }
+        // The index first: if the change fails, nothing kept offline was touched. The kept files of
+        // a chat that is no longer picked go after it, together and not one wait after the other.
         index().setPicked(chats)
         _changes.value++
+        OfflineDownloads.purgeChats(dropped)
         scanner.scan(after.toList())
     }
 
     /** Removes one chat and its tracks, for Manage chats. */
     suspend fun removeChat(chatId: Long) {
         scanner.forget(chatId)
-        OfflineDownloads.purgeChat(chatId)
         index().removeChat(chatId)
         dropLoaders(chatId)
         _changes.value++
+        // After the index change, so a failed one leaves the kept files alone.
+        OfflineDownloads.purgeChat(chatId)
     }
 
     /** Scans every chosen chat again from where it stopped, and tops up the finished ones. */

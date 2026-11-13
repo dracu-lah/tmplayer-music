@@ -311,15 +311,37 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
 
     if (page == Page.Picker) {
         HidePlayerSheet()
+        // Taking chats out deletes what is kept offline from them: asked first, with Cancel focused.
+        var unpick by remember { mutableStateOf<Pair<List<com.tmplayer.music.ui.onboarding.PickedChat>, Int>?>(null) }
+        val pickNow: (List<com.tmplayer.music.ui.onboarding.PickedChat>) -> Unit = { picked ->
+            scope.launch { runCatching { Library.pick(picked.map { ChatPick(it.chatId, it.title) }) } }
+            pop()
+        }
         ChatPicker(
             directory = Library.directory,
             already = chatTitles.keys,
             onBack = pop,
             onDone = { picked ->
-                scope.launch { runCatching { Library.pick(picked.map { ChatPick(it.chatId, it.title) }) } }
-                pop()
+                val kept = com.tmplayer.music.data.OfflineDownloads.keptIn(chatTitles.keys - picked.map { it.chatId }.toSet())
+                if (kept > 0) unpick = picked to kept else pickNow(picked)
             },
         )
+        unpick?.let { (picked, kept) ->
+            AlertDialog(
+                onDismissRequest = { unpick = null },
+                title = { Text(L.offlineUnpickTitle) },
+                text = { Text(L.offlineUnpickBody(kept)) },
+                confirmButton = {
+                    TextButton(modifier = Modifier.tvFocusRing(), onClick = {
+                        unpick = null
+                        pickNow(picked)
+                    }) { Text(L.offlineUnpickConfirm) }
+                },
+                dismissButton = {
+                    TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { unpick = null }) { Text(L.commonCancel) }
+                },
+            )
+        }
         return
     }
 

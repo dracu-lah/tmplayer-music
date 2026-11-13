@@ -297,17 +297,35 @@ private fun ManageChats(onClose: () -> Unit) {
     BackHandler(onBack = onClose)
     val already = picked ?: return
     val scope = rememberCoroutineScope()
+    // Taking chats out deletes what is kept offline from them: asked first, with Cancel focused.
+    var unpick by remember { mutableStateOf<Pair<List<com.tmplayer.music.desktop.ui.library.PickedChat>, Int>?>(null) }
+    val pick: (List<com.tmplayer.music.desktop.ui.library.PickedChat>) -> Unit = { chosen ->
+        scope.launch(JobFailures.handler("ManageChats")) {
+            runCatching { Library.pick(chosen.map { ChatPick(it.chatId, it.title) }) }
+            onClose()
+        }
+    }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         ChatPicker(
             directory = Library.directory,
             already = already,
             onDone = { chosen ->
-                scope.launch(JobFailures.handler("ManageChats")) {
-                    runCatching { Library.pick(chosen.map { ChatPick(it.chatId, it.title) }) }
-                    onClose()
-                }
+                val kept = com.tmplayer.music.data.OfflineDownloads.keptIn(already - chosen.map { it.chatId }.toSet())
+                if (kept > 0) unpick = chosen to kept else pick(chosen)
             },
             onBack = onClose,
+        )
+    }
+    unpick?.let { (chosen, kept) ->
+        com.tmplayer.music.desktop.ui.library.AskDialog(
+            title = L.offlineUnpickTitle,
+            text = L.offlineUnpickBody(kept),
+            confirm = L.offlineUnpickConfirm,
+            onConfirm = {
+                unpick = null
+                pick(chosen)
+            },
+            onDismiss = { unpick = null },
         )
     }
 }
