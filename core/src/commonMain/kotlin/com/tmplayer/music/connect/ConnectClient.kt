@@ -23,7 +23,10 @@ sealed interface PairResult {
 sealed interface ConnectResult {
     data class Connected(val connection: RemoteConnection) : ConnectResult
 
-    /** [code] is a [ConnectErrors] value: [ConnectErrors.UNPAIRED] means the TV forgot this phone, [ConnectErrors.DENIED] that the secret no longer fits. */
+    /**
+     * [code] is a [ConnectErrors] value: [ConnectErrors.UNPAIRED] means the TV forgot this phone,
+     * [ConnectErrors.DENIED] that the secret no longer fits, [ConnectErrors.WRONG_TV] that another device answered at that address.
+     */
     data class Refused(val code: String) : ConnectResult
     data class Unreachable(val reason: String) : ConnectResult
 }
@@ -47,15 +50,29 @@ object ConnectClient {
     const val PING_MS = 25_000L
     private const val IDLE_MS = 75_000
 
-    /** Pairs with the TV at [host]:[port] using [code] as typed (digits only). */
-    fun pair(host: String, port: Int, me: ClientIdentity, code: String): PairResult =
-        pair(host, port, me, ConnectHandshake.Via.Code, code.filter { it.isDigit() }, expectedTv = null)
+    /** How long the TV's user has to answer "does your phone show the same string?" (the phone's own user has as long). */
+    const val SAS_MS = 70_000
 
-    /** Pairs with the TV of a scanned [link]: the token inside the key exchange, and only the TV the QR code named. */
+    /**
+     * Pairs with the TV at [host]:[port] using [code] as typed (digits only). When the TV accepts the
+     * code, [confirm] is called (on this thread, so it may block while the user looks) with the string
+     * this phone derived and the TV's name: true when the user says the TV shows the same string.
+     * The TV's user must confirm too; either no ends the attempt as [ConnectErrors.DECLINED].
+     */
+    fun pair(host: String, port: Int, me: ClientIdentity, code: String, confirm: (sas: String, tvName: String) -> Boolean): PairResult =
+        pair(host, port, me, ConnectHandshake.Via.Code, code.filter { it.isDigit() }, expectedTv = null, expectedKey = null, confirm = confirm)
+
+    /**
+     * Pairs with the TV of a scanned [link]: the token inside the key exchange, and only the TV the QR
+     * code named, with the key its fingerprint names. Nothing is compared on screen on this path.
+     */
     fun pair(link: PairLink, me: ClientIdentity): PairResult =
-        pair(link.host, link.port, me, ConnectHandshake.Via.Token, link.token, expectedTv = link.tvId)
+        pair(link.host, link.port, me, ConnectHandshake.Via.Token, link.token, expectedTv = link.tvId, expectedKey = link.fingerprint, confirm = null)
 
-    private fun pair(host: String, port: Int, me: ClientIdentity, via: ConnectHandshake.Via, proof: String, expectedTv: String?): PairResult {
+    private fun pair(
+        host: String, port: Int, me: ClientIdentity, via: ConnectHandshake.Via, proof: String, expectedTv: String?, expectedKey: String?,
+        confirm: ((String, String) -> Boolean)?,
+    ): PairResult {
         val socket = Socket()
         try {
             val opened = when (val o = open(socket, host, port)) {
@@ -64,13 +81,36 @@ object ConnectClient {
                 Opening.NotATv -> return PairResult.Unreachable("not a TV")
             }
             val (lines, out, hello) = opened
-            if (expectedTv != null && hello.id != expectedTv) return PairResult.Refused(ConnectErrors.DENIED, 0, 0)
+            if (expectedTv != null && hello.id != expectedTv) return PairResult.Refused(ConnectErrors.WRONG_TV, 0, 0)
+            // The QR code names the key the TV will answer with: anything else at that address is not that TV.
+            if (expectedKey != null && !ConnectCrypto.same(ConnectHandshake.fingerprint(hello.key), expectedKey)) {
+                return PairResult.Refused(ConnectErrors.WRONG_TV, 0, 0)
+            }
             val cn = ConnectHandshake.newNonce()
             val key = EphemeralKey.generate()
             val shared = key.agree(hello.key) ?: return PairResult.Unreachable("not a TV")
-            val th = ConnectHandshake.transcript(via.wire, ConnectLimits.VERSION, hello.nonce, cn, hello.id, hello.key, me.id, me.name, key.publicHex)
+            // A typed code is not enough alone (see ConnectHandshake): the phone commits to its value for the string before it sees the TV's.
+            val reveal = if (confirm != null) ConnectHandshake.newReveal() else ""
+            val commit = if (confirm != null) ConnectHandshake.commit(reveal) else ""
+            val th = ConnectHandshake.transcript(via.wire, ConnectLimits.VERSION, hello.nonce, cn, hello.id, hello.key, me.id, me.name, key.publicHex, commit)
             val confirmKey = ConnectHandshake.confirmKey(shared, th, via, proof)
-            write(out, ConnectFrame.Pair(ConnectLimits.VERSION, me.id, me.name, cn, key.publicHex, via, ConnectHandshake.pairMac(confirmKey, th)))
+            write(out, ConnectFrame.Pair(ConnectLimits.VERSION, me.id, me.name, cn, key.publicHex, via, ConnectHandshake.pairMac(confirmKey, th), commit))
+            if (confirm != null) {
+                when (val init = ConnectFrames.parse(lines.next() ?: return PairResult.Unreachable("closed"))) {
+                    is ConnectFrame.SasInit -> {
+                        if (!ConnectCrypto.same(init.mac, ConnectHandshake.sasInitMac(confirmKey, th, init.reveal))) return PairResult.Refused(ConnectErrors.DENIED, 0, 0)
+                        write(out, ConnectFrame.SasReveal(reveal))
+                        val sas = ConnectHandshake.sas(shared, th, init.reveal, reveal)
+                        val ok = confirm(sas, hello.name.ifBlank { host })
+                        write(out, ConnectFrame.Confirm(ok, ConnectHandshake.decisionMac(confirmKey, th, sas, ok)))
+                        if (!ok) return PairResult.Refused(ConnectErrors.DECLINED, 0, 0)
+                        // The TV's user answers in their own time.
+                        socket.soTimeout = SAS_MS
+                    }
+                    is ConnectFrame.Err -> return PairResult.Refused(init.code, init.left, init.retrySeconds)
+                    else -> return PairResult.Unreachable("unexpected answer")
+                }
+            }
             return when (val answer = ConnectFrames.parse(lines.next() ?: return PairResult.Unreachable("closed"))) {
                 is ConnectFrame.Paired -> {
                     val secret = ConnectHandshake.unwrap(answer.wrapped, confirmKey, th)
@@ -107,7 +147,8 @@ object ConnectClient {
                 Opening.NotATv -> return ConnectResult.Unreachable("not a TV")
             }
             val (lines, out, hello) = opened
-            if (hello.id != tv.id) return ConnectResult.Refused(ConnectErrors.DENIED)
+            // Another device on the address a TV used to have is not a refusal of this phone: the caller looks again.
+            if (hello.id != tv.id) return ConnectResult.Refused(ConnectErrors.WRONG_TV)
             val cn = ConnectHandshake.newNonce()
             val key = EphemeralKey.generate()
             val shared = key.agree(hello.key) ?: return ConnectResult.Unreachable("not a TV")

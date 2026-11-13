@@ -11,20 +11,40 @@ import java.util.concurrent.TimeUnit
 /**
  * Reads lines with a hard size cap: a peer that never sends a newline cannot make this hold more
  * than [max] bytes, which `readLine` would. A line past the cap or a stream cut mid line is null.
+ * A carriage return is dropped from the line but counts toward the cap, so a stream of them is no
+ * way around it.
+ *
+ * A socket's read timeout is per read, so a peer that sends a byte every few seconds never trips it.
+ * [limitTo] sets a time the whole of what is read next (every line until the next call) must arrive
+ * in; with a [socket] the read timeout follows what is left of it, and a read past it throws.
  */
-internal class BoundedLines(input: InputStream, private val max: Int = ConnectLimits.MAX_LINE) {
+internal class BoundedLines(input: InputStream, @Volatile var max: Int = ConnectLimits.MAX_LINE, private val socket: Socket? = null) {
     private val input = BufferedInputStream(input, 4096)
     private val buffer = java.io.ByteArrayOutputStream()
+    private var deadline = 0L
 
-    /** The next line without its newline, or null at the end of the stream; throws on a line past the cap or a socket error. */
+    /** From now, every read must finish within [ms] (0 lifts the limit). */
+    fun limitTo(ms: Long) {
+        deadline = if (ms > 0) System.nanoTime() + ms * 1_000_000 else 0L
+    }
+
+    private fun leftMs(): Long = (deadline - System.nanoTime()) / 1_000_000
+
+    /** The next line without its newline, or null at the end of the stream; throws on a line past the cap, past the deadline or a socket error. */
     fun next(): String? {
         buffer.reset()
+        var raw = 0
         while (true) {
+            if (deadline != 0L) {
+                val left = leftMs()
+                if (left <= 0) throw IOException("too slow")
+                runCatching { socket?.soTimeout = left.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
+            }
             val b = input.read()
             if (b < 0) return null
             if (b == '\n'.code) return buffer.toString(Charsets.UTF_8.name())
+            if (++raw > max) throw IOException("line too long")
             if (b == '\r'.code) continue
-            if (buffer.size() >= max) throw IOException("line too long")
             buffer.write(b)
         }
     }

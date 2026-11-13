@@ -96,6 +96,61 @@ class ConnectLogicTest {
     }
 
     @Test
+    fun wrongTriesSurviveANewCodeUntilTheWindowEndsOrAPairingIsConfirmed() {
+        var now = 0L
+        val gate = PairingGate({ now })
+        gate.open()
+        repeat(3) { assertTrue(gate.attempt { false } is PairingVerdict.Wrong) }
+        // The code runs out and a new one is opened: the count is not reset by that.
+        now += PairingGate.CODE_MS + 1
+        gate.open()
+        assertEquals(PairingVerdict.Wrong(1), gate.attempt { false })
+        assertTrue(gate.attempt { false } is PairingVerdict.Locked)
+        // After the lock a confirmed pairing starts the count over.
+        now += PairingGate.LOCK_MS + 1
+        gate.open()
+        assertEquals(PairingVerdict.Wrong(4), gate.attempt { false })
+        assertEquals(PairingVerdict.Accepted, gate.attempt { true })
+        gate.complete()
+        gate.open()
+        assertEquals(PairingVerdict.Wrong(4), gate.attempt { false })
+        // Without a confirmation the window of ten minutes ends the count.
+        now += PairingGate.FAILURE_WINDOW_MS + 1
+        gate.open()
+        assertEquals(PairingVerdict.Wrong(4), gate.attempt { false })
+    }
+
+    @Test
+    fun aRightCodeThatTheUsersDidNotConfirmCountsAsAWrongTry() {
+        var now = 0L
+        val gate = PairingGate({ now })
+        repeat(4) {
+            gate.open()
+            assertEquals(PairingVerdict.Accepted, gate.attempt { true })
+            gate.reject()
+        }
+        gate.open()
+        assertEquals(PairingVerdict.Accepted, gate.attempt { true })
+        // The fifth no locks the door, though the code was spent and no new one was on show.
+        gate.reject()
+        assertTrue(gate.lockedUntil.value > now)
+        assertTrue(gate.attempt { true } is PairingVerdict.Locked)
+        now += PairingGate.LOCK_MS + 1
+        gate.open()
+        assertEquals(PairingVerdict.Accepted, gate.attempt { true })
+    }
+
+    @Test
+    fun anOfferCarriesTheKeyTheTvAnswersWith() {
+        val gate = PairingGate({ 0L })
+        val offer = gate.open()
+        assertEquals(ConnectHandshake.FINGERPRINT_CHARS, offer.fingerprint.length)
+        assertEquals(offer.fingerprint, ConnectHandshake.fingerprint(offer.key.publicHex))
+        // A new code is a new key.
+        assertFalse(offer.fingerprint == gate.open().fingerprint)
+    }
+
+    @Test
     fun aCodeExpiresAndAClosedGateRefuses() {
         var now = 0L
         val gate = PairingGate({ now })
