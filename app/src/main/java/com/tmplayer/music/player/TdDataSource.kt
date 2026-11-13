@@ -51,7 +51,17 @@ fun tdTrackOf(uri: Uri): TrackId? {
 /** The file kept offline for the audio a `tdfile` URI names, or null (not kept, a cover, another scheme). */
 fun keptFileOf(uri: Uri): java.io.File? {
     if (uri.scheme != TD_SCHEME || tdIsThumb(uri)) return null
-    return tdTrackOf(uri)?.let { com.tmplayer.music.data.OfflineDownloads.pathOf(it) }
+    val id = tdTrackOf(uri) ?: return null
+    com.tmplayer.music.data.OfflineDownloads.pathOf(id)?.let { return it }
+    // The same file kept from another chat (a forward) plays offline too: look its unique id up,
+    // only when something kept has one. This runs on the player's loader thread, never on Main.
+    if (!com.tmplayer.music.data.OfflineDownloads.store.hasUniques()) return null
+    val unique = runCatching {
+        kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(2_000) { com.tmplayer.music.data.Library.index().track(id)?.uniqueId }
+        }
+    }.getOrNull().orEmpty()
+    return com.tmplayer.music.data.OfflineDownloads.pathOf(id, unique)
 }
 
 /** True when a `tdfile` URI asks for the message's cover thumbnail rather than its audio. */

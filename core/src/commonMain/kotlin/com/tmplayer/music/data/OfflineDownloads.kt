@@ -93,8 +93,11 @@ object OfflineDownloads {
 
     fun isKept(id: TrackId): Boolean = store.isKept(id)
 
-    /** The kept file of [id] to play, or null when it is not kept (or its file is gone). */
-    fun pathOf(id: TrackId): File? = store.pathOf(id)
+    /**
+     * The kept file of [id] to play, or null when it is not kept (or its file is gone). With a
+     * [uniqueId], the same file kept from another chat plays too.
+     */
+    fun pathOf(id: TrackId, uniqueId: String = ""): File? = store.pathOf(id, uniqueId)
 
     fun freeBytes(): Long = store.folder?.let { runCatching { it.usableSpace }.getOrDefault(0L) } ?: 0L
 
@@ -105,7 +108,7 @@ object OfflineDownloads {
             tracks = tracks,
             kept = kept.keys,
             queued = pending.value,
-            keptUniques = kept.values.mapTo(HashSet()) { it.uniqueId },
+            keptUniques = kept.values.filter { OfflinePlanner.isRealUnique(it.uniqueId) }.mapTo(HashSet()) { it.uniqueId },
             freeBytes = freeBytes(),
         )
     }
@@ -117,6 +120,8 @@ object OfflineDownloads {
             Logger.w(TAG, "keep before start: ignored")
             return
         }
+        // The same file kept from another chat: no copy, linked at once.
+        plan.links.forEach { store.link(it) }
         running.enqueue(plan.toKeep)
     }
 
