@@ -23,7 +23,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  * session cover path ([ArtworkBytes]: the saved cover, Telegram's thumbnail, the generated cover),
  * then shrink to [PX] a side, so a page of 100 rows is about a megabyte, not thirty. A few at a
  * time, each given [LOAD_MS] for a thumbnail that has to be fetched; a row that cannot get one
- * falls back to the generated cover, never to a wait. Recent ones are kept.
+ * falls back to the generated cover, never to a wait. Recent ones are kept. A page waits for the
+ * covers of its first rows only ([of]); the rest get [quick] (kept or generated) and are fetched
+ * afterwards by [warm], so a long page is never held back by a slow thumbnail.
  */
 object BrowseArtwork {
     private const val TAG = "BrowseArtwork"
@@ -36,13 +38,32 @@ object BrowseArtwork {
         override fun sizeOf(key: String, value: ByteArray): Int = value.size
     }
 
+    private fun keyOf(art: BrowseArt) =
+        "${art.coverKey}|${art.thumbFileId}|${art.track?.chatId}:${art.track?.messageId}|${art.generatedKey}"
+
     suspend fun of(art: BrowseArt?): ByteArray? {
         art ?: return null
-        val key = "${art.coverKey}|${art.thumbFileId}|${art.track?.chatId}:${art.track?.messageId}|${art.generatedKey}"
+        val key = keyOf(art)
         synchronized(recent) { recent.get(key) }?.let { return it }
         val bytes = gate.withPermit { withContext(Dispatchers.IO) { build(art) } } ?: return null
         synchronized(recent) { recent.put(key, bytes) }
         return bytes
+    }
+
+    /** The cover without any wait: the kept one, else the generated cover (a quick local draw); null for no art. */
+    suspend fun quick(art: BrowseArt?): ByteArray? {
+        art ?: return null
+        synchronized(recent) { recent.get(keyOf(art)) }?.let { return it }
+        return withContext(Dispatchers.IO) {
+            runCatching { com.tmplayer.music.ui.common.GeneratedCover.jpeg(art.generatedKey, PX, quality = 80) }.getOrNull()
+        }
+    }
+
+    /** Loads and keeps the cover of [art] for later; true when it was not kept before and now is. */
+    suspend fun warm(art: BrowseArt?): Boolean {
+        art ?: return false
+        if (synchronized(recent) { recent.get(keyOf(art)) } != null) return false
+        return of(art) != null
     }
 
     private suspend fun build(art: BrowseArt): ByteArray? {

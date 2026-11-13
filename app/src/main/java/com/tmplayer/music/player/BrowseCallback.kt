@@ -165,7 +165,11 @@ open class BrowseCallback(
             val offset = (page.coerceAtLeast(0).toLong() * pageSize.coerceAtLeast(1)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             val rows = tree().children(folder, offset, pageSize)
             synchronized(shown) { shown[browser.packageName] = Shown(folder, offset, rows.map { it.id }) }
-            LibraryResult.ofItemList(items(rows), params)
+            // The covers past the first rows arrive after the page; the browser is told when they are in.
+            LibraryResult.ofItemList(
+                items(rows) { runCatching { session.notifyChildrenChanged(browser, parentId, rows.size, params) } },
+                params,
+            )
         }
     }
 
@@ -320,11 +324,27 @@ open class BrowseCallback(
 
     // Rows as media items.
 
-    private suspend fun items(rows: List<BrowseEntry>): List<MediaItem> = withContext(Dispatchers.IO) {
-        rows.map { row -> async { item(row, withArt = true) } }.awaitAll()
+    /**
+     * The rows as items. Only the first [ART_ROWS] wait for their cover; the others carry the kept or
+     * generated one at once, and their real covers are fetched in the background, then [onCoversLoaded]
+     * runs (when any arrived) so the browser asks again.
+     */
+    private suspend fun items(rows: List<BrowseEntry>, onCoversLoaded: (() -> Unit)? = null): List<MediaItem> {
+        val out = withContext(Dispatchers.IO) {
+            rows.mapIndexed { i, row -> async { item(row, withArt = true, wait = i < ART_ROWS) } }.awaitAll()
+        }
+        if (rows.size > ART_ROWS) {
+            val later = rows.drop(ART_ROWS)
+            scope.launch {
+                var fresh = false
+                for (row in later) if (runCatching { BrowseArtwork.warm(row.art) }.getOrDefault(false)) fresh = true
+                if (fresh) onCoversLoaded?.invoke()
+            }
+        }
+        return out
     }
 
-    private suspend fun item(row: BrowseEntry, withArt: Boolean): MediaItem {
+    private suspend fun item(row: BrowseEntry, withArt: Boolean, wait: Boolean = true): MediaItem {
         val song = row.kind == EntryKind.Song
         val folder = row.kind == EntryKind.Folder
         val metadata = MediaMetadata.Builder()
@@ -348,13 +368,16 @@ open class BrowseCallback(
         if (song) {
             metadata.setExtras(Bundle().apply { putString(MediaIds.COVER_ART, row.art?.generatedKey) })
         }
-        if (withArt) BrowseArtwork.of(row.art)?.let { metadata.setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
+        if (withArt) (if (wait) BrowseArtwork.of(row.art) else BrowseArtwork.quick(row.art))?.let { metadata.setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
         return MediaItem.Builder().setMediaId(row.id).setMediaMetadata(metadata.build()).build()
     }
 
     companion object {
         private const val TAG = "BrowseCallback"
         private const val MAX_BROWSERS = 8
+
+        /** Rows of a page that wait for their cover; the rest get a quick one and the real one later. */
+        private const val ART_ROWS = 30
 
         /** Songs queued after a tapped one, and from a tapped folder or a search. */
         private const val QUEUE_AFTER = 100
