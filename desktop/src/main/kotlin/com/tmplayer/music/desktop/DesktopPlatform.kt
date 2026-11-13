@@ -27,6 +27,9 @@ object DesktopPaths : Paths {
     /** The library index (library.db), the saved covers and lyrics. */
     val libraryDir: File = File(dataDir, "library").apply { mkdirs() }
 
+    /** Tracks kept offline ([com.tmplayer.music.data.OfflineStore]): data, never part of the cache. */
+    val offlineDir: File = File(dataDir, "offline").apply { mkdirs() }
+
     /** The bounded log and the crash record, for Send logs. */
     val logsDir: File = File(dataDir, "logs").apply { mkdirs() }
 

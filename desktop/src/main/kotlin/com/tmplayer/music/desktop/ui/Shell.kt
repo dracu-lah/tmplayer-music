@@ -55,7 +55,17 @@ import com.tmplayer.music.desktop.ui.common.BackHandler
 import com.tmplayer.music.desktop.ui.common.ChatAvatar
 import com.tmplayer.music.desktop.ui.common.MusicIcons
 import com.tmplayer.music.desktop.ui.common.ShellCommands
+import com.tmplayer.music.desktop.ui.library.AddToPlaylistDialog
 import com.tmplayer.music.desktop.ui.library.AlbumPage
+import com.tmplayer.music.desktop.ui.library.Favourites
+import com.tmplayer.music.desktop.ui.library.FavouritesPage
+import com.tmplayer.music.desktop.ui.library.HomeScreen
+import com.tmplayer.music.desktop.ui.library.KeepOfflineHost
+import com.tmplayer.music.desktop.ui.library.LocalNotify
+import com.tmplayer.music.desktop.ui.library.OfflineUi
+import com.tmplayer.music.desktop.ui.library.PlaylistPage
+import com.tmplayer.music.desktop.ui.library.PlaylistsScreen
+import com.tmplayer.music.desktop.ui.library.SettingsScreen
 import com.tmplayer.music.desktop.ui.library.AlbumsScreen
 import com.tmplayer.music.desktop.ui.library.ArtistPage
 import com.tmplayer.music.desktop.ui.library.ArtistsScreen
@@ -71,7 +81,10 @@ import com.tmplayer.music.desktop.ui.library.SongActions
 import com.tmplayer.music.desktop.ui.library.SongsScreen
 import com.tmplayer.music.desktop.ui.library.TrackActions
 import com.tmplayer.music.desktop.ui.library.VersionsDialog
+import com.tmplayer.music.desktop.ui.player.LyricsPanel
 import com.tmplayer.music.desktop.ui.player.NowPlayingBar
+import com.tmplayer.music.desktop.ui.player.Panel
+import com.tmplayer.music.desktop.ui.player.SoundPanel
 import com.tmplayer.music.desktop.ui.player.PlayerErrorStrip
 import com.tmplayer.music.desktop.ui.player.QueuePanel
 import com.tmplayer.music.i18n.L
@@ -93,12 +106,13 @@ import kotlinx.coroutines.flow.map
 @Composable
 fun Shell(onLogOut: () -> Unit) {
     val player = DesktopApp.player
-    val nav = remember { Navigator(Route.Songs) }
+    val nav = remember { Navigator(Route.Home) }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var sort by remember { mutableStateOf(sortFromPrefs()) }
     var versionsFor by remember { mutableStateOf<Song?>(null) }
-    var queueOpen by remember { mutableStateOf(false) }
+    var panel by remember { mutableStateOf<Panel?>(null) }
+    var addingTo by remember { mutableStateOf<List<Song>?>(null) }
     var managing by remember { mutableStateOf(false) }
     var searchToken by remember { mutableIntStateOf(0) }
     var confirmLogOut by remember { mutableStateOf(false) }
@@ -117,6 +131,12 @@ fun Shell(onLogOut: () -> Unit) {
         }
     }
 
+    // The line Keep offline and the playlists say, in the snackbar; and the hearts, kept fresh.
+    val notify: (String) -> Unit = { text -> scope.launch { snackbar.currentSnackbarData?.dismiss(); snackbar.showSnackbar(text) } }
+    LaunchedEffect(Unit) { OfflineUi.notify = notify }
+    val changes by Library.changes.collectAsState()
+    LaunchedEffect(changes) { Favourites.refresh() }
+
     // Ctrl+F: the search page, with the keyboard in its field.
     LaunchedEffect(Unit) {
         ShellCommands.search.collect {
@@ -133,6 +153,14 @@ fun Shell(onLogOut: () -> Unit) {
             addToQueue = { songs -> player.addToQueue(songs) },
             shuffle = { songs -> if (songs.isNotEmpty()) player.play(songs, songs.indices.random(), shuffle = true) },
             versions = { versionsFor = it },
+            favourite = { songs, on ->
+                guarded {
+                    if (!Favourites.set(songs, on) && on) snackbar.showSnackbar(L.menuFavouritesFull)
+                }
+            },
+            isFavourite = { Favourites.has(it) },
+            addToPlaylist = { songs -> addingTo = songs },
+            keepOffline = { songs -> OfflineUi.keepSongs(songs) },
             openAlbum = { song ->
                 guarded { Library.index().album(song.albumKey)?.let { nav.push(Route.AlbumPage(it)) } }
             },
@@ -145,6 +173,8 @@ fun Shell(onLogOut: () -> Unit) {
         TrackActions(
             play = { tracks, start -> player.playTracks(tracks, start) },
             shuffle = { tracks -> if (tracks.isNotEmpty()) player.playTracks(tracks, tracks.indices.random(), shuffle = true) },
+            keepOffline = { tracks -> OfflineUi.keepTracks(tracks) },
+            keepChat = { chatId -> OfflineUi.keepChat(chatId) },
         )
     }
     val playAll: (SongSort, Boolean) -> Unit = { by, shuffle ->
@@ -160,12 +190,14 @@ fun Shell(onLogOut: () -> Unit) {
         }
     }
 
+    val homePlay: (Boolean) -> Unit = { shuffle -> playAll(SongSort.Title, shuffle) }
+
     val mark by remember {
         player.ui.map { u -> u.current?.let { PlayingMark(it.songKey, it.id, u.playing) } }.distinctUntilChanged()
     }.collectAsState(null)
 
     val engine by player.engineFlow.collectAsState()
-    CompositionLocalProvider(LocalPlayingMark provides mark) {
+    CompositionLocalProvider(LocalPlayingMark provides mark, LocalNotify provides notify) {
         // libmpv loads nothing without a render surface attached, picture or not.
         Box(Modifier.size(1.dp)) { AudioSurface(engine) }
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -177,6 +209,11 @@ fun Shell(onLogOut: () -> Unit) {
                 )
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     when (val route = nav.current) {
+                        Route.Home -> HomeScreen(player, actions = actions, onPlayAll = homePlay, onManage = { managing = true })
+                        Route.Playlists -> PlaylistsScreen(onOpen = { nav.push(Route.PlaylistPage(it)) })
+                        Route.Favourites -> FavouritesPage(actions)
+                        Route.Settings -> SettingsScreen(onManageChats = { managing = true }, onLogOut = onLogOut)
+                        is Route.PlaylistPage -> PlaylistPage(route.playlist, actions, onGone = { nav.open(Route.Playlists) })
                         Route.Songs -> SongsScreen(
                             sort = sort,
                             onSort = {
@@ -200,12 +237,17 @@ fun Shell(onLogOut: () -> Unit) {
                         is Route.ArtistPage -> ArtistPage(route.artist, actions, onAlbum = { nav.push(Route.AlbumPage(it)) })
                     }
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
-                    if (queueOpen) QueuePanel(player, onClose = { queueOpen = false }, modifier = Modifier.align(Alignment.CenterEnd))
+                    when (panel) {
+                        Panel.Queue -> QueuePanel(player, onClose = { panel = null }, modifier = Modifier.align(Alignment.CenterEnd))
+                        Panel.Lyrics -> LyricsPanel(player, onClose = { panel = null }, modifier = Modifier.align(Alignment.CenterEnd))
+                        Panel.Sound -> SoundPanel(player, onClose = { panel = null }, modifier = Modifier.align(Alignment.CenterEnd))
+                        null -> Unit
+                    }
                     if (managing) ManageChats(onClose = { managing = false })
                 }
             }
             PlayerErrorStrip(player)
-            NowPlayingBar(player, queueOpen = queueOpen, onToggleQueue = { queueOpen = !queueOpen })
+            NowPlayingBar(player, open = panel, onToggle = { panel = if (panel == it) null else it })
         }
         versionsFor?.let { song ->
             VersionsDialog(
@@ -216,6 +258,13 @@ fun Shell(onLogOut: () -> Unit) {
                 },
                 onDismiss = { versionsFor = null },
             )
+        }
+        KeepOfflineHost()
+        addingTo?.let { songs ->
+            AddToPlaylistDialog(songs) { result ->
+                addingTo = null
+                result?.let(notify)
+            }
         }
         if (confirmLogOut) {
             AlertDialog(
@@ -275,10 +324,13 @@ private fun Sidebar(nav: Navigator, onManage: () -> Unit, onLogOut: () -> Unit) 
         Modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLowest).padding(vertical = 12.dp),
     ) {
         Text(L.appName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        SideItem(MusicIcons.Home, L.tabHome, current == Route.Home) { nav.open(Route.Home) }
         SideItem(MusicIcons.Search, L.searchTitle, current == Route.Search, hint = "Ctrl+F") { nav.open(Route.Search) }
         SideItem(MusicIcons.Library, L.tabSongs, current == Route.Songs) { nav.open(Route.Songs) }
         SideItem(MusicIcons.Grid, L.tabAlbums, current == Route.Albums) { nav.open(Route.Albums) }
         SideItem(MusicIcons.Person, L.tabArtists, current == Route.Artists) { nav.open(Route.Artists) }
+        SideItem(MusicIcons.ListRows, L.tabPlaylists, current == Route.Playlists) { nav.open(Route.Playlists) }
+        SideItem(MusicIcons.Heart, L.tabFavourites, current == Route.Favourites) { nav.open(Route.Favourites) }
         HorizontalDivider(Modifier.padding(vertical = 8.dp, horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(L.tabChats, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
@@ -293,6 +345,7 @@ private fun Sidebar(nav: Navigator, onManage: () -> Unit, onLogOut: () -> Unit) 
         }
         ScanStatus()
         SideItem(MusicIcons.Plus, L.manageTitle, false, onClick = onManage)
+        SideItem(MusicIcons.Settings, L.settingsTitle, current == Route.Settings) { nav.open(Route.Settings) }
         AccountItem(onLogOut)
     }
 }

@@ -1,0 +1,118 @@
+name: Desktop packages
+
+# Builds the desktop app's installers on demand, for trying them: run it by hand from the Actions
+# tab (workflow_dispatch). It never runs on a push or a tag, it never creates a tag or a release, and
+# it holds no signing key: the packages come out unsigned (an MSI Windows SmartScreen will ask about, a
+# DMG macOS will ask to open) and are kept for a few days as workflow artifacts only. Signing and
+# publishing a desktop release are the owner's steps, like the Android release in release.yml.
+#
+# The Telegram credentials are written to local.properties from the repository secrets, as the
+# Android release does, so the app can sign in. Without them the package still builds and the app
+# says so at sign in.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version of the packages (x.y.z, or x.y.z-beta.N)"
+        required: true
+        default: "0.1.0"
+
+permissions:
+  contents: read
+
+env:
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  linux:
+    name: Linux (tarball and AppImage)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Write Telegram credentials
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+        run: |
+          printf 'TG_API_ID=%s\nTG_API_HASH=%s\n' "$TG_API_ID" "$TG_API_HASH" > local.properties
+      - name: Unit tests
+        run: ./gradlew :core:jvmTest :desktop:test --console=plain
+      - name: App image
+        run: ./gradlew :desktop:createDistributable --console=plain -PdesktopVersion="$VERSION"
+      - name: Tools
+        run: |
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+      - name: Packages
+        run: APPIMAGETOOL="$PWD/appimagetool" APPIMAGE_EXTRACT_AND_RUN=1 desktop/packaging/linux/package.sh "${VERSION%%-*}"
+      - name: Shred credentials
+        if: always()
+        run: rm -f local.properties
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          path: desktop/build/packages/*
+          retention-days: 5
+          if-no-files-found: error
+
+  windows:
+    name: Windows (MSI)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Write Telegram credentials
+        shell: bash
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+        run: printf 'TG_API_ID=%s\nTG_API_HASH=%s\n' "$TG_API_ID" "$TG_API_HASH" > local.properties
+      - name: MSI
+        shell: bash
+        run: ./gradlew :desktop:packageMsi --console=plain -PdesktopVersion="$VERSION"
+      - name: Shred credentials
+        if: always()
+        shell: bash
+        run: rm -f local.properties
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: desktop/build/compose/binaries/main/msi/*.msi
+          retention-days: 5
+          if-no-files-found: error
+
+  macos:
+    name: macOS (DMG, Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Write Telegram credentials
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+        run: printf 'TG_API_ID=%s\nTG_API_HASH=%s\n' "$TG_API_ID" "$TG_API_HASH" > local.properties
+      - name: DMG
+        run: ./gradlew :desktop:packageDmg --console=plain -PdesktopVersion="$VERSION"
+      - name: Shred credentials
+        if: always()
+        run: rm -f local.properties
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          path: desktop/build/compose/binaries/main/dmg/*.dmg
+          retention-days: 5
+          if-no-files-found: error

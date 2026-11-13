@@ -26,7 +26,10 @@ import com.tmplayer.music.desktop.ui.library.PlayingMark
 import com.tmplayer.music.desktop.ui.library.SongActions
 import com.tmplayer.music.desktop.ui.library.SongTable
 import com.tmplayer.music.desktop.ui.player.NOW_PLAYING_HEIGHT
+import com.tmplayer.music.desktop.ui.library.HomeScreen
 import com.tmplayer.music.desktop.ui.player.NowPlayingBar
+import com.tmplayer.music.desktop.ui.player.Panel
+import com.tmplayer.music.desktop.ui.player.SoundPanel
 import com.tmplayer.music.desktop.ui.player.QueuePanel
 import com.tmplayer.music.desktop.ui.theme.MusicTheme
 import com.tmplayer.music.library.AudioFormat
@@ -73,12 +76,12 @@ class RenderTest {
         return array
     }
 
-    private fun assertBlackPageWithContent(image: Image) {
+    private fun assertBlackPageWithContent(image: Image, sparse: Boolean = false) {
         val pixels = image.pixels()
         val black = 0xFF000000.toInt()
         assertEquals(black, pixels[0], "the top left corner is pure black")
         val drawn = pixels.count { it != black }
-        assertTrue(drawn > pixels.size / 200, "something is drawn on the page ($drawn of ${pixels.size} pixels)")
+        assertTrue(drawn > pixels.size / (if (sparse) 4000 else 200), "something is drawn on the page ($drawn of ${pixels.size} pixels)")
     }
 
     @Test
@@ -128,7 +131,7 @@ class RenderTest {
                         SongTable(songs, rememberLazyListState(), none, ListSelection(setOf("song2", "song3"), "song2"), wide = true) {}
                         if (queue) QueuePanel(player, onClose = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd))
                     }
-                    NowPlayingBar(player, queueOpen = queue, onToggleQueue = {})
+                    NowPlayingBar(player, open = if (queue) Panel.Queue else null, onToggle = {})
                 }
             }
         }
@@ -157,6 +160,84 @@ class RenderTest {
         val player = playingPlayer()
         assertBlackPageWithContent(render("queue-900x600", 900, 600) { Library(player, queue = true, songs = (1..12).map(::song)) })
         player.close()
+    }
+
+    @Test
+    fun `home renders with the continue band at 900 by 600 and 1600 by 1000`() {
+        val player = playingPlayer()
+        val actions = SongActions({ _, _ -> }, {}, {}, {}, {}, {}, {})
+        for ((w, h) in listOf(900 to 600, 1600 to 1000)) {
+            assertBlackPageWithContent(
+                render("home-${w}x$h", w, h) {
+                    CompositionLocalProvider(LocalPlayingMark provides null) {
+                        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                            Column(Modifier.fillMaxSize()) {
+                                Box(Modifier.weight(1f).fillMaxWidth()) { HomeScreen(player, actions, onPlayAll = {}, onManage = {}) }
+                                NowPlayingBar(player, open = null, onToggle = {})
+                            }
+                        }
+                    }
+                },
+            )
+        }
+        player.close()
+    }
+
+    @Test
+    fun `the sound panel renders with every control and with only what the engine can do`() {
+        val player = playingPlayer()
+        for ((name, caps) in listOf(
+            "all" to com.tmplayer.music.desktop.player.EngineCapabilities(speed = true, gain = true, equalizer = true, skipSilence = true),
+            "speed-only" to com.tmplayer.music.desktop.player.EngineCapabilities(speed = true),
+            "none" to com.tmplayer.music.desktop.player.EngineCapabilities.NONE,
+        )) {
+            com.tmplayer.music.player.AudioEffectsSetting.choices.setEqualizerOn(true)
+            assertBlackPageWithContent(
+                render("sound-$name", 900, 760) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        Box(Modifier.fillMaxSize()) { SoundPanel(player, onClose = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd), capabilities = caps) }
+                    }
+                },
+            )
+        }
+        com.tmplayer.music.player.AudioEffectsSetting.choices.setEqualizerOn(false)
+        player.close()
+    }
+
+    /** The library over an empty index in a temporary folder, so the pages that read it can draw their empty state. */
+    private fun emptyLibrary() {
+        com.tmplayer.music.data.Library.start(java.nio.file.Files.createTempDirectory("render-library").toFile())
+    }
+
+    @Test
+    fun `settings, playlists and favourites render over an empty library`() {
+        emptyLibrary()
+        val actions = SongActions({ _, _ -> }, {}, {}, {}, {}, {}, {})
+        for ((w, h) in listOf(900 to 700, 1600 to 1000)) {
+            assertBlackPageWithContent(
+                render("settings-${w}x$h", w, h) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        com.tmplayer.music.desktop.ui.library.SettingsScreen(onManageChats = {}, onLogOut = {})
+                    }
+                },
+            )
+            assertBlackPageWithContent(
+                render("playlists-${w}x$h", w, h) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        com.tmplayer.music.desktop.ui.library.PlaylistsScreen(onOpen = {})
+                    }
+                },
+                sparse = true,
+            )
+            assertBlackPageWithContent(
+                render("favourites-${w}x$h", w, h) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        com.tmplayer.music.desktop.ui.library.FavouritesPage(actions)
+                    }
+                },
+                sparse = true,
+            )
+        }
     }
 
     @Test

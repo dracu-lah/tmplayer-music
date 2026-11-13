@@ -2,6 +2,7 @@ package com.tmplayer.music.desktop.player
 
 import com.tmplayer.music.data.FileIds
 import com.tmplayer.music.data.Library
+import com.tmplayer.music.data.OfflineDownloads
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.desktop.DesktopPaths
 import com.tmplayer.music.i18n.L
@@ -40,6 +41,8 @@ object TdTrackSource : TrackSource {
 
     override suspend fun open(entry: QueueEntry): MediaData {
         val track = trackOf(entry) ?: throw IOException(L.desktopTrackGone)
+        // Kept offline: the file in the app's own folder plays with no TDLib at all.
+        OfflineDownloads.pathOf(track.id)?.let { return LocalFileMediaData(it) }
         // The id saved in the index belongs to the session that scanned it: ask the message again.
         val current = FileIds.of(track.id)?.takeIf { it.fileId != 0 } ?: throw IOException(L.desktopTrackGone)
         val session = withTimeout(SESSION_TIMEOUT_MS) { Td.awaitAuthorizedSession() }
@@ -52,6 +55,9 @@ object TdTrackSource : TrackSource {
         }
         return TdMediaData(bytes, uri = "tdfile://${current.fileId}")
     }
+
+    override suspend fun gainOf(entry: QueueEntry): Float =
+        trackOf(entry)?.replayGain?.factor() ?: 1f
 
     override suspend fun played(entry: QueueEntry, atSec: Long) {
         Library.index().recordPlay(entry.id, entry.songKey, atSec)
@@ -92,3 +98,6 @@ class FileQueueStore(private val file: File = DesktopPaths.queueFile) : QueueSto
         const val MAX_BYTES = 8L * 1024 * 1024
     }
 }
+
+/** A file on this computer (a kept track) as mpv's own input: no stream, no TDLib. */
+fun LocalFileMediaData(file: File): MediaData = org.openani.mediamp.source.UriMediaData(file.absolutePath)

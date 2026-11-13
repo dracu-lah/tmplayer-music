@@ -42,6 +42,8 @@ data class EngineState(
     val error: String? = null,
     val volume: Int = 100,
     val muted: Boolean = false,
+    /** Counts the times the engine moved to a file queued with [AudioEngine.queueNext] by itself. */
+    val advanced: Int = 0,
 )
 
 /** The player as the queue sees it: one file at a time, opened from a [MediaData]. */
@@ -59,6 +61,25 @@ interface AudioEngine {
     fun seekTo(positionMs: Long)
     fun setVolume(percent: Int)
     fun setMuted(muted: Boolean)
+
+    /** Which sound controls this engine can honour. A control it cannot is hidden by the screens. */
+    val capabilities: EngineCapabilities get() = EngineCapabilities.NONE
+
+    /**
+     * The sound choices (speed and pitch, equalizer, skip silence) with the loudness [gain] of the
+     * track about to open (1 for none). Held by the engine and applied to every file it opens.
+     */
+    fun setSound(settings: SoundSettings, gain: Float = 1f) {}
+
+    /**
+     * Queues [next] to follow the file now playing with no gap, where the engine can; false when it
+     * cannot (the caller then opens it when the current one ends). The engine owns [next] from here.
+     */
+    suspend fun queueNext(next: MediaData): Boolean = false
+
+    /** Drops what [queueNext] queued, when the queue changed under it. */
+    fun clearQueuedNext() {}
+
     fun close()
 }
 
@@ -123,6 +144,16 @@ class MpvAudioEngine : AudioEngine {
     @Volatile
     private var closed = false
 
+    @Volatile
+    private var sound = SoundSettings.NEUTRAL
+
+    @Volatile
+    private var gain = 1f
+
+    private val _capabilities = MutableStateFlow(EngineCapabilities.NONE)
+
+    override val capabilities: EngineCapabilities get() = _capabilities.value
+
     init {
         MpvNatives.prepare()
         player = MpvMediampPlayer(Unit, SupervisorJob() + Dispatchers.Default, configureOptions = { h ->
@@ -140,11 +171,50 @@ class MpvAudioEngine : AudioEngine {
             h.option("cache-pause-wait", "1")
         })
         watch()
+        probe()
+    }
+
+    /**
+     * What this libmpv build can do. The audio filters are checked in the library's own files
+     * ([FilterProbe]): mpv takes any `af` string and only fails when the audio starts, so a try is no test.
+     */
+    private fun probe() {
+        val speed = runCatching { handle.setPropertyDouble("speed", 1.0) }.getOrDefault(false)
+        val gain = runCatching { handle.setPropertyDouble("volume-gain", 0.0) }.getOrDefault(false)
+        val equalizer = FilterProbe.has("equalizer")
+        val silence = FilterProbe.has("silenceremove")
+        _capabilities.value = EngineCapabilities(speed = speed, gain = gain, equalizer = equalizer, skipSilence = silence)
+        Logger.i(TAG, "sound controls: ${_capabilities.value}")
+    }
+
+    override fun setSound(settings: SoundSettings, gain: Float) {
+        this.sound = settings
+        this.gain = gain
+        applySound()
+    }
+
+    /** Hands the held sound choices to mpv; each call that fails leaves the rest of them applied. */
+    private fun applySound() {
+        val caps = _capabilities.value
+        val settings = sound
+        if (caps.speed) {
+            runCatching { handle.setPropertyString("audio-pitch-correction", if (settings.keepPitch) "yes" else "no") }
+            runCatching { handle.setPropertyDouble("speed", SoundGraph.speed(settings)) }
+        }
+        if (caps.gain) runCatching { handle.setPropertyDouble("volume-gain", SoundGraph.gainDb(settings, gain)) }
+        if (caps.equalizer || caps.skipSilence) {
+            val chain = SoundGraph.filters(settings, caps)
+            if (!runCatching { handle.setPropertyString("af", chain) }.getOrDefault(false) && chain.isNotEmpty()) {
+                Logger.w(TAG, "mpv would not take the audio filters")
+                runCatching { handle.setPropertyString("af", "") }
+            }
+        }
     }
 
     private fun watch() {
         scope.launch {
             player.state.collect { s ->
+                if (direct) return@collect
                 _state.update { it.copy(playing = s.playWhenReady, buffering = s.isBuffering || seekTarget != null) }
             }
         }
@@ -152,7 +222,7 @@ class MpvAudioEngine : AudioEngine {
             // mediamp says the position often; about four a second is all the clock and the bar show.
             var lastAt = 0L
             player.currentPositionMillis.collect { ms ->
-                if (seekTarget != null) return@collect
+                if (seekTarget != null || direct) return@collect
                 val now = System.currentTimeMillis()
                 if (now - lastAt < POSITION_EVERY_MS) return@collect
                 lastAt = now
@@ -162,14 +232,17 @@ class MpvAudioEngine : AudioEngine {
         scope.launch {
             player.mediaProperties.collect { p ->
                 val length = p?.durationMillis ?: return@collect
-                if (length > 0) _state.update { it.copy(durationMs = length) }
+                if (length > 0 && !direct) _state.update { it.copy(durationMs = length) }
             }
         }
         scope.launch {
             player.events.collect { e ->
                 when (e) {
                     is PlaybackEvent.SeekCompleted -> landSeek(e.positionMillis)
-                    is PlaybackEvent.MediaEnded -> _state.update { it.copy(ended = true, playing = false) }
+                    is PlaybackEvent.MediaEnded -> {
+                        // With a track queued behind it mpv goes on by itself; the poll sees the move.
+                        if (queued == null && !direct) _state.update { it.copy(ended = true, playing = false) }
+                    }
                     is PlaybackEvent.ErrorOccurred -> {
                         Logger.w(TAG, "Playback failed: ${e.error.code} ${e.error.message}")
                         _state.update { it.copy(error = MpvErrors.describe(e.error.message, e.error.code.toString()), playing = false, buffering = false) }
@@ -180,7 +253,7 @@ class MpvAudioEngine : AudioEngine {
         }
         scope.launch(Dispatchers.IO) {
             while (isActive) {
-                delay(POLL_MS)
+                delay(if (queued != null) QUEUED_POLL_MS else POLL_MS)
                 if (closed || !_state.value.opened) continue
                 runCatching { poll() }
             }
@@ -192,6 +265,11 @@ class MpvAudioEngine : AudioEngine {
         val pausedForCache = h.bool("paused-for-cache")
         val seeking = h.bool("seeking")
         val duration = h.double("duration")
+        if (queued != null) checkAdvanced(h)
+        if (direct) {
+            pollDirect(h, duration)
+            return
+        }
         // The completion event is the normal way out; this is for the seek it never reports.
         if (seekTarget != null && System.currentTimeMillis() - seekIssuedAt > SEEK_SETTLE_MS && seeking == false && pausedForCache != true) {
             landSeek(null)
@@ -211,6 +289,58 @@ class MpvAudioEngine : AudioEngine {
         }
     }
 
+    /**
+     * Carries a queued file in. mediamp keeps mpv at the end of a file (`keep-open`), so mpv does not
+     * move on by itself: at the end this steps its playlist at once, with the next file's input
+     * already registered and opened, which is as close to gapless as libmpv's API allows. Then the
+     * state says so once, with a fresh clock, and the finished entry is dropped from mpv's list.
+     */
+    private fun checkAdvanced(h: MPVHandle) {
+        val pos = runCatching { h.getPropertyInt("playlist-pos") }.getOrDefault(0)
+        if (pos < 1) {
+            val remaining = h.double("time-remaining")
+            val atEnd = h.bool("eof-reached") == true || (remaining != null && remaining in 0.0..0.04)
+            if (!atEnd) return
+            if (!stepping) {
+                stepping = true
+                runCatching { h.command("playlist-next", "force") }
+                runCatching { h.setPropertyBoolean("pause", false) }
+            } else if (System.currentTimeMillis() - queuedAt > QUEUED_GRACE_MS) {
+                // mpv did not take the step: the queued file did not play, so the track just ended.
+                queued = null
+                stepping = false
+                _state.update { it.copy(ended = true, playing = false) }
+            }
+            return
+        }
+        // The finished file's stream is let go; the one now playing is closed when it is replaced.
+        val finished = directData
+        directData = queued
+        queued = null
+        stepping = false
+        direct = true
+        runCatching { finished?.close() }
+        runCatching { h.command("playlist-remove", "0") }
+        _state.update { it.copy(advanced = it.advanced + 1, positionMs = 0, durationMs = 0, ended = false, playing = true, buffering = false) }
+    }
+
+    /** The clock and the end of a file mpv carried on to by itself ([direct]). */
+    private fun pollDirect(h: MPVHandle, duration: Double?) {
+        val at = h.double("time-pos")
+        val ended = queued == null && !stepping && h.bool("eof-reached") == true
+        val paused = h.bool("pause")
+        _state.update {
+            it.copy(
+                positionMs = if (seekTarget == null) at?.let { s -> (s * 1000).toLong() } ?: it.positionMs else it.positionMs,
+                durationMs = duration?.takeIf { d -> d > 0 }?.let { d -> (d * 1000).toLong() } ?: it.durationMs,
+                ended = it.ended || ended,
+                playing = if (ended) false else if (paused != null) !paused else it.playing,
+                buffering = h.bool("paused-for-cache") == true,
+            )
+        }
+        if (seekTarget != null && System.currentTimeMillis() - seekIssuedAt > SEEK_SETTLE_MS) seekTarget = null
+    }
+
     private fun landSeek(at: Long?) {
         seekTarget = null
         _state.update { it.copy(buffering = false, positionMs = at ?: player.currentPositionMillis.value) }
@@ -218,6 +348,9 @@ class MpvAudioEngine : AudioEngine {
 
     override suspend fun open(data: MediaData, startAtMs: Long, playWhenReady: Boolean) {
         seekTarget = null
+        queued?.let { runCatching { it.close() } }
+        queued = null
+        releaseDirect()
         val volume = _state.value.volume
         val muted = _state.value.muted
         _state.value = EngineState(positionMs = startAtMs.coerceAtLeast(0), buffering = playWhenReady, volume = volume, muted = muted)
@@ -225,6 +358,7 @@ class MpvAudioEngine : AudioEngine {
             handle.setPropertyDouble("volume", volume.toDouble())
             handle.setPropertyBoolean("mute", muted)
         }
+        applySound()
         try {
             withContext(Dispatchers.IO) {
                 player.setMediaData(data, playWhenReady = playWhenReady, startPositionMillis = startAtMs.coerceAtLeast(0))
@@ -242,16 +376,27 @@ class MpvAudioEngine : AudioEngine {
     override fun play() {
         if (_state.value.ended) seekToExact(0)
         _state.update { it.copy(playing = true, ended = false) }
+        if (direct) {
+            runCatching { handle.setPropertyBoolean("pause", false) }
+            return
+        }
         onEdt { player.play() }
     }
 
     override fun pause() {
         _state.update { it.copy(playing = false) }
+        if (direct) {
+            runCatching { handle.setPropertyBoolean("pause", true) }
+            return
+        }
         onEdt { player.pause() }
     }
 
     override fun stop() {
         seekTarget = null
+        queued?.let { runCatching { it.close() } }
+        queued = null
+        releaseDirect()
         _state.update { it.copy(playing = false, opened = false, buffering = false) }
         onEdt { player.stopPlayback() }
     }
@@ -265,6 +410,12 @@ class MpvAudioEngine : AudioEngine {
         seekTarget = target
         seekIssuedAt = System.currentTimeMillis()
         _state.update { it.copy(positionMs = target, buffering = true, ended = false) }
+        if (direct) {
+            runCatching { handle.command("seek", (target / 1000.0).toString(), "absolute") }
+            // mpv at the end of a file ("keep-open") plays again once it is told to.
+            runCatching { handle.setPropertyBoolean("pause", !_state.value.playing) }
+            return
+        }
         onEdt { player.seekTo(target) }
     }
 
@@ -281,9 +432,75 @@ class MpvAudioEngine : AudioEngine {
         _state.update { it.copy(muted = muted) }
     }
 
+    /** The track queued after the playing one in mpv's own playlist, and how many such tracks mpv has moved on to. */
+    @Volatile
+    private var queued: MediaData? = null
+
+    @Volatile
+    private var queuedAt = 0L
+    private var nextInput = 0
+
+    @Volatile
+    private var stepping = false
+
+    /**
+     * Set once mpv has moved to a queued file by itself. mediamp's own state machine never saw that
+     * file open, so from then on until the next [open] the clock, the play state and the transport
+     * come from mpv directly.
+     */
+    @Volatile
+    private var direct = false
+
+    /** The queued file mpv is playing now, which this engine (not mediamp) must close. */
+    @Volatile
+    private var directData: MediaData? = null
+
+    private fun releaseDirect() {
+        val data = directData
+        directData = null
+        direct = false
+        runCatching { data?.close() }
+    }
+
+    override suspend fun queueNext(next: MediaData): Boolean {
+        if (closed || !_state.value.opened || queued != null) return false
+        val url = try {
+            when (next) {
+                is org.openani.mediamp.source.SeekableInputMediaData -> {
+                    val input = next.createInput(kotlin.coroutines.coroutineContext)
+                    handle.registerSeekableInput(input, "mediamp://seekble_input_media/next-${nextInput++}") ?: return false
+                }
+                is org.openani.mediamp.source.UriMediaData -> next.uri
+                else -> return false
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Logger.w(TAG, "could not register the next track", e)
+            return false
+        }
+        val ok = runCatching { handle.command("loadfile", url, "append") }.getOrDefault(false)
+        if (ok) {
+            queued = next
+            stepping = false
+            queuedAt = System.currentTimeMillis()
+        }
+        return ok
+    }
+
+    override fun clearQueuedNext() {
+        val data = queued ?: return
+        queued = null
+        runCatching { data.close() }
+        // Everything after the playing entry goes.
+        runCatching { handle.command("playlist-clear") }
+    }
+
     override fun close() {
         if (closed) return
         closed = true
+        queued?.let { runCatching { it.close() } }
+        releaseDirect()
         scope.cancel()
         runCatching { player.close() }
     }
@@ -296,8 +513,10 @@ class MpvAudioEngine : AudioEngine {
     private companion object {
         const val TAG = "MpvAudioEngine"
         const val POLL_MS = 250L
+        const val QUEUED_POLL_MS = 40L
         const val SEEK_SETTLE_MS = 600L
         const val POSITION_EVERY_MS = 250L
+        const val QUEUED_GRACE_MS = 3_000L
     }
 }
 
@@ -350,4 +569,37 @@ fun AudioSurface(engine: AudioEngine?) {
         mpv.player,
         androidx.compose.ui.Modifier.size(1.dp),
     )
+}
+
+/**
+ * Whether a libavfilter filter is compiled into the FFmpeg that libmpv loads, found by reading the
+ * library's own files for the filter's registered name. Cached; false when the files are not there
+ * (nothing unpacked yet, a test) so a control is never offered on a guess.
+ */
+object FilterProbe {
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    fun has(name: String): Boolean = cache.getOrPut(name) { scan(name) }
+
+    private fun scan(name: String): Boolean = runCatching {
+        val files = DesktopPaths.nativeDir.walkTopDown().maxDepth(2)
+            .filter { it.isFile && it.name.contains("avfilter", ignoreCase = true) && it.length() in 1..MAX_BYTES }
+            .toList()
+        if (files.isEmpty()) return false
+        // The name sits in the library as a C string, between two NULs.
+        val needle = byteArrayOf(0) + name.toByteArray(Charsets.US_ASCII) + byteArrayOf(0)
+        files.any { contains(it.readBytes(), needle) }
+    }.getOrDefault(false)
+
+    internal fun contains(haystack: ByteArray, needle: ByteArray): Boolean {
+        if (needle.isEmpty() || haystack.size < needle.size) return false
+        outer@ for (i in 0..haystack.size - needle.size) {
+            if (haystack[i] != needle[0]) continue
+            for (j in 1 until needle.size) if (haystack[i + j] != needle[j]) continue@outer
+            return true
+        }
+        return false
+    }
+
+    private const val MAX_BYTES = 256L * 1024 * 1024
 }

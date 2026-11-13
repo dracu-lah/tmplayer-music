@@ -42,6 +42,9 @@ import com.tmplayer.music.desktop.player.QueueEntry
 import com.tmplayer.music.desktop.player.RepeatMode
 import com.tmplayer.music.desktop.ui.common.Cover
 import com.tmplayer.music.desktop.ui.common.Format
+import com.tmplayer.music.desktop.ui.common.guarded
+import com.tmplayer.music.desktop.ui.library.Favourites
+import kotlinx.coroutines.launch
 import com.tmplayer.music.desktop.ui.common.MusicIcons
 import com.tmplayer.music.i18n.L
 
@@ -54,7 +57,7 @@ val NOW_PLAYING_HEIGHT = 88.dp
  * playing on open: with a restored queue the bar shows its track paused, and Play starts it.
  */
 @Composable
-fun NowPlayingBar(player: PlayerController, queueOpen: Boolean, onToggleQueue: () -> Unit, modifier: Modifier = Modifier) {
+fun NowPlayingBar(player: PlayerController, open: Panel?, onToggle: (Panel) -> Unit, modifier: Modifier = Modifier) {
     val ui by player.ui.collectAsState()
     val entry = ui.current
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = modifier.fillMaxWidth().height(NOW_PLAYING_HEIGHT)) {
@@ -64,13 +67,18 @@ fun NowPlayingBar(player: PlayerController, queueOpen: Boolean, onToggleQueue: (
                 Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.weight(0.3f)) { TrackInfo(entry) }
+                Row(Modifier.weight(0.3f), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f, fill = false)) { TrackInfo(entry) }
+                    if (entry != null) FavouriteToggle(entry)
+                }
                 Column(Modifier.weight(0.4f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Transport(player)
                     SeekRow(player)
                 }
                 Row(Modifier.weight(0.3f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    QueueButton(queueOpen, onToggleQueue)
+                    PanelButton(MusicIcons.Lyrics, L.nowplayingLyricsShow, open == Panel.Lyrics) { onToggle(Panel.Lyrics) }
+                    PanelButton(MusicIcons.Sleep, L.effectsTitle, open == Panel.Sound) { onToggle(Panel.Sound) }
+                    PanelButton(MusicIcons.Queue, L.playerQueue, open == Panel.Queue) { onToggle(Panel.Queue) }
                     VolumeControl(player)
                 }
             }
@@ -217,12 +225,15 @@ private fun SeekRow(player: PlayerController) {
     }
 }
 
+/** The side panels the bar opens over the page's right edge, one at a time. */
+enum class Panel { Queue, Lyrics, Sound }
+
 @Composable
-private fun QueueButton(open: Boolean, onToggle: () -> Unit) {
+private fun PanelButton(icon: ImageVector, description: String, open: Boolean, onToggle: () -> Unit) {
     IconButton(onClick = onToggle, modifier = Modifier.size(36.dp)) {
         Icon(
-            MusicIcons.Queue,
-            contentDescription = L.playerQueue,
+            icon,
+            contentDescription = description,
             tint = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(22.dp),
         )
@@ -250,7 +261,38 @@ private fun VolumeControl(player: PlayerController) {
                 activeTrackColor = MaterialTheme.colorScheme.primary,
                 inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
             ),
-            modifier = Modifier.width(110.dp).height(24.dp).semantics { contentDescription = L.desktopVolume },
+            modifier = Modifier.width(88.dp).height(24.dp).semantics { contentDescription = L.desktopVolume },
+        )
+    }
+}
+
+/** The heart of the playing song: on when it is a favourite, a click turns it on or off. */
+@Composable
+private fun FavouriteToggle(entry: QueueEntry) {
+    val keys by Favourites.keys.collectAsState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // A file played from a chat page has no song key of its own: the index knows which song it is.
+    val key by androidx.compose.runtime.produceState(entry.songKey, entry.id, entry.songKey) {
+        value = entry.songKey.ifBlank { runCatching { Library.index().songOf(entry.id)?.groupKey }.getOrNull().orEmpty() }
+    }
+    val on = key.isNotBlank() && key in keys
+    IconButton(
+        onClick = {
+            scope.launch {
+                guarded({ }) {
+                    val index = Library.index()
+                    val song = (if (entry.songKey.isNotBlank()) index.song(entry.songKey) else null) ?: index.songOf(entry.id) ?: return@guarded
+                    Favourites.set(listOf(song), !on)
+                }
+            }
+        },
+        modifier = Modifier.size(36.dp),
+    ) {
+        Icon(
+            if (on) MusicIcons.Heart else MusicIcons.HeartOutline,
+            contentDescription = if (on) L.menuUnfavourite else L.menuFavourite,
+            tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
         )
     }
 }

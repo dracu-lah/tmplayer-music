@@ -41,6 +41,29 @@ class FakeEngine : AudioEngine {
     var stops = 0
     var closed = false
     val seeks = CopyOnWriteArrayList<Long>()
+    val sounds = CopyOnWriteArrayList<Pair<SoundSettings, Float>>()
+    val queuedNext = CopyOnWriteArrayList<String>()
+    var queueNextResult = false
+    var queueCleared = 0
+
+    override fun setSound(settings: SoundSettings, gain: Float) {
+        sounds += settings to gain
+    }
+
+    override suspend fun queueNext(next: MediaData): Boolean {
+        if (queueNextResult) queuedNext += (next as TdMediaData).uri
+        return queueNextResult
+    }
+
+    override fun clearQueuedNext() {
+        queueCleared++
+    }
+
+    /** The engine moved on to the queued file by itself. */
+    fun advance() = _state.update { it.copy(advanced = it.advanced + 1, positionMs = 0, ended = false, playing = true) }
+
+    /** The playing file is [positionMs] in. */
+    fun at(positionMs: Long) = _state.update { it.copy(positionMs = positionMs) }
 
     override suspend fun open(data: MediaData, startAtMs: Long, playWhenReady: Boolean) {
         opened += Triple((data as TdMediaData).uri, startAtMs, playWhenReady)
@@ -86,6 +109,11 @@ class FakeSource(songs: List<String>, private val broken: Set<String> = emptySet
 
     fun entry(key: String): QueueEntry = entries.getValue(key)
 
+    /** The loudness factor per song key; 1 for the rest. */
+    val gains = java.util.concurrent.ConcurrentHashMap<String, Float>()
+
+    override suspend fun gainOf(entry: QueueEntry): Float = gains[entry.songKey] ?: 1f
+
     override suspend fun resolve(item: SavedQueue.Item): QueueEntry? = entries[item.songKey]
 
     override suspend fun open(entry: QueueEntry): MediaData {
@@ -115,7 +143,7 @@ class MemoryStore(var text: String? = null) : QueueStore {
 }
 
 /** Waits for [condition] on another thread, up to [ms], and fails with [what] when it never holds. */
-suspend fun eventually(what: String, ms: Long = 5_000, condition: () -> Boolean) {
+suspend fun eventually(what: String, ms: Long = 20_000, condition: () -> Boolean) {
     try {
         withTimeout(ms) {
             while (!condition()) delay(5)

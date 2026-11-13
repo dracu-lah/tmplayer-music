@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=TMPlayer Music
+GenericName=Music Player
+Comment=Play the audio files already in your own Telegram chats. Unofficial, not affiliated with Telegram.
+Exec=TMPlayerMusic
+Icon=io.github.dracu_lah.TMPlayerMusic
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=Telegram;Music;Audio;Player;Tracks;
+# The AWT window class, which Java derives from the main class: it is what lets the dock and the
+# task bar group the running window under this launcher.
+StartupWMClass=com-tmplayer-music-desktop-MainKt
+# AWT never completes a startup notification, so asking for one leaves a busy cursor spinning.
+StartupNotify=false

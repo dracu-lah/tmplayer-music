@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,11 +27,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tmplayer.music.covers.CoverOnline
 import com.tmplayer.music.data.FileFetch
 import com.tmplayer.music.data.FileIds
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.data.TdFileCalls
 import com.tmplayer.music.library.TrackId
+import com.tmplayer.music.lyrics.LyricsOnline
 import com.tmplayer.music.platform.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -217,7 +220,7 @@ object ImageCheck {
  * a chat or an artist ([art] null), the name's initials on a colour picked from the name, so a row
  * is never a blank box. Decorative either way: the row says the name.
  *
- * Covers found online (the lyrics switch) are not looked up by the desktop yet.
+ * Covers found online come from the lyrics and covers switch ([CoverOnline]).
  */
 @Composable
 fun Cover(
@@ -260,13 +263,39 @@ fun Cover(
         }
         looked = true
     }
+    // Between the real picture and the generated one: a cover found online (the lyrics and covers
+    // switch, on by default, CoverOnline). Only once the real look has ended empty, only for rows on
+    // screen (the effect ends with the row), and from the device first, so a kept cover shows with
+    // no generated one flashing before it.
+    val switchOn by LyricsOnline.choices.online.collectAsState()
+    val onlineOn = art != null && switchOn && CoverOnline.started
+    var online by remember(art, px, onlineOn) {
+        mutableStateOf(if (onlineOn) CoverOnline.pathOf(art.orEmpty())?.let { Artwork.cached("p$it@$px") } else null)
+    }
+    var onlineChecked by remember(art, px, onlineOn) { mutableStateOf(!onlineOn || online != null) }
+    val wantsOnline = onlineOn && image == null && looked && online == null
+    LaunchedEffect(art, px, wantsOnline) {
+        if (!wantsOnline || art == null) {
+            onlineChecked = true
+            return@LaunchedEffect
+        }
+        try {
+            withContext(Dispatchers.IO) { CoverOnline.cached(art) }?.let { online = Artwork.file(it, px) }
+            onlineChecked = true
+            if (online == null) CoverOnline.find(art)?.let { online = Artwork.file(it, px) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            onlineChecked = true
+        }
+    }
     val shape = if (round) RoundedCornerShape(50) else RoundedCornerShape(8.dp)
     Box(modifier.size(size).clip(shape), contentAlignment = Alignment.Center) {
         val preview = remember(mini) { Artwork.mini(mini) }
-        val shown = image ?: preview
+        val shown = image ?: online ?: preview
         when {
             shown != null -> Image(shown, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size))
-            art != null && looked -> GeneratedCover(art, Modifier.size(size))
+            art != null && looked && onlineChecked -> GeneratedCover(art, Modifier.size(size))
             art != null -> Box(Modifier.size(size).background(MaterialTheme.colorScheme.surfaceVariant))
             else -> Box(Modifier.size(size).background(placeholderColour(name)), contentAlignment = Alignment.Center) {
                 Text(

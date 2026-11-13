@@ -225,7 +225,7 @@ class NavigatorTest {
 
     @Test
     fun `back comes out of details one at a time and stops at the first page`() {
-        val nav = Navigator()
+        val nav = Navigator(Route.Songs)
         nav.push(Route.ArtistPage(artist))
         nav.push(Route.AlbumPage(album))
         assertTrue(nav.back())
