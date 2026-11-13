@@ -135,7 +135,31 @@ object UserFiles {
         }
     }
 
-    /** [name] as a safe file name: letters, digits, space, dash and underscore only, at most 60 characters. */
-    fun safeName(name: String): String =
-        name.map { if (it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_') it else '_' }.joinToString("").trim().take(60).ifBlank { "playlist" }
+    /**
+     * [name] as a safe file name on every OS: letters, digits, space, dash and underscore only, at
+     * most [MAX_NAME] characters, no trailing space or dot, and never a name Windows keeps for a
+     * device (CON, PRN, AUX, NUL, COM1 to COM9, LPT1 to LPT9, with or without an extension: the
+     * caller adds one). Such a name gets an underscore in front.
+     */
+    fun safeName(name: String): String {
+        // Windows drops a trailing dot or space, so "CON." would still be the device.
+        val cleaned = name.trimEnd('.', ' ')
+            .map { if (it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_') it else '_' }
+            .joinToString("")
+            .take(MAX_NAME)
+            .trim(' ', '.')
+            .ifBlank { "playlist" }
+        return if (isReservedOnWindows(cleaned)) "_$cleaned" else cleaned
+    }
+
+    /** True for a name Windows treats as a device, whatever its extension (`con`, `NUL.txt`, `com1`). */
+    fun isReservedOnWindows(name: String): Boolean {
+        val stem = name.substringBefore('.').trim(' ').uppercase()
+        if (stem in DEVICE_NAMES) return true
+        // COM1 to COM9 and LPT1 to LPT9, and the superscript digits Windows reads the same way.
+        return stem.length == 4 && (stem.startsWith("COM") || stem.startsWith("LPT")) && stem[3] in "123456789\u00B9\u00B2\u00B3"
+    }
+
+    private const val MAX_NAME = 60
+    private val DEVICE_NAMES = setOf("CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$")
 }
