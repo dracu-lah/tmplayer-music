@@ -566,4 +566,50 @@ class GarbageInputTest {
             com.tmplayer.music.library.Backup.decode(String(flipped))
         }
     }
+
+    @Test
+    fun `connect frames, messages and pairing lists that are garbage never crash`() {
+        val frame = com.tmplayer.music.connect.ConnectFrames.encode(
+            com.tmplayer.music.connect.ConnectFrame.Secured(1, "{}", "ab".repeat(32)),
+        )
+        val body = com.tmplayer.music.connect.ConnectBodies.encode(
+            com.tmplayer.music.connect.ConnectBody.Send(
+                com.tmplayer.music.connect.SendHow.Add,
+                listOf(com.tmplayer.music.connect.TrackRef(1, 2, "k", "t")),
+            ),
+        )
+        val book = com.tmplayer.music.connect.PairingBook.encode(
+            listOf(com.tmplayer.music.connect.Paired("a".repeat(32), "n", "b".repeat(64), 1)),
+        )
+        val cases = listOf(
+            "", " ", "{", "[]", "null", "42", "\"text\"", "{\"t\": 5}", "{\"t\":\"auth\",\"id\":[]}", "{\"s\":\"x\"}",
+            "{\"t\":\"hello\",\"v\":1,\"sn\":\"zz\",\"id\":\"a\"}", "{\"t\":\"seek\",\"ms\":1e999}",
+            "{\"t\":\"send\",\"how\":\"add\",\"items\":{}}", "{\"t\":\"send\",\"how\":\"add\",\"items\":[1,null,\"x\",{\"c\":\"1\"}]}",
+            "{\"t\":\"queue\",\"items\":[[],5]}", "{\"t\":\"sent\",\"how\":\"play\",\"names\":[1,null]}",
+            frame.substring(0, frame.length / 2), body.substring(0, body.length / 2), book.substring(0, book.length / 2),
+            "x".repeat(com.tmplayer.music.connect.ConnectLimits.MAX_LINE + 1),
+            "{\"t\":\"cover\",\"b\":\"" + "A".repeat(com.tmplayer.music.connect.ConnectLimits.MAX_COVER_CHARS + 1) + "\"}",
+            "[".repeat(5000), "{\"a\":".repeat(5000),
+        )
+        for (case in cases) {
+            com.tmplayer.music.connect.ConnectFrames.parse(case)
+            com.tmplayer.music.connect.ConnectBodies.parse(case)
+            com.tmplayer.music.connect.PairingBook.decode(case)
+        }
+        assertNull(com.tmplayer.music.connect.ConnectBodies.parse("{\"t\":\"cover\",\"b\":\"" + "A".repeat(com.tmplayer.music.connect.ConnectLimits.MAX_COVER_CHARS + 1) + "\"}"))
+        assertTrue(com.tmplayer.music.connect.PairingBook.decode("[]").isEmpty())
+        val random = Random(11)
+        repeat(3000) {
+            val text = String(CharArray(random.nextInt(0, 300)) { random.nextInt(0, 0x2FFF).toChar() })
+            com.tmplayer.music.connect.ConnectFrames.parse(text)
+            com.tmplayer.music.connect.ConnectBodies.parse(text)
+            com.tmplayer.music.connect.PairingBook.decode(text)
+            for (good in listOf(frame, body, book)) {
+                val cut = good.substring(0, random.nextInt(0, good.length))
+                com.tmplayer.music.connect.ConnectFrames.parse(cut)
+                com.tmplayer.music.connect.ConnectBodies.parse(cut)
+                com.tmplayer.music.connect.PairingBook.decode(cut)
+            }
+        }
+    }
 }

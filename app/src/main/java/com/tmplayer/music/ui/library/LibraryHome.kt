@@ -627,6 +627,8 @@ private fun SongMenu(
                 PlayerConnection.addToQueue(song)
                 onDismiss()
             }
+            // With a TV paired (phone, regular APK): Play on TV and Add to TV queue.
+            com.tmplayer.music.ui.connect.TvMenuLines(song, onDismiss)
             favourite?.let { on ->
                 MenuLine(if (on) L.menuUnfavourite else L.menuFavourite) {
                     scope.launch {

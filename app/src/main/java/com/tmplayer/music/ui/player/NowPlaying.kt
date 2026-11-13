@@ -94,6 +94,7 @@ internal fun NowPlayingContent(
 ) {
     var sleepOpen by rememberSaveable { mutableStateOf(false) }
     var effectsOpen by rememberSaveable { mutableStateOf(false) }
+    var remoteOpen by rememberSaveable { mutableStateOf(false) }
     var showLyrics by rememberSaveable { mutableStateOf(com.tmplayer.music.BuildHooks.takeLyricsAtStart()) }
     val anchor = remember { CoverAnchor() }
     val density = LocalDensity.current
@@ -147,6 +148,7 @@ internal fun NowPlayingContent(
             onCollapse = onCollapse,
             onSleep = { sleepOpen = true },
             onEffects = { effectsOpen = true },
+            onRemote = { remoteOpen = true },
             onQueue = onQueue,
             modifier = fade,
         )
@@ -187,6 +189,7 @@ internal fun NowPlayingContent(
     }
     if (sleepOpen) SleepSheet(onDismiss = { sleepOpen = false })
     if (effectsOpen) EffectsSheet(onDismiss = { effectsOpen = false })
+    if (remoteOpen) com.tmplayer.music.ui.connect.RemoteDialog(onDismiss = { remoteOpen = false })
 }
 
 @Composable
@@ -196,6 +199,7 @@ private fun TopBar(
     onCollapse: () -> Unit,
     onSleep: () -> Unit,
     onEffects: () -> Unit,
+    onRemote: () -> Unit,
     onQueue: () -> Unit,
     modifier: Modifier,
 ) {
@@ -218,6 +222,10 @@ private fun TopBar(
             )
         }
         IconButton(onClick = onEffects) { Icon(EffectsIcon, contentDescription = L.effectsTitle) }
+        // With a TV paired (phone, regular APK): the remote for it.
+        if (com.tmplayer.music.ui.connect.hasPairedTv()) {
+            IconButton(onClick = onRemote) { Icon(MusicIcons.Tv, contentDescription = L.connectNowPlayingAction) }
+        }
         IconButton(onClick = onQueue, modifier = Modifier.tvFocusRing()) { Icon(MusicIcons.Queue, contentDescription = L.playerQueue) }
     }
 }

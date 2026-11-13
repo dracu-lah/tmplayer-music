@@ -59,10 +59,12 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Library.setForeground(true)
+        if (BuildConfig.CONNECT) com.tmplayer.music.connect.TvConnect.setForeground(true)
     }
 
     override fun onStop() {
         Library.setForeground(false)
+        if (BuildConfig.CONNECT) com.tmplayer.music.connect.TvConnect.setForeground(false)
         super.onStop()
     }
 

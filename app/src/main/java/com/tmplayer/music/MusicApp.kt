@@ -36,6 +36,12 @@ class MusicApp : Application() {
         com.tmplayer.music.player.AudioEffectsSetting.start(Prefs(this))
         // A debug build's demo library starts in place of the app (app/src/debug); never in a release.
         if (BuildHooks.startInstead(this)) return
+        // Connect: the phone as a remote for the TV app. A phone only reads its pairings; a TV also listens
+        // while the app is on screen or playing (TvConnect). Nothing at all in a store build.
+        if (com.tmplayer.music.connect.Connect.available) {
+            com.tmplayer.music.connect.Connect.init(this, com.tmplayer.music.ui.tv.isTv(this))
+            com.tmplayer.music.connect.TvConnect.start(this)
+        }
         Td.start(this)
         // The user's choices (a Pause stays on after a restart) live in Prefs; a weak device reads tags in smaller batches.
         Library.start(File(filesDir, "library"), Prefs(this), lowRam = weakDevice())

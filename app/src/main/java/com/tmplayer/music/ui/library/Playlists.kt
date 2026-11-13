@@ -142,6 +142,7 @@ fun PlaylistScreen(playlist: Playlist, actions: SongActions, onDeleted: () -> Un
                     KeepOfflineButton(songs)
                     ExportPlaylistButton(playlist, name) { error = it }
                 }
+                com.tmplayer.music.ui.connect.SendToTvButtons({ songs.orEmpty() })
             }
             PlayButtons({ songs.orEmpty() }) { list, shuffle -> if (shuffle) actions.shuffle(list) else actions.play(list, 0) }
         }

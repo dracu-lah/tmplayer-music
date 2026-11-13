@@ -52,6 +52,11 @@ android {
         // The self-updater of the GitHub APK; off in a store build (see storeBuild above).
         buildConfigField("boolean", "UPDATE_CHECK", "${!storeBuild}")
 
+        // Connect (the phone as a remote for the TV app) opens a local network server on the TV, so
+        // like the updater it belongs in the regular APK only: false in a store build, where every
+        // Connect entry point is a no-op and its screens are never shown (see com.tmplayer.music.connect).
+        buildConfigField("boolean", "CONNECT", "${!storeBuild}")
+
         // The app's own Telegram API credentials, from local.properties or the environment. A
         // build without them compiles and says so on the sign in screen.
         val apiId = localProps.getProperty("TG_API_ID") ?: System.getenv("TG_API_ID") ?: "0"

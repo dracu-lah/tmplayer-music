@@ -114,6 +114,8 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
         HapticSettingsSection()
         EffectsSettingsRow()
         LyricsSettingsSection()
+        // The phone as a remote for the TV app; nothing in a store build.
+        com.tmplayer.music.ui.connect.ConnectSettingsSection()
         com.tmplayer.music.ui.update.UpdateSettingsSection()
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         AboutSection()
@@ -275,7 +277,7 @@ private fun LibrarySection(onManageChats: () -> Unit) {
 
 /** A setting that is on or off, with a line saying what it does; the whole row toggles it. */
 @Composable
-private fun SwitchLine(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchLine(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()

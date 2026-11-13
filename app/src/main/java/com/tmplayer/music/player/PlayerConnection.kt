@@ -13,8 +13,11 @@ import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.library.Song
 import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.platform.Logger
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** What the mini-player and Now Playing draw. Position is read on demand ([PlayerConnection.position]). */
@@ -78,6 +81,11 @@ object PlayerConnection {
     /** The song the lists mark; null with an empty queue. */
     val mark: StateFlow<PlayingMark?> = _mark.asStateFlow()
 
+    private val _events = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 16, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+
+    /** What [state] does not say: a jump in position (a seek) and a change of the queue. Used by Connect to push on change. */
+    val events: SharedFlow<PlayerEvent> = _events.asSharedFlow()
+
     /** The queue's items, read when the queue screen asks. */
     fun queue(): List<MediaItem> = controller?.let { c -> (0 until c.mediaItemCount).map { c.getMediaItemAt(it) } }.orEmpty()
 
@@ -97,7 +105,11 @@ object PlayerConnection {
                 }
             controller = c
             c.addListener(object : Player.Listener {
-                override fun onEvents(player: Player, events: Player.Events) = publish(player)
+                override fun onEvents(player: Player, events: Player.Events) {
+                    publish(player)
+                    if (events.contains(Player.EVENT_POSITION_DISCONTINUITY)) _events.tryEmit(PlayerEvent.Position)
+                    if (events.contains(Player.EVENT_TIMELINE_CHANGED)) _events.tryEmit(PlayerEvent.Queue)
+                }
             })
             publish(c)
         }, ContextCompat.getMainExecutor(app))
@@ -226,4 +238,66 @@ object PlayerConnection {
 
     /** Pauses, for the sleep timer and a log out. */
     fun pause() = controller?.pause() ?: Unit
+
+    // What the TV's Connect asks of the player (see com.tmplayer.music.connect.TvConnect). Each is an
+    // explicit ask from a phone: nothing here starts playback by itself.
+
+    /** Starts playing [items] from [start], optionally shuffled. */
+    fun playItems(items: List<MediaItem>, start: Int, shuffle: Boolean) {
+        val c = controller ?: return
+        if (items.isEmpty()) return
+        c.shuffleModeEnabled = shuffle
+        c.setMediaItems(items, start.coerceIn(0, items.lastIndex), 0)
+        c.prepare()
+        c.play()
+    }
+
+    /**
+     * Puts [items] after the playing one ([next]) or at the end. With an empty queue they become
+     * the queue, ready and paused: adding is not an ask to play.
+     */
+    fun enqueueItems(items: List<MediaItem>, next: Boolean) {
+        val c = controller ?: return
+        if (items.isEmpty()) return
+        if (c.mediaItemCount == 0) {
+            c.setMediaItems(items, 0, 0)
+            c.prepare()
+            return
+        }
+        if (next) c.addMediaItems(c.currentMediaItemIndex + 1, items) else c.addMediaItems(items)
+    }
+
+    /** Plays (never toggles). */
+    fun resume() {
+        val c = controller ?: return
+        if (c.playbackState == Player.STATE_IDLE) c.prepare()
+        if (c.playbackState == Player.STATE_ENDED) c.seekTo(c.currentMediaItemIndex, 0)
+        c.play()
+    }
+
+    /** Jumps to row [index] and plays it. */
+    fun jumpAndPlay(index: Int) {
+        val c = controller ?: return
+        if (index !in 0 until c.mediaItemCount) return
+        c.seekTo(index, 0)
+        if (c.playbackState == Player.STATE_IDLE) c.prepare()
+        c.play()
+    }
+
+    fun setRepeat(mode: Int) {
+        controller?.repeatMode = when (mode) {
+            1 -> Player.REPEAT_MODE_ONE
+            2 -> Player.REPEAT_MODE_ALL
+            else -> Player.REPEAT_MODE_OFF
+        }
+    }
+
+    /** Queue row [index], null when out of range. */
+    fun itemAt(index: Int): MediaItem? = controller?.takeIf { index in 0 until it.mediaItemCount }?.getMediaItemAt(index)
+
+    /** The id of queue row [index], null when out of range. */
+    fun mediaIdAt(index: Int): String? = itemAt(index)?.mediaId
 }
+
+/** A change [PlayerState] does not carry. */
+enum class PlayerEvent { Position, Queue }
