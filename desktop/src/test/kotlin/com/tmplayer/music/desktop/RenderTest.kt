@@ -26,7 +26,10 @@ import com.tmplayer.music.desktop.ui.library.PlayingMark
 import com.tmplayer.music.desktop.ui.library.SongActions
 import com.tmplayer.music.desktop.ui.library.SongTable
 import com.tmplayer.music.desktop.ui.player.NOW_PLAYING_HEIGHT
+import com.tmplayer.music.desktop.ui.library.HomeScreen
 import com.tmplayer.music.desktop.ui.player.NowPlayingBar
+import com.tmplayer.music.desktop.ui.player.Panel
+import com.tmplayer.music.desktop.ui.player.SoundPanel
 import com.tmplayer.music.desktop.ui.player.QueuePanel
 import com.tmplayer.music.desktop.ui.theme.MusicTheme
 import com.tmplayer.music.library.AudioFormat
@@ -128,7 +131,7 @@ class RenderTest {
                         SongTable(songs, rememberLazyListState(), none, ListSelection(setOf("song2", "song3"), "song2"), wide = true) {}
                         if (queue) QueuePanel(player, onClose = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd))
                     }
-                    NowPlayingBar(player, queueOpen = queue, onToggleQueue = {})
+                    NowPlayingBar(player, open = if (queue) Panel.Queue else null, onToggle = {})
                 }
             }
         }
@@ -156,6 +159,48 @@ class RenderTest {
     fun `the queue panel renders over the page`() {
         val player = playingPlayer()
         assertBlackPageWithContent(render("queue-900x600", 900, 600) { Library(player, queue = true, songs = (1..12).map(::song)) })
+        player.close()
+    }
+
+    @Test
+    fun `home renders with the continue band at 900 by 600 and 1600 by 1000`() {
+        val player = playingPlayer()
+        val actions = SongActions({ _, _ -> }, {}, {}, {}, {}, {}, {})
+        for ((w, h) in listOf(900 to 600, 1600 to 1000)) {
+            assertBlackPageWithContent(
+                render("home-${w}x$h", w, h) {
+                    CompositionLocalProvider(LocalPlayingMark provides null) {
+                        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                            Column(Modifier.fillMaxSize()) {
+                                Box(Modifier.weight(1f).fillMaxWidth()) { HomeScreen(player, actions, onPlayAll = {}, onManage = {}) }
+                                NowPlayingBar(player, open = null, onToggle = {})
+                            }
+                        }
+                    }
+                },
+            )
+        }
+        player.close()
+    }
+
+    @Test
+    fun `the sound panel renders with every control and with only what the engine can do`() {
+        val player = playingPlayer()
+        for ((name, caps) in listOf(
+            "all" to com.tmplayer.music.desktop.player.EngineCapabilities(speed = true, gain = true, equalizer = true, skipSilence = true),
+            "speed-only" to com.tmplayer.music.desktop.player.EngineCapabilities(speed = true),
+            "none" to com.tmplayer.music.desktop.player.EngineCapabilities.NONE,
+        )) {
+            com.tmplayer.music.player.AudioEffectsSetting.choices.setEqualizerOn(true)
+            assertBlackPageWithContent(
+                render("sound-$name", 900, 760) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        Box(Modifier.fillMaxSize()) { SoundPanel(player, onClose = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd), capabilities = caps) }
+                    }
+                },
+            )
+        }
+        com.tmplayer.music.player.AudioEffectsSetting.choices.setEqualizerOn(false)
         player.close()
     }
 

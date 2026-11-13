@@ -185,6 +185,9 @@ fun SelectionBar(selection: ListSelection<String>, songs: List<Song>, actions: S
         TextButton(onClick = { if (chosen.isNotEmpty()) actions.play(chosen, 0) }) { Text(L.desktopPlaySelected) }
         TextButton(onClick = { actions.playNext(chosen) }) { Text(L.menuPlayNext) }
         TextButton(onClick = { actions.addToQueue(chosen) }) { Text(L.menuAddToQueue) }
+        actions.addToPlaylist?.let { add -> TextButton(onClick = { add(chosen) }) { Text(L.menuAddToPlaylist) } }
+        actions.favourite?.let { fav -> TextButton(onClick = { fav(chosen, true) }) { Text(L.menuFavourite) } }
+        actions.keepOffline?.let { keep -> TextButton(onClick = { keep(chosen) }) { Text(L.offlineKeep) } }
         TextButton(onClick = { onChange(selection.clear()) }) { Text(L.desktopSelectionClear) }
     }
 }
@@ -223,7 +226,7 @@ fun SongTable(
                 // A right click on a row outside the selection selects it first, as every file manager does.
                 val now = if (picked) selection else ListSelection(setOf(song.groupKey), song.groupKey).also(onSelection)
                 val chosen = now.inOrder(order).mapNotNull { k -> songs.firstOrNull { it.groupKey == k } }.ifEmpty { listOf(song) }
-                songMenu(chosen, actions)
+                songMenuItems(chosen, actions)
             }) {
                 SongRow(
                     song = song,
@@ -246,12 +249,19 @@ fun SongTable(
     }
 }
 
-private fun songMenu(chosen: List<Song>, actions: SongActions): List<ContextMenuItem> {
+internal fun songMenuItems(chosen: List<Song>, actions: SongActions): List<ContextMenuItem> {
     val one = chosen.singleOrNull()
     return buildList {
         add(ContextMenuItem(L.playerPlay) { actions.play(chosen, 0) })
         add(ContextMenuItem(L.menuPlayNext) { actions.playNext(chosen) })
         add(ContextMenuItem(L.menuAddToQueue) { actions.addToQueue(chosen) })
+        actions.addToPlaylist?.let { addTo -> add(ContextMenuItem(L.menuAddToPlaylist) { addTo(chosen) }) }
+        actions.favourite?.let { fav ->
+            // One song says what it will do; several heart all of them, unless every one is hearted already.
+            val remove = chosen.all(actions.isFavourite)
+            add(ContextMenuItem(if (remove) L.menuUnfavourite else L.menuFavourite) { fav(chosen, !remove) })
+        }
+        actions.keepOffline?.let { keep -> add(ContextMenuItem(L.offlineKeep) { keep(chosen) }) }
         if (one != null && one.versionCount > 1) add(ContextMenuItem(L.libraryVersions(one.versionCount)) { actions.versions(one) })
         if (one != null && one.albumKey.isNotBlank()) add(ContextMenuItem(L.menuGoToAlbum) { actions.openAlbum(one) })
         if (one != null && one.artistKey.isNotBlank()) add(ContextMenuItem(L.menuGoToArtist) { actions.openArtist(one) })

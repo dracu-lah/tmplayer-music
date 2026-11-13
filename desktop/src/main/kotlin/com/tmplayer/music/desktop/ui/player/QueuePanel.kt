@@ -43,6 +43,10 @@ import com.tmplayer.music.data.Library
 import com.tmplayer.music.desktop.player.PlayerController
 import com.tmplayer.music.desktop.ui.common.BackHandler
 import com.tmplayer.music.desktop.ui.common.Cover
+import com.tmplayer.music.desktop.ui.common.DragReorder
+import com.tmplayer.music.desktop.ui.common.dragGrip
+import com.tmplayer.music.desktop.ui.common.draggedRow
+import com.tmplayer.music.desktop.ui.common.moveWithKeys
 import com.tmplayer.music.desktop.ui.common.EmptyState
 import com.tmplayer.music.desktop.ui.common.Format
 import com.tmplayer.music.desktop.ui.common.MusicIcons
@@ -51,6 +55,8 @@ import com.tmplayer.music.i18n.L
 
 /** The queue panel's width: wide enough for a title and an artist beside the cover. */
 val QUEUE_PANEL_WIDTH = 380.dp
+
+private val ROW_HEIGHT = 56.dp
 
 /**
  * The queue as a panel over the right edge of the page: the playing track first, then what comes
@@ -64,6 +70,8 @@ fun QueuePanel(player: PlayerController, onClose: () -> Unit, modifier: Modifier
     val queue = ui.queue
     val state = rememberLazyListState()
     var confirmClear by remember { mutableStateOf(false) }
+    val drag = remember { DragReorder() }
+    val rowPx = with(androidx.compose.ui.platform.LocalDensity.current) { ROW_HEIGHT.toPx() }
     BackHandler(onBack = onClose)
     // Opens on the playing track, not the top of a long queue.
     LaunchedEffect(Unit) { runCatching { state.scrollToItem(queue.current.coerceAtLeast(0)) } }
@@ -98,15 +106,24 @@ fun QueuePanel(player: PlayerController, onClose: () -> Unit, modifier: Modifier
                         }) {
                             Row(
                                 Modifier
+                                    .draggedRow(drag, index)
+                                    .moveWithKeys(index, queue.size) { from, to -> player.move(from, to) }
                                     .fillMaxWidth()
-                                    .height(56.dp)
+                                    .height(ROW_HEIGHT)
                                     .padding(horizontal = 8.dp)
                                     .background(if (current) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent, MaterialTheme.shapes.small)
                                     .clickable { player.skipTo(index) }
-                                    .padding(start = 8.dp, end = 4.dp),
+                                    .padding(start = 4.dp, end = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
+                                // The grip: drag it to move the row (Alt+Up and Alt+Down, or the menu, do the same).
+                                Icon(
+                                    MusicIcons.Drag,
+                                    contentDescription = L.queueMove,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp).dragGrip(drag, index, queue.size, rowPx) { from, to -> player.move(from, to) },
+                                )
                                 Cover(
                                     name = entry.title,
                                     fileId = 0,

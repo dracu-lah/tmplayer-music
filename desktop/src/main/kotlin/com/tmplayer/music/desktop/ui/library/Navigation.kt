@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.tmplayer.music.library.Album
 import com.tmplayer.music.library.Artist
+import com.tmplayer.music.library.Playlist
 import com.tmplayer.music.library.Song
 import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
@@ -12,7 +13,12 @@ import kotlin.random.Random
 
 /** Where the content area is. The first five are the sidebar's; an album and an artist open from a list. */
 sealed interface Route {
+    data object Home : Route
     data object Songs : Route
+    data object Playlists : Route
+    data object Favourites : Route
+    data object Settings : Route
+    data class PlaylistPage(val playlist: Playlist) : Route
     data object Albums : Route
     data object Artists : Route
     data object Search : Route
@@ -25,6 +31,7 @@ sealed interface Route {
         get() = when (this) {
             is AlbumPage -> Albums
             is ArtistPage -> Artists
+            is PlaylistPage -> Playlists
             else -> this
         }
 }
@@ -34,7 +41,7 @@ sealed interface Route {
  * artist from a list goes one deeper, and Back (Escape) comes out. A plain object over state so the
  * rules run in a unit test.
  */
-class Navigator(start: Route = Route.Songs) {
+class Navigator(start: Route = Route.Home) {
     var stack: List<Route> by mutableStateOf(listOf(start))
         private set
 
@@ -74,6 +81,14 @@ class SongActions(
     val versions: (Song) -> Unit,
     val openAlbum: (Song) -> Unit,
     val openArtist: (Song) -> Unit,
+    /** Hearts or un-hearts songs; null where favourites are not offered. */
+    val favourite: ((List<Song>, Boolean) -> Unit)? = null,
+    /** Whether a song is a favourite now, for the menu's wording. */
+    val isFavourite: (Song) -> Boolean = { false },
+    /** Opens the Add to playlist chooser for songs; null where playlists are not offered. */
+    val addToPlaylist: ((List<Song>) -> Unit)? = null,
+    /** Keeps songs offline (after the space check and a question); null where Keep offline is not offered. */
+    val keepOffline: ((List<Song>) -> Unit)? = null,
 )
 
 /** What the same does for the files of a chat page, which are single files rather than songs. */

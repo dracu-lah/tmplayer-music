@@ -19,6 +19,14 @@ import androidx.compose.ui.unit.dp
  * Icon shapes: Copyright (c) 2025 Hugeicons, MIT License. The full notice is in THIRD_PARTY_NOTICES.md.
  */
 object MusicIcons {
+    /** settings: a sliders glyph */
+    val Settings = icon(
+        "Settings",
+        "M4 7H14M18 7H20M4 17H6M10 17H20" +
+            "M16 4.5C17.3807 4.5 18.5 5.61929 18.5 7C18.5 8.38071 17.3807 9.5 16 9.5C14.6193 9.5 13.5 8.38071 13.5 7C13.5 5.61929 14.6193 4.5 16 4.5Z" +
+            "M8 14.5C9.38071 14.5 10.5 15.6193 10.5 17C10.5 18.3807 9.38071 19.5 8 19.5C6.61929 19.5 5.5 18.3807 5.5 17C5.5 15.6193 6.61929 14.5 8 14.5Z",
+    )
+
     /** play */
     val Play = icon(
         "Play",
@@ -170,6 +178,9 @@ object MusicIcons {
 
     /** cancel-01 */
     val Close = icon("Close", "M18 6L6.00081 17.9992M17.9992 18L6 6.00085")
+
+    /** minus: a step down, the lyrics timing. */
+    val Minus = icon("Minus", "M5 12H19")
 
     /** tick-02: done, scanned. */
     val Check = icon("Check", "M5 14L8.5 17.5L19 6.5")

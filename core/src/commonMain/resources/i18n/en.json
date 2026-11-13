@@ -102,12 +102,18 @@
     "start_over": "Start over"
   },
   "desktop": {
+    "close_to_tray": "Keep playing in the tray when the window is closed",
+    "close_to_tray_detail": "Off: closing the window quits the app. On: it stays in the system tray, with Play, Pause, Next and Quit there.",
+    "copied": "Copied to the clipboard.",
     "engine_missing": "The audio engine (libmpv) could not start on this computer. Try again, or send the logs.",
+    "favourites_empty": "No favourites yet. Right click a song, then Add to favourites.",
     "loading": "Loading…",
+    "media_keys_note": "The media keys of your keyboard and headset control the player.",
     "mute": "Mute",
     "nothing_playing": "Nothing is playing",
     "play_failed": "Couldn't start that track. {reason}",
     "play_selected": "Play selected",
+    "playlist_empty": "No songs yet. Right click a song, then Add to playlist.",
     "queue_empty": "The queue is empty. Play a song to fill it.",
     "queue_next": "Next up",
     "queue_now": "Now playing",
@@ -116,6 +122,9 @@
     "selection_clear": "Clear selection",
     "shortcuts": "Space plays and pauses, the arrow keys seek, Ctrl and the arrow keys skip, Ctrl+F searches.",
     "track_gone": "That track is no longer in its chat, or its chat cannot be reached.",
+    "tray_quit": "Quit",
+    "tray_show": "Open TMPlayer Music",
+    "tray_unavailable": "This desktop has no system tray, so closing the window quits the app.",
     "unmute": "Unmute",
     "volume": "Volume"
   },

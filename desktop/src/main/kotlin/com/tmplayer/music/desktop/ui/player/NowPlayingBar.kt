@@ -54,7 +54,7 @@ val NOW_PLAYING_HEIGHT = 88.dp
  * playing on open: with a restored queue the bar shows its track paused, and Play starts it.
  */
 @Composable
-fun NowPlayingBar(player: PlayerController, queueOpen: Boolean, onToggleQueue: () -> Unit, modifier: Modifier = Modifier) {
+fun NowPlayingBar(player: PlayerController, open: Panel?, onToggle: (Panel) -> Unit, modifier: Modifier = Modifier) {
     val ui by player.ui.collectAsState()
     val entry = ui.current
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = modifier.fillMaxWidth().height(NOW_PLAYING_HEIGHT)) {
@@ -70,7 +70,9 @@ fun NowPlayingBar(player: PlayerController, queueOpen: Boolean, onToggleQueue: (
                     SeekRow(player)
                 }
                 Row(Modifier.weight(0.3f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    QueueButton(queueOpen, onToggleQueue)
+                    PanelButton(MusicIcons.Lyrics, L.nowplayingLyricsShow, open == Panel.Lyrics) { onToggle(Panel.Lyrics) }
+                    PanelButton(MusicIcons.Sleep, L.effectsTitle, open == Panel.Sound) { onToggle(Panel.Sound) }
+                    PanelButton(MusicIcons.Queue, L.playerQueue, open == Panel.Queue) { onToggle(Panel.Queue) }
                     VolumeControl(player)
                 }
             }
@@ -217,12 +219,15 @@ private fun SeekRow(player: PlayerController) {
     }
 }
 
+/** The side panels the bar opens over the page's right edge, one at a time. */
+enum class Panel { Queue, Lyrics, Sound }
+
 @Composable
-private fun QueueButton(open: Boolean, onToggle: () -> Unit) {
+private fun PanelButton(icon: ImageVector, description: String, open: Boolean, onToggle: () -> Unit) {
     IconButton(onClick = onToggle, modifier = Modifier.size(36.dp)) {
         Icon(
-            MusicIcons.Queue,
-            contentDescription = L.playerQueue,
+            icon,
+            contentDescription = description,
             tint = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(22.dp),
         )
@@ -250,7 +255,7 @@ private fun VolumeControl(player: PlayerController) {
                 activeTrackColor = MaterialTheme.colorScheme.primary,
                 inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
             ),
-            modifier = Modifier.width(110.dp).height(24.dp).semantics { contentDescription = L.desktopVolume },
+            modifier = Modifier.width(88.dp).height(24.dp).semantics { contentDescription = L.desktopVolume },
         )
     }
 }

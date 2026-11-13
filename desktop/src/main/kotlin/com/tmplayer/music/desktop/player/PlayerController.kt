@@ -170,14 +170,15 @@ class PlayerController(
     // Queue changes
 
     /** Plays [songs] from [start]; a long list is cut around the start to what a saved queue holds. */
-    fun play(songs: List<Song>, start: Int, shuffle: Boolean = false) =
-        playEntries(songs.map(QueueEntry::of), start, shuffle)
+    fun play(songs: List<Song>, start: Int, shuffle: Boolean = false, positionMs: Long = 0) =
+        playEntries(songs.map(QueueEntry::of), start, shuffle, positionMs)
 
     /** Plays [tracks] (a chat page's own files) from [start]. */
-    fun playTracks(tracks: List<Track>, start: Int, shuffle: Boolean = false) =
-        playEntries(tracks.map { QueueEntry.of(it) }, start, shuffle)
+    fun playTracks(tracks: List<Track>, start: Int, shuffle: Boolean = false, positionMs: Long = 0) =
+        playEntries(tracks.map { QueueEntry.of(it) }, start, shuffle, positionMs)
 
-    fun playEntries(entries: List<QueueEntry>, start: Int, shuffle: Boolean = false) = run {
+    /** Plays [entries] from [start], the first one from [positionMs] (a Speed dial card resumes where it was left). */
+    fun playEntries(entries: List<QueueEntry>, start: Int, shuffle: Boolean = false, positionMs: Long = 0) = run {
         if (entries.isEmpty()) return@run
         val queue = PlayQueue.of(entries, start, shuffle, _ui.value.queue.repeat, random)
         // With shuffle the song picked still plays first; the rest follow in a random order.
@@ -185,7 +186,26 @@ class PlayerController(
         dropPrefetch()
         _ui.update { it.copy(queue = queue, restored = false, error = null) }
         skipsInARow = 0
-        openCurrent(startAtMs = 0, playNow = true)
+        openCurrent(startAtMs = positionMs.coerceAtLeast(0), playNow = true)
+    }
+
+    /**
+     * Skips to [id] when it is in the queue already, from [positionMs]; false when it is not (the caller queues it).
+     * The same file playing now is just resumed or paused by the caller, so it is not reopened here.
+     */
+    fun resumeInQueue(id: com.tmplayer.music.library.TrackId, positionMs: Long): Boolean {
+        val index = _ui.value.queue.entries.indexOfFirst { it.id == id }
+        if (index < 0) return false
+        run {
+            val at = _ui.value.queue.entries.indexOfFirst { it.id == id }
+            if (at < 0) return@run
+            keepSpot()
+            dropPrefetch()
+            _ui.update { it.copy(queue = it.queue.jumpTo(at), error = null, restored = false) }
+            skipsInARow = 0
+            openCurrent(positionMs.coerceAtLeast(0), playNow = true)
+        }
+        return true
     }
 
     /** Plays one exact version of [song], from the Versions sheet. */
