@@ -16,14 +16,14 @@ import java.net.URI
  */
 object OpenExternal {
 
-    fun browse(url: String) = launch("browse $url") {
+    fun browse(url: String) = launch("browse a link") {
         val desktop = desktopFor(Desktop.Action.BROWSE)
         if (desktop != null && runCatching { desktop.browse(URI(url)) }.isSuccess) return@launch true
         run(command(OsInfo.osTag, url))
     }
 
     /** Opens [file] with its default app, or a folder in the file manager. */
-    fun open(file: File) = launch("open $file") {
+    fun open(file: File) = launch("open ${file.name}") {
         val desktop = desktopFor(Desktop.Action.OPEN)
         if (desktop != null && runCatching { desktop.open(file) }.isSuccess) return@launch true
         run(command(OsInfo.osTag, file.absolutePath))
