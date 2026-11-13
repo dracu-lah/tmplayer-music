@@ -105,6 +105,7 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
         )
         Button(onClick = { confirm = true }, enabled = used > 0, modifier = Modifier.padding(16.dp).tvFocusRing()) { Text(L.settingsFreeUp) }
         message?.let { Line(it) }
+        KeptOfflineSection()
 
         HapticSettingsSection()
         EffectsSettingsRow()

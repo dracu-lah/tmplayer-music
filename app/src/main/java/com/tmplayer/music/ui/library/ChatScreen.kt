@@ -369,6 +369,7 @@ private fun ChatPageBody(
                             ) { Text(label, maxLines = 1) }
                         }
                     }
+                    KeepChatOfflineButton(chat.chatId)
                     val note = when {
                         state.rows.isNotEmpty() && state.end -> L.chatfirstChatEnd(state.rows.size)
                         else -> null
@@ -457,6 +458,7 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onLongClick: () -> Unit)
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        OfflineMark(track.id)
         if (track.format.lossless) Badge(track.format.label)
     }
 }

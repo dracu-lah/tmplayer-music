@@ -278,6 +278,7 @@ fun SongRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        OfflineMark(song.defaultTrack)
         if (song.variant.isNotBlank()) Badge(song.variant)
         if (song.bestFormat.lossless) Badge(song.bestFormat.label)
         if (song.versionCount > 1) {

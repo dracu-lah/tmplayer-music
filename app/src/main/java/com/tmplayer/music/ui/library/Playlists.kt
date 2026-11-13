@@ -133,6 +133,7 @@ fun PlaylistScreen(playlist: Playlist, actions: SongActions, onDeleted: () -> Un
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(modifier = Modifier.tvFocusRing(), onClick = { renaming = true }) { Text(L.playlistRename) }
                     TextButton(modifier = Modifier.tvFocusRing(), onClick = { deleting = true }) { Text(L.playlistDelete) }
+                    KeepOfflineButton(songs)
                 }
             }
             PlayButtons({ songs.orEmpty() }) { list, shuffle -> if (shuffle) actions.shuffle(list) else actions.play(list, 0) }

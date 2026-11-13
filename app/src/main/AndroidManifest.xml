@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Keep offline: fetching a queue of tracks with the app out of sight is a data sync foreground service (Android 14 wants the type). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!--
       Keeps the sponsor reminder's once a day job (SupportChecks, scheduled only while its switch is
       on) across a restart: JobScheduler drops a persisted job without it. Nothing runs at boot itself.
@@ -88,6 +90,16 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!--
+          Keep offline (OfflineService): holds the process and shows progress while a queue of tracks is
+          fetched, and ends itself when nothing downloads. Not exported: only the app and its own
+          notification buttons start it.
+        -->
+        <service
+            android:name=".data.OfflineService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- The sponsor reminder's daily check (SupportChecks); only the system's job scheduler binds it. -->
         <service
