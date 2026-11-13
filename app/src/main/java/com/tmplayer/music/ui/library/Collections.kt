@@ -284,6 +284,7 @@ private fun DetailList(
                 Text(title, style = MaterialTheme.typography.headlineSmall)
                 if (subtitle.isNotBlank()) Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (keepOffline) KeepOfflineButton(songs.value)
+                com.tmplayer.music.ui.connect.SendToTvButtons({ songs.value.orEmpty().distinctBy { it.groupKey } })
             }
         }
         item(key = "extra") { extra() }

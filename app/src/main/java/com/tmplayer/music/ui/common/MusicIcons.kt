@@ -19,6 +19,13 @@ import androidx.compose.ui.unit.dp
  * Icon shapes: Copyright (c) 2025 Hugeicons, MIT License. The full notice is in THIRD_PARTY_NOTICES.md.
  */
 object MusicIcons {
+    /** A television, drawn for this app (not from the Hugeicons set): a screen on a stand. */
+    val Tv = icon(
+        "Tv",
+        "M5 5H19C20.1 5 21 5.9 21 7V15C21 16.1 20.1 17 19 17H5C3.9 17 3 16.1 3 15V7C3 5.9 3.9 5 5 5Z" +
+            "M8 21H16M12 17V21",
+    )
+
     /** play */
     val Play = icon(
         "Play",
