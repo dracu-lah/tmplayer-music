@@ -149,6 +149,15 @@ class M3uTest {
     }
 
     @Test
+    fun `bytes are read as utf-8, utf-16 with a mark, or latin-1, never thrown on`() {
+        assertEquals("Café - 中", M3u.decode("Café - 中".toByteArray(Charsets.UTF_8)))
+        assertEquals("Café", M3u.decode(byteArrayOf(0x43, 0x61, 0x66, 0xE9.toByte())))
+        assertEquals("ab", M3u.decode(byteArrayOf(0xFF.toByte(), 0xFE.toByte(), 0x61, 0, 0x62, 0)))
+        assertEquals("", M3u.decode(ByteArray(0)))
+        M3u.decode(ByteArray(1000) { it.toByte() })
+    }
+
+    @Test
     fun `a source that fails matches nothing and does not throw`() = runBlocking {
         val broken = object : M3u.SongSource {
             override suspend fun byBase(bases: Collection<String>): Map<String, List<Song>> = error("boom")

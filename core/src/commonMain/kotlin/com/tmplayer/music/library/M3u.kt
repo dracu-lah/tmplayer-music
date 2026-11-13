@@ -81,6 +81,27 @@ object M3u {
     // Reading
 
     /**
+     * The text of a list file's bytes: UTF-16 when it starts with that byte order mark, UTF-8 when the
+     * bytes are valid UTF-8 (what M3U8 is), otherwise Latin-1 (what old M3U files are). Never throws.
+     */
+    fun decode(bytes: ByteArray): String {
+        if (bytes.size >= 2) {
+            val b0 = bytes[0].toInt() and 0xFF
+            val b1 = bytes[1].toInt() and 0xFF
+            if (b0 == 0xFE && b1 == 0xFF) return String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
+            if (b0 == 0xFF && b1 == 0xFE) return String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)
+        }
+        return try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+        } catch (e: java.nio.charset.CharacterCodingException) {
+            String(bytes, Charsets.ISO_8859_1)
+        }
+    }
+
+    /**
      * Reads a list. A leading byte order mark is ignored. `#EXTINF` gives the duration and the
      * `Artist - Title` text for the line after it; any other line starting with `#` is a comment (except
      * `#PLAYLIST:`, which names the list). A line that is not a comment is an entry: when no `#EXTINF`
