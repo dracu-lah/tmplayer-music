@@ -70,23 +70,13 @@ object Artwork {
 
     private class Entry(val image: ImageBitmap, val bytes: Long)
 
-    private val memory = object : LinkedHashMap<String, Entry>(64, 0.75f, true) {
-        var total = 0L
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean {
-            if (eldest != null && total > MEMORY_BYTES) {
-                total -= eldest.value.bytes
-                return true
-            }
-            return false
-        }
-    }
+    private val memory = ByteBoundedLru<String, Entry>(MEMORY_BYTES) { it.bytes }
     private val gate = Semaphore(4)
 
     fun cached(key: String): ImageBitmap? = synchronized(memory) { memory[key]?.image }
 
     private fun remember(key: String, image: ImageBitmap) = synchronized(memory) {
-        memory.put(key, Entry(image, image.width.toLong() * image.height * 4))?.let { memory.total -= it.bytes }
-        memory.total += image.width.toLong() * image.height * 4
+        memory.put(key, Entry(image, image.width.toLong() * image.height * 4))
     }
 
     /**
@@ -324,4 +314,35 @@ internal fun initials(name: String): String {
         if (Character.isLetterOrDigit(cp)) String(Character.toChars(cp)).uppercase() else null
     }
     return letters.joinToString("").ifEmpty { "♪" }
+}
+
+/**
+ * A least recently used map bounded by the bytes its values weigh, not by their count. After each
+ * [put] the oldest entries go until the total is back under [capBytes], however many that takes: one
+ * big picture can push out several small ones. The newest entry always stays, even when it alone is
+ * over the cap. Not thread safe; the caller holds a lock.
+ */
+internal class ByteBoundedLru<K, V>(private val capBytes: Long, private val sizeOf: (V) -> Long) {
+    private val map = LinkedHashMap<K, V>(64, 0.75f, true)
+
+    var total = 0L
+        private set
+
+    val size: Int get() = map.size
+
+    operator fun get(key: K): V? = map[key]
+
+    fun containsKey(key: K): Boolean = map.containsKey(key)
+
+    fun put(key: K, value: V) {
+        map.put(key, value)?.let { total -= sizeOf(it) }
+        total += sizeOf(value)
+        val iterator = map.entries.iterator()
+        while (total > capBytes && map.size > 1 && iterator.hasNext()) {
+            val eldest = iterator.next()
+            if (eldest.key == key) continue
+            total -= sizeOf(eldest.value)
+            iterator.remove()
+        }
+    }
 }
