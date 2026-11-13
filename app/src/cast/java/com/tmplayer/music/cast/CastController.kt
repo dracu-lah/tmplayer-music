@@ -38,6 +38,11 @@ internal class CastRecord(
 ) {
     val originalIds: List<String> = original.map { it.mediaId }
 
+    /** The phone's own item for an id it sent: the only source of an address or a cover when the cast ends. */
+    private val byId: Map<String, MediaItem> by lazy { LinkedHashMap<String, MediaItem>().also { m -> original.forEach { m.putIfAbsent(it.mediaId, it) } } }
+
+    fun itemFor(id: String): MediaItem? = byId[id]
+
     /** Fixed by the queue, so the same queue shuffles the same way every time. */
     val seed: Long = CastReorder.seedOf(originalIds)
 }
@@ -56,7 +61,7 @@ internal class CastController(
 ) : CastPlayer.TransferCallback {
 
     val server = CastAudioServer(context, sources)
-    val converter = CastItemConverter { server }
+    val converter = CastItemConverter({ server }, { id -> record?.itemFor(id) })
 
     @Volatile
     var record: CastRecord? = null
@@ -237,7 +242,7 @@ internal class CastController(
         val positionMs = (if (liveId != null) source.currentPosition else known?.second ?: 0L).coerceAtLeast(0)
         val byId = LinkedHashMap<String, MediaItem>()
         kept.original.forEach { byId.putIfAbsent(it.mediaId, it) }
-        remote.forEach { byId.putIfAbsent(it.mediaId, it) }
+        // Only items this phone sent: nothing the receiver's queue holds (its address, its cover) is ever played here.
         // With nothing left of the receiver's queue (it vanished with the connection), the queue the phone had comes back whole.
         val merged = if (remote.isEmpty() && kept.sent.isNotEmpty()) kept.originalIds
         else CastQueue.mergeBack(kept.originalIds, kept.sent, remote.map { it.mediaId })

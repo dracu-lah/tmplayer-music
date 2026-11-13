@@ -11,8 +11,6 @@ import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaQueueItem
 import com.google.android.gms.common.images.WebImage
 import com.tmplayer.music.platform.Logger
-import com.tmplayer.music.player.AudioEffectsState
-import com.tmplayer.music.player.MediaIds
 import org.json.JSONObject
 import com.google.android.gms.cast.MediaMetadata as CastMetadata
 
@@ -30,11 +28,16 @@ internal fun entryOf(item: MediaItem): CastEntry = CastEntry(
  * the cover on the phone's cast server (see [CastAudioServer]), the title, artist, album and track
  * number, and the length, so the receiver's own screen shows the track. The item itself rides along
  * as custom data (its id, its `tdfile` address, its cover and the extras the app keeps), so the
- * receiver's queue turns back into the very items the local player plays when the cast ends.
- * Back: only what this app sent is understood; anything else comes back as an empty item.
+ * receiver's queue turns back into items. Back: only an id this phone sent is understood, and its
+ * address and cover are the phone's own item's, never what the receiver says (another sender on the
+ * Wi-Fi can put anything in a receiver's queue); anything else comes back as an empty item.
  */
 @UnstableApi
-internal class CastItemConverter(private val server: () -> CastAudioServer?) : MediaItemConverter {
+internal class CastItemConverter(
+    private val server: () -> CastAudioServer?,
+    /** The phone's own item for an id it sent, or null: the only place an address or a cover ever comes from. */
+    private val local: (String) -> MediaItem? = { null },
+) : MediaItemConverter {
 
     override fun toMediaQueueItem(mediaItem: MediaItem): MediaQueueItem {
         val entry = entryOf(mediaItem)
@@ -58,12 +61,6 @@ internal class CastItemConverter(private val server: () -> CastAudioServer?) : M
         }
         val custom = JSONObject().apply {
             put(ID, mediaItem.mediaId)
-            put(URI, mediaItem.localConfiguration?.uri?.toString().orEmpty())
-            put(ART, m.artworkUri?.toString().orEmpty())
-            put(COVER, extras?.getString(MediaIds.COVER_ART).orEmpty())
-            put(GAIN, extras?.getString(AudioEffectsState.GAIN_KEY).orEmpty())
-            put(FORMAT, extras?.getString(CAST_FORMAT_KEY).orEmpty())
-            put(SIZE, size)
         }
         val info = MediaInfo.Builder(audio)
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
@@ -80,13 +77,10 @@ internal class CastItemConverter(private val server: () -> CastAudioServer?) : M
         val info = mediaQueueItem.media ?: return MediaItem.Builder().build()
         val custom = info.customData
         val id = custom?.optString(ID).orEmpty()
-        if (id.isEmpty()) return MediaItem.Builder().setUri(info.contentId.takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY).build()
-        val extras = Bundle().apply {
-            putString(MediaIds.COVER_ART, custom?.optString(COVER).orEmpty())
-            putString(AudioEffectsState.GAIN_KEY, custom?.optString(GAIN).orEmpty())
-            putString(CAST_FORMAT_KEY, custom?.optString(FORMAT).orEmpty())
-            putLong(CAST_SIZE_KEY, custom?.optLong(SIZE, 0L) ?: 0L)
-        }
+        val mine = if (id.isEmpty()) null else local(id)
+        if (mine == null) return MediaItem.Builder().build()
+        // The extras are the phone's own item's, not the receiver's.
+        val extras = mine.mediaMetadata.extras?.let { Bundle(it) } ?: Bundle()
         val cast = info.metadata
         val metadata = MediaMetadata.Builder()
             .setTitle(cast?.getString(CastMetadata.KEY_TITLE))
@@ -94,7 +88,7 @@ internal class CastItemConverter(private val server: () -> CastAudioServer?) : M
             .setAlbumTitle(cast?.getString(CastMetadata.KEY_ALBUM_TITLE))
             .setAlbumArtist(cast?.getString(CastMetadata.KEY_ALBUM_ARTIST))
             .setTrackNumber(cast?.getInt(CastMetadata.KEY_TRACK_NUMBER)?.takeIf { it > 0 })
-            .setArtworkUri(custom?.optString(ART)?.takeIf { it.isNotEmpty() }?.toUri())
+            .setArtworkUri(mine.mediaMetadata.artworkUri)
             .setDurationMs(info.streamDuration.takeIf { it > 0 })
             .setIsPlayable(true)
             .setIsBrowsable(false)
@@ -102,7 +96,7 @@ internal class CastItemConverter(private val server: () -> CastAudioServer?) : M
             .build()
         return MediaItem.Builder()
             .setMediaId(id)
-            .setUri(custom?.optString(URI).orEmpty().toUri())
+            .setUri(mine.localConfiguration?.uri ?: Uri.EMPTY)
             .setMediaMetadata(metadata)
             .build()
     }
@@ -117,11 +111,5 @@ internal class CastItemConverter(private val server: () -> CastAudioServer?) : M
         private const val TAG = "CastItemConverter"
         private const val PRELOAD_SECONDS = 15.0
         private const val ID = "id"
-        private const val URI = "uri"
-        private const val ART = "art"
-        private const val COVER = "cover"
-        private const val GAIN = "gain"
-        private const val FORMAT = "fmt"
-        private const val SIZE = "size"
     }
 }
