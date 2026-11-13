@@ -47,6 +47,9 @@ class KeepEngineTest {
 
         /** Messages whose first start does not complete by itself. */
         val holdFirst = HashSet<Long>()
+
+        /** Messages whose every start stays incomplete. */
+        val holdAlways = HashSet<Long>()
         val bus = MutableSharedFlow<KeepFile>(extraBufferCapacity = 64)
         val cancelled = ArrayList<Int>()
         val forgotten = ArrayList<Int>()
@@ -68,7 +71,7 @@ class KeepEngineTest {
             started += fileId
             asked[fileId] = (asked[fileId] ?: 0) + 1
             starts[message]?.removeFirstOrNull()?.let { return it }
-            if (message in holdFirst && asked[fileId] == 1) return KeepStart.Started(file(message, complete = false))
+            if (message in holdAlways || message in holdFirst && asked[fileId] == 1) return KeepStart.Started(file(message, complete = false))
             return KeepStart.Started(file(message, complete = true, downloaded = sizes[message] ?: 100))
         }
 
@@ -147,7 +150,7 @@ class KeepEngineTest {
         assertEquals(100L, path.length())
         assertFalse(File(tdDir, "f1").exists())
         assertEquals(listOf(1), calls.forgotten)
-        assertEquals(setOf("k1_1.mp3", OfflineStore.INDEX), offlineDir.list()!!.toSet())
+        assertEquals(setOf("k1_1.mp3", OfflineStore.INDEX), offlineDir.list()!!.filter { it != OfflineStore.BACKUP }.toSet())
         val state = rig.engine.state.value
         assertEquals(KeepPhase.Idle, state.phase)
         assertEquals(1, state.summary?.kept)
@@ -275,8 +278,8 @@ class KeepEngineTest {
         assertTrue(1 in calls.forgotten)
         assertTrue(offlineDir.list()!!.none { it.endsWith(OfflineStore.PART) })
         assertTrue(rig.engine.pending.value.isEmpty())
-        // Stopped by the user's hand: no summary is put in front of them.
-        assertNull(rig.engine.state.value.summary)
+        // One track stopped: what the rest did is still told (only cancel all is silent).
+        assertEquals(1, rig.engine.state.value.summary?.kept)
         assertEquals(KeepPhase.Idle, rig.engine.state.value.phase)
     }
 
@@ -297,6 +300,7 @@ class KeepEngineTest {
         assertEquals(listOf(1L), rig.keptIds)
         assertTrue(rig.engine.pending.value.isEmpty())
         assertEquals(KeepPhase.Idle, rig.engine.state.value.phase)
+        assertNull(rig.engine.state.value.summary)
         assertTrue(offlineDir.list()!!.none { it.endsWith(OfflineStore.PART) })
     }
 
@@ -375,15 +379,69 @@ class KeepEngineTest {
     }
 
     @Test
-    fun `a fetch that goes quiet is given up on and its partial files removed`() = runTest {
+    fun `a fetch that goes quiet twice is given up on and its partial files removed`() = runTest {
         val calls = FakeCalls()
-        calls.holdFirst += 1
+        calls.holdAlways += 1
         val rig = rig(calls, stallMs = 30_000)
         rig.engine.enqueue(listOf(item(1), item(2)))
         advanceUntilIdle()
         assertEquals(listOf(2L), rig.keptIds)
         assertEquals(Skip.Stalled, rig.engine.state.value.summary!!.skipped.single().reason)
         assertTrue(1 in calls.forgotten)
+        assertEquals(2, calls.asked[1])
+    }
+
+    @Test
+    fun `a fetch that goes quiet once is asked again with what landed kept`() = runTest {
+        val calls = FakeCalls()
+        calls.holdFirst += 1
+        val rig = rig(calls, stallMs = 30_000)
+        rig.engine.enqueue(listOf(item(1), item(2)))
+        advanceUntilIdle()
+        assertEquals(listOf(1L, 2L), rig.keptIds)
+        assertTrue(calls.asked[1] == 2)
+        // TDLib's partial was never thrown away for the second try.
+        assertFalse(1 in calls.forgotten.dropLast(1))
+        assertNull(rig.engine.state.value.summary!!.skipped.singleOrNull())
+    }
+
+    @Test
+    fun `a silence on a full disk is no space, not a stall`() = runTest {
+        val calls = FakeCalls()
+        calls.holdAlways += 1
+        var asks = 0
+        val rig = rig(calls, stallMs = 30_000, free = { if (++asks <= 1) 1_000 else 10 })
+        rig.engine.enqueue(listOf(item(1)))
+        advanceUntilIdle()
+        assertEquals(Skip.NoSpace, rig.engine.state.value.summary!!.skipped.single().reason)
+    }
+
+    @Test
+    fun `two running fetches cannot both claim the same free space`() = runTest {
+        val calls = FakeCalls()
+        calls.holdFirst += 1
+        val rig = rig(calls, free = { 150 })
+        rig.engine.enqueue(listOf(item(1), item(2)))
+        advanceTimeBy(1_000)
+        runCurrent()
+        calls.bus.emit(calls.file(1, complete = true, downloaded = 100))
+        advanceUntilIdle()
+        assertEquals(listOf(1L), rig.keptIds)
+        assertEquals(listOf(Skip.NoSpace), rig.engine.state.value.summary!!.skipped.map { it.reason })
+    }
+
+    @Test
+    fun `cancelling one track still tells what the rest did`() = runTest {
+        val calls = FakeCalls()
+        calls.holdFirst += 1
+        val rig = rig(calls, concurrency = 1)
+        rig.engine.enqueue(listOf(item(1), item(2), item(3)))
+        advanceTimeBy(1_000)
+        runCurrent()
+        rig.engine.cancel(TrackId(1, 1))
+        advanceUntilIdle()
+        assertEquals(listOf(2L, 3L), rig.keptIds)
+        assertEquals(2, rig.engine.state.value.summary?.kept)
     }
 
     @Test
@@ -509,7 +567,7 @@ class KeepEngineTest {
         assertEquals(listOf(2L), rig.keptIds)
         assertTrue(1 in calls.forgotten || 3 in calls.forgotten)
         assertEquals(0, rig.engine.protectedChats().size)
-        assertEquals(setOf("k2_2.mp3", OfflineStore.INDEX), offlineDir.list()!!.filter { !it.endsWith(".tmp") }.toSet())
+        assertEquals(setOf("k2_2.mp3", OfflineStore.INDEX), offlineDir.list()!!.filter { !it.endsWith(".tmp") && it != OfflineStore.BACKUP }.toSet())
     }
 
     @Test
