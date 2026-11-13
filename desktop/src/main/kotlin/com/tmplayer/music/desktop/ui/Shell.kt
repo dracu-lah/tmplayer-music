@@ -50,6 +50,7 @@ import com.tmplayer.music.data.Failures
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.LibraryPhase
 import com.tmplayer.music.desktop.DesktopApp
+import com.tmplayer.music.desktop.player.AudioSurface
 import com.tmplayer.music.desktop.ui.common.BackHandler
 import com.tmplayer.music.desktop.ui.common.ChatAvatar
 import com.tmplayer.music.desktop.ui.common.MusicIcons
@@ -163,7 +164,10 @@ fun Shell(onLogOut: () -> Unit) {
         player.ui.map { u -> u.current?.let { PlayingMark(it.songKey, it.id, u.playing) } }.distinctUntilChanged()
     }.collectAsState(null)
 
+    val engine by player.engineFlow.collectAsState()
     CompositionLocalProvider(LocalPlayingMark provides mark) {
+        // libmpv loads nothing without a render surface attached, picture or not.
+        Box(Modifier.size(1.dp)) { AudioSurface(engine) }
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Sidebar(

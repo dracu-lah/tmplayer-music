@@ -1,6 +1,8 @@
 // The audio half of TMPlayer's MpvPlaybackEngine (GPL-3.0), desktop/src/main/kotlin/com/tmplayer/desktop/player/.
 package com.tmplayer.music.desktop.player
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import com.tmplayer.music.desktop.DesktopPaths
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.platform.Logger
@@ -105,7 +107,8 @@ class MpvAudioEngine : AudioEngine {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + com.tmplayer.music.platform.JobFailures.handler("MpvAudioEngine"))
 
-    private val player: MpvMediampPlayer
+    /** mediamp loads a file only once a render surface is attached, even with no picture: see [AudioSurface]. */
+    internal val player: MpvMediampPlayer
     private val handle: MPVHandle get() = player.impl as MPVHandle
 
     private val _state = MutableStateFlow(EngineState())
@@ -333,4 +336,18 @@ object MpvErrors {
         -2 -> L.playerMpvNoMemory
         else -> null
     }
+}
+
+/**
+ * mediamp's libmpv player starts a load only when a render surface is attached to it, picture or
+ * no picture. Audio has no picture (`vid=no`), so this is one dp, invisible, kept in the shell for
+ * as long as an engine exists. Nothing is ever drawn into it.
+ */
+@androidx.compose.runtime.Composable
+fun AudioSurface(engine: AudioEngine?) {
+    val mpv = engine as? MpvAudioEngine ?: return
+    org.openani.mediamp.mpv.compose.MpvMediampPlayerSurface(
+        mpv.player,
+        androidx.compose.ui.Modifier.size(1.dp),
+    )
 }

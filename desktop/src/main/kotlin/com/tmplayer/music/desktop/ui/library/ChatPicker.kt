@@ -60,6 +60,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import com.tmplayer.music.desktop.diagnostics.SendLogsButton
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.desktop.ui.common.Cover
+import com.tmplayer.music.desktop.ui.common.OnSelectAll
+import com.tmplayer.music.desktop.ui.common.typingField
 import kotlinx.coroutines.CancellationException
 import java.text.Normalizer
 
@@ -175,7 +177,7 @@ fun ChatPicker(
                     onValueChange = { query = it.take(100) },
                     placeholder = { Text(L.pickerSearch) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().typingField(),
                 )
             }
             val now = listing
@@ -216,6 +218,15 @@ fun ChatPicker(
                         else -> all
                     }
                     val shown = if (needle.isEmpty()) inTab else inTab.filter { fold(it.title).contains(needle) }
+                    // Ctrl+A ticks every chat the list shows, after the same question the button asks of a big list.
+                    OnSelectAll {
+                        if (shown.size > LARGE_SELECTION) {
+                            confirmAll = shown
+                        } else {
+                            shown.forEach { ticked[it.chatId] = true }
+                            touchedSaved = true
+                        }
+                    }
                     val row: @Composable (ChatEntry) -> Unit = { chat ->
                         LaunchedEffect(chat.chatId) {
                             if (!counts.containsKey(chat.chatId)) countOf(chat)

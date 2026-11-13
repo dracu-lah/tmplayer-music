@@ -20,6 +20,9 @@ object Format {
         return if (h > 0) String.format(Locale.ROOT, "%d:%02d:%02d", h, m, s) else String.format(Locale.ROOT, "%d:%02d", m, s)
     }
 
+    /** Where a track is: 0:00 at the start (a position is never "unknown", unlike a length). */
+    fun position(ms: Long): String = if (ms <= 0) "0:00" else duration(ms)
+
     fun size(bytes: Long): String {
         if (bytes <= 0) return ""
         val number = NumberFormat.getNumberInstance().apply { maximumFractionDigits = 1 }

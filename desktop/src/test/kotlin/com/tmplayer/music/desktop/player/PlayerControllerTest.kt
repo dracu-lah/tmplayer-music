@@ -263,8 +263,7 @@ class PlayerControllerTest {
         eventually("b opened") { r.source.opens == listOf("a", "b") }
         assertEquals(1, r.controller.ui.value.queue.size)
         r.controller.remove(0)
-        eventually("emptied") { r.controller.ui.value.queue.isEmpty }
-        assertFalse(r.controller.ui.value.playing)
+        eventually("emptied and stopped") { r.controller.ui.value.queue.isEmpty && !r.controller.ui.value.playing }
         eventually("saved blank") { r.store.text == "" }
         Unit
     }

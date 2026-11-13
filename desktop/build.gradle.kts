@@ -11,7 +11,10 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
 }
 
+// A full JDK 21 (with AWT's desktop half: Fedora's java-25-openjdk-headless cannot open a window),
+// as ../TMPlayer's desktop builds with. Bytecode stays at 17, like :core.
 kotlin {
+    jvmToolchain(21)
     compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
 }
 tasks.withType<JavaCompile>().configureEach {
@@ -102,9 +105,28 @@ dependencies {
     testImplementation(libs.cmp.ui.test.junit4)
 }
 
+tasks.test {
+    // The engine smoke test (it loads libmpv and opens a small window) runs only when asked:
+    // ./gradlew :desktop:test -Psmoke=1 [-PmpvAo=null] [-PmpvLog=v]
+    val smoke = providers.gradleProperty("smoke").getOrElse("")
+    environment("TMPLAYER_SMOKE", smoke)
+    systemProperty("tmplayer.mpv.ao", providers.gradleProperty("mpvAo").getOrElse(""))
+    systemProperty("tmplayer.mpv.log", providers.gradleProperty("mpvLog").getOrElse(""))
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    if (smoke == "1") {
+        // A real window: not the headless the test JVM starts with by default.
+        environment("DISPLAY", System.getenv("DISPLAY") ?: ":0")
+        jvmArgs("-Djava.awt.headless=false")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "com.tmplayer.music.desktop.MainKt"
+        // The plugin runs the app on the JDK that runs Gradle, which may be a headless one (no AWT
+        // windows): run it on the same JDK 21 the module compiles with.
+        javaHome = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+            .get().metadata.installationPath.asFile.absolutePath
         // JNA (TDLib's and libmpv's loaders) on a newer JDK warns about native access.
         jvmArgs("--enable-native-access=ALL-UNNAMED", "-Dsun.java2d.uiScale.enabled=true")
     }

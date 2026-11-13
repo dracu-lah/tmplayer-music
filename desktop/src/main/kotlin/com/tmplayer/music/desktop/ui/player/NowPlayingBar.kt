@@ -186,7 +186,7 @@ private fun SeekRow(player: PlayerController) {
     val shownMs = dragging?.let { (it * duration).toLong() } ?: position
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            if (ui.queue.isEmpty) "" else Format.duration(shownMs),
+            if (ui.queue.isEmpty) "" else Format.position(shownMs),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.End,

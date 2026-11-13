@@ -331,10 +331,17 @@ fun SongRow(
                 modifier = Modifier.weight(1f),
             )
         }
-        if (song.variant.isNotBlank()) Badge(song.variant)
-        if (song.bestFormat.lossless) Badge(song.bestFormat.label)
-        if (song.versionCount > 1) {
-            TextButton(onClick = onVersions) { Text(L.libraryVersions(song.versionCount), style = MaterialTheme.typography.labelMedium) }
+        // A column of fixed width, so the album column above lines up from row to row.
+        Row(
+            if (showAlbum) Modifier.width(BADGES_WIDTH) else Modifier,
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (song.variant.isNotBlank()) Badge(song.variant)
+            if (song.bestFormat.lossless) Badge(song.bestFormat.label)
+            if (song.versionCount > 1) {
+                TextButton(onClick = onVersions) { Text(L.libraryVersions(song.versionCount), style = MaterialTheme.typography.labelMedium) }
+            }
         }
         Text(
             Format.duration(song.durationMs),
@@ -432,6 +439,7 @@ internal fun sampleLetters(letters: List<Pair<Char, Int>>, fit: Int): List<Pair<
 }
 
 private val ROW_HEIGHT = 56.dp
+private val BADGES_WIDTH = 190.dp
 private val LETTER_HEIGHT = 18.dp
 private val LETTER_BAR_WIDTH = 28.dp
 private const val LETTER_BAR_MIN = 40

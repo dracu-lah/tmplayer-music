@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.openani.mediamp.source.MediaData
 import kotlin.random.Random
@@ -103,6 +104,11 @@ class PlayerController(
     val position: StateFlow<Long> = _position.asStateFlow()
 
     private var engine: AudioEngine? = null
+
+    private val _engine = MutableStateFlow<AudioEngine?>(null)
+
+    /** The engine once one exists (the first play), for the shell to hold its surface ([AudioSurface]). */
+    val engineFlow: StateFlow<AudioEngine?> = _engine.asStateFlow()
     private var watching: Job? = null
     private var opening: Job? = null
     private var saving: Job? = null
@@ -349,6 +355,7 @@ class PlayerController(
         watching?.cancel()
         runCatching { engine?.close() }
         engine = null
+        _engine.value = null
     }
 
     // The engine
@@ -361,6 +368,7 @@ class PlayerController(
         created.setVolume(_ui.value.volume)
         created.setMuted(_ui.value.muted)
         engine = created
+        _engine.value = created
         watching = scope.launch(serial) { watch(created) }
         return created
     }
@@ -465,6 +473,11 @@ class PlayerController(
                     return@launch
                 }
                 e.open(media, startAtMs, playNow)
+                // The queue moved on while it loaded (a newer open, or it was emptied): that has the say now.
+                if (!isActive || _ui.value.current?.uid != entry.uid) {
+                    if (_ui.value.queue.isEmpty) e.stop()
+                    return@launch
+                }
                 val s = e.state.value
                 if (s.error != null) {
                     onOpenFailed(entry, s.error)
