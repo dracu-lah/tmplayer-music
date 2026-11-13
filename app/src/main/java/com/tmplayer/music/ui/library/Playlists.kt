@@ -74,7 +74,10 @@ fun PlaylistsTab(onPlaylist: (Playlist) -> Unit) {
     ScrollToTopOnReselect(listState)
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "new") {
-            Button(onClick = { naming = true }, modifier = Modifier.padding(16.dp).tvFocusRing()) { Text(L.playlistNew) }
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { naming = true }, modifier = Modifier.tvFocusRing()) { Text(L.playlistNew) }
+                ImportPlaylistButton(onError = { error = it }, onImported = { error = null; bump++; Library.notifyChanged() })
+            }
         }
         error?.let { item(key = "error") { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) } }
         val list = playlists.orEmpty()
@@ -133,6 +136,7 @@ fun PlaylistScreen(playlist: Playlist, actions: SongActions, onDeleted: () -> Un
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(modifier = Modifier.tvFocusRing(), onClick = { renaming = true }) { Text(L.playlistRename) }
                     TextButton(modifier = Modifier.tvFocusRing(), onClick = { deleting = true }) { Text(L.playlistDelete) }
+                    ExportPlaylistButton(playlist, name) { error = it }
                 }
             }
             PlayButtons({ songs.orEmpty() }) { list, shuffle -> if (shuffle) actions.shuffle(list) else actions.play(list, 0) }
