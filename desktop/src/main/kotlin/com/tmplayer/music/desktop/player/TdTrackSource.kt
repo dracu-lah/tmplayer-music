@@ -41,6 +41,8 @@ object TdTrackSource : TrackSource {
 
     override suspend fun open(entry: QueueEntry): MediaData {
         val track = trackOf(entry) ?: throw IOException(L.desktopTrackGone)
+        // A file the engine cannot open is said plainly and skipped, before any byte is fetched.
+        PlayableCheck.unplayableReason(track)?.let { throw IOException(it) }
         // Kept offline: the file in the app's own folder plays with no TDLib at all.
         OfflineDownloads.pathOf(track.id, track.uniqueId)?.let { return LocalFileMediaData(it) }
         // The id saved in the index belongs to the session that scanned it: ask the message again.

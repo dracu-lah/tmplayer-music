@@ -127,7 +127,8 @@
     "tray_show": "Open TMPlayer Music",
     "tray_unavailable": "This desktop has no system tray, so closing the window quits the app.",
     "unmute": "Unmute",
-    "volume": "Volume"
+    "volume": "Volume",
+    "wav_unsupported": "WAV files cannot be played on this computer yet. The audio engine does not read them."
   },
   "effects": {
     "band_description": "{frequency}, {level}",
