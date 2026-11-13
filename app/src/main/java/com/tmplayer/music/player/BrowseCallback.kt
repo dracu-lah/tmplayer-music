@@ -103,6 +103,15 @@ open class BrowseCallback(
         return future
     }
 
+    /** Only the app, trusted system callers and the known car and media hosts connect; any other app is refused. */
+    override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
+        if (may(controller)) {
+            MediaSession.ConnectionResult.AcceptedResultBuilder(session).build()
+        } else {
+            Logger.w(TAG, "a controller was refused")
+            MediaSession.ConnectionResult.reject()
+        }
+
     override fun onGetLibraryRoot(
         session: MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
@@ -210,6 +219,7 @@ open class BrowseCallback(
         controller: MediaSession.ControllerInfo,
         mediaItems: MutableList<MediaItem>,
     ): ListenableFuture<MutableList<MediaItem>> {
+        if (!may(controller)) return Futures.immediateFailedFuture(SecurityException("controller not allowed"))
         val future = SettableFuture.create<MutableList<MediaItem>>()
         scope.launch {
             runCatching { withContext(Dispatchers.IO) { expand(controller, mediaItems) }.toMutableList() }
@@ -226,6 +236,7 @@ open class BrowseCallback(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        if (!may(controller)) return Futures.immediateFailedFuture(SecurityException("controller not allowed"))
         val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
         scope.launch {
             runCatching {
@@ -256,7 +267,10 @@ open class BrowseCallback(
     private suspend fun queueAfter(controller: MediaSession.ControllerInfo, item: MediaItem): List<MediaItem>? {
         val last = synchronized(shown) { shown[controller.packageName] } ?: return null
         val at = last.ids.indexOf(item.mediaId).takeIf { it >= 0 } ?: return null
-        val rows = tree().children(last.folder, last.offset + at, QUEUE_AFTER).filter { it.kind == EntryKind.Song }
+        val page = tree().children(last.folder, last.offset + at, QUEUE_AFTER)
+        // The list may have changed since it was shown: the row at that spot must still be the tapped song.
+        if (page.firstOrNull()?.id != item.mediaId) return null
+        val rows = page.filter { it.kind == EntryKind.Song }
         if (rows.isEmpty()) return null
         return rows.mapNotNull { row -> MediaIds.item(row.id)?.let { resolve(it) } }.takeIf { it.isNotEmpty() }
     }

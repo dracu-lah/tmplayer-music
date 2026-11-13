@@ -1,11 +1,12 @@
 package com.tmplayer.music.auto
 
 /**
- * Who may browse the library through the media session. The service is exported so the system's
- * media controls, Bluetooth and car displays can reach the session, but the library tree lists the
- * user's own titles, so only the app itself, a system trusted caller and the known car and
- * assistant hosts may browse it. Any other app can still see and control playback as before; it
- * just gets no tree.
+ * Who may connect to the media session at all, and so browse the library or hand it a queue. The
+ * service is exported so the system's media controls, Bluetooth and car displays can reach the
+ * session, but the queue and the library tree list the user's own titles and a controller can start
+ * playback, so only the app itself, a system trusted caller and the known car, assistant and media
+ * hosts get in (the connection is refused for any other app, and each browse or queue call checks
+ * the same rule again).
  */
 object BrowserAccess {
     /** The hosts that browse a media app for a car or by voice. */
@@ -18,6 +19,9 @@ object BrowserAccess {
         "com.android.car.media",
         "com.android.systemui",
         "com.google.android.wearable.app",
+        // The media keys of a headset and the system's own media dispatch.
+        "com.android.bluetooth",
+        "android",
     )
 
     fun allows(callerPackage: String?, ownPackage: String, trusted: Boolean): Boolean {
