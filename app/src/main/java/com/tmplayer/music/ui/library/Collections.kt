@@ -212,6 +212,7 @@ fun AlbumScreen(album: Album, actions: SongActions) {
         cover = { AlbumCover(album, 120.dp) },
         songs = songs,
         actions = actions,
+        keepOffline = true,
     )
 }
 
@@ -270,6 +271,7 @@ private fun DetailList(
     songs: Loaded<Song>,
     actions: SongActions,
     extra: @Composable () -> Unit = {},
+    keepOffline: Boolean = false,
 ) {
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         item(key = "head") {
@@ -281,6 +283,7 @@ private fun DetailList(
                 cover()
                 Text(title, style = MaterialTheme.typography.headlineSmall)
                 if (subtitle.isNotBlank()) Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (keepOffline) KeepOfflineButton(songs.value)
             }
         }
         item(key = "extra") { extra() }

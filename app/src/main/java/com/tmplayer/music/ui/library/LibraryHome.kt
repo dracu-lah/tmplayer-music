@@ -504,6 +504,7 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
     }
     playlistFor?.let { song -> AddToPlaylistSheet(song, onDismiss = { playlistFor = null }) }
     MobileDataQuestion()
+    KeepOfflineHost()
 }
 
 /**
@@ -611,6 +612,7 @@ private fun SongMenu(
                 }
             }
             MenuLine(L.menuAddToPlaylist, onAddToPlaylist)
+            OfflineMenuLine(song, onDismiss)
             album?.let { MenuLine(L.menuGoToAlbum) { onAlbum(it) } }
             val only = artists.singleOrNull()
             if (only != null) {
