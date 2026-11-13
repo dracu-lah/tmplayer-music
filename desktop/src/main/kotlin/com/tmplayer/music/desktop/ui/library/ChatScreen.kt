@@ -167,6 +167,7 @@ private fun ChatPageBody(
             actions = {
                 Button(onClick = { actions.play(loader.shown(), 0) }, enabled = rows.isNotEmpty()) { Text(L.homePlayAll) }
                 FilledTonalButton(onClick = { actions.shuffle(loader.shown()) }, enabled = rows.isNotEmpty()) { Text(L.homeShuffleAll) }
+                actions.keepChat?.let { keep -> TextButton(onClick = { keep(chatId) }, enabled = rows.isNotEmpty()) { Text(L.offlineKeepChat) } }
             },
         )
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -194,7 +195,10 @@ private fun ChatPageBody(
                 ContextMenuArea(items = {
                     val now = if (picked) selection else ListSelection(setOf(track.messageId), track.messageId).also { selection = it }
                     val chosen = rows.filter { it.messageId in now }.ifEmpty { listOf(track) }
-                    listOf(ContextMenuItem(L.playerPlay) { actions.play(chosen, 0) })
+                    buildList {
+                        add(ContextMenuItem(L.playerPlay) { actions.play(chosen, 0) })
+                        actions.keepOffline?.let { keep -> add(ContextMenuItem(L.offlineKeep) { keep(chosen) }) }
+                    }
                 }) {
                     TrackRow(
                         track = track,

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -91,7 +92,7 @@ private const val MAX_LIST_BYTES = 16 * 1024 * 1024
 /** Unmatched entries listed in the import preview; the rest are counted. */
 private const val MAX_SHOWN = 200
 
-private val ROW_HEIGHT = androidx.compose.ui.unit.Dp(60f)
+private val ROW_HEIGHT = 56.dp
 
 /** Playlists: every playlist with its cover and count, New playlist, and Import a list. */
 @Composable
@@ -232,7 +233,7 @@ fun PlaylistPage(playlist: Playlist, actions: SongActions, onGone: () -> Unit) {
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     val drag = remember { DragReorder() }
-    val rowPx = with(LocalDensity.current) { ROW_HEIGHT.value.dp.toPx() }
+    val rowPx = with(LocalDensity.current) { ROW_HEIGHT.toPx() }
     val state: LazyListState = rememberLazyListState()
     LaunchedEffect(changes, attempt) {
         guarded({ error = it }) {
@@ -336,7 +337,7 @@ private fun EditableRow(
             .draggedRow(drag, index)
             .moveWithKeys(index, count, onMove)
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .height(ROW_HEIGHT)
             .padding(horizontal = 12.dp)
             .clickable(onClick = onPlay)
             .padding(horizontal = 8.dp),
@@ -477,7 +478,7 @@ fun AddToPlaylistDialog(songs: List<Song>, onDone: (String?) -> Unit) {
                 TextButton(onClick = { naming = true }) { Text(L.playlistNew) }
                 playlists?.forEach { playlist ->
                     Row(
-                        Modifier.fillMaxWidth().clickable { addTo(playlist.id, playlist.name) }.padding(horizontal = 8.dp, vertical = 10.dp),
+                        Modifier.fillMaxWidth().clickable { addTo(playlist.id, L.desktopAddedToPlaylist(playlist.name)) }.padding(horizontal = 8.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(playlist.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -496,7 +497,7 @@ fun AddToPlaylistDialog(songs: List<Song>, onDone: (String?) -> Unit) {
             scope.launch {
                 guarded({ onDone(it) }) {
                     val id = Library.index().createPlaylist(name)
-                    if (id < 0) onDone(L.playlistTooMany) else addTo(id, name)
+                    if (id < 0) onDone(L.playlistTooMany) else addTo(id, L.desktopAddedToPlaylist(name))
                 }
             }
         }

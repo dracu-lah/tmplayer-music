@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -29,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tmplayer.music.data.Library
+import com.tmplayer.music.data.OfflineDownloads
 import com.tmplayer.music.data.TagEnricher
 import com.tmplayer.music.desktop.ui.common.Badge
 import com.tmplayer.music.desktop.ui.common.Cover
@@ -65,6 +68,7 @@ import com.tmplayer.music.desktop.ui.common.EmptyState
 import com.tmplayer.music.desktop.ui.common.ErrorPanel
 import com.tmplayer.music.desktop.ui.common.Format
 import com.tmplayer.music.desktop.ui.common.HeldKeys
+import com.tmplayer.music.desktop.ui.common.MusicIcons
 import com.tmplayer.music.desktop.ui.common.ListSelection
 import com.tmplayer.music.desktop.ui.common.OnSelectAll
 import com.tmplayer.music.desktop.ui.common.PlayingGlyph
@@ -206,6 +210,7 @@ fun SongTable(
 ) {
     val order = songs.map { it.groupKey }
     val mark = LocalPlayingMark.current
+    val kept by OfflineDownloads.kept.collectAsState()
     LazyColumn(
         state = state,
         contentPadding = PaddingValues(bottom = 16.dp),
@@ -232,6 +237,7 @@ fun SongTable(
                     song = song,
                     selected = picked,
                     mark = mark?.forSong(song.groupKey, song.defaultTrack),
+                    kept = song.defaultTrack in kept,
                     showAlbum = wide,
                     onClick = {
                         val double = DoubleClicks.isDouble(song.groupKey)
@@ -290,6 +296,8 @@ fun SongRow(
     showAlbum: Boolean,
     onClick: () -> Unit,
     onVersions: () -> Unit,
+    /** The file that plays by default is kept offline: a small tick after the title. */
+    kept: Boolean = false,
 ) {
     val container = if (selected) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent
     Row(
@@ -347,6 +355,7 @@ fun SongRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (kept) Icon(MusicIcons.Check, contentDescription = L.offlineBadgeDescription, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
             if (song.variant.isNotBlank()) Badge(song.variant)
             if (song.bestFormat.lossless) Badge(song.bestFormat.label)
             if (song.versionCount > 1) {

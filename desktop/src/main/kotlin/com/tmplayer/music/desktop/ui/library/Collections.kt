@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -233,6 +234,7 @@ private fun DetailList(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { list?.let { actions.play(it, 0) } }, enabled = !list.isNullOrEmpty()) { Text(L.playerPlay) }
                     FilledTonalButton(onClick = { list?.let(actions.shuffle) }, enabled = !list.isNullOrEmpty()) { Text(L.nowplayingShuffle) }
+                    actions.keepOffline?.let { keep -> TextButton(onClick = { list?.let(keep) }, enabled = !list.isNullOrEmpty()) { Text(L.offlineKeep) } }
                 }
             }
         }

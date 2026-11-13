@@ -102,6 +102,7 @@
     "start_over": "Start over"
   },
   "desktop": {
+    "added_to_playlist": "Added to {name}.",
     "close_to_tray": "Keep playing in the tray when the window is closed",
     "close_to_tray_detail": "Off: closing the window quits the app. On: it stays in the system tray, with Play, Pause, Next and Quit there.",
     "copied": "Copied to the clipboard.",

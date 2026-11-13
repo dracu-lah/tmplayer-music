@@ -173,6 +173,8 @@ fun Shell(onLogOut: () -> Unit) {
         TrackActions(
             play = { tracks, start -> player.playTracks(tracks, start) },
             shuffle = { tracks -> if (tracks.isNotEmpty()) player.playTracks(tracks, tracks.indices.random(), shuffle = true) },
+            keepOffline = { tracks -> OfflineUi.keepTracks(tracks) },
+            keepChat = { chatId -> OfflineUi.keepChat(chatId) },
         )
     }
     val playAll: (SongSort, Boolean) -> Unit = { by, shuffle ->

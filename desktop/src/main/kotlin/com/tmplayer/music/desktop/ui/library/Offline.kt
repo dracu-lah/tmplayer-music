@@ -82,6 +82,9 @@ object OfflineUi {
     fun keepSongs(songs: List<Song>, bulk: Boolean = songs.size > 1) =
         keep(bulk) { songs.mapNotNull { runCatching { Library.index().track(it.defaultTrack) }.getOrNull() } }
 
+    /** Keeps the files of a chat page as they are (each one its own file, no song folding). */
+    fun keepTracks(tracks: List<Track>) = keep(tracks.size > 1) { tracks }
+
     /** Keeps every file of a picked chat that the library shows (the clip switches apply). */
     fun keepChat(chatId: Long) = keep(true) {
         val index = Library.index()

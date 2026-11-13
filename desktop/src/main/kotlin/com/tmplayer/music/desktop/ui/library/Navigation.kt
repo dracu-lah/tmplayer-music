@@ -95,6 +95,10 @@ class SongActions(
 class TrackActions(
     val play: (List<Track>, Int) -> Unit,
     val shuffle: (List<Track>) -> Unit,
+    /** Keeps files offline; null where Keep offline is not offered. */
+    val keepOffline: ((List<Track>) -> Unit)? = null,
+    /** Keeps a whole chat offline. */
+    val keepChat: ((Long) -> Unit)? = null,
 )
 
 /** Which row shows the playing mark: the song or the file that is current, and whether it plays. */

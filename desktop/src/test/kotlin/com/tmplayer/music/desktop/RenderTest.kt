@@ -76,12 +76,12 @@ class RenderTest {
         return array
     }
 
-    private fun assertBlackPageWithContent(image: Image) {
+    private fun assertBlackPageWithContent(image: Image, sparse: Boolean = false) {
         val pixels = image.pixels()
         val black = 0xFF000000.toInt()
         assertEquals(black, pixels[0], "the top left corner is pure black")
         val drawn = pixels.count { it != black }
-        assertTrue(drawn > pixels.size / 200, "something is drawn on the page ($drawn of ${pixels.size} pixels)")
+        assertTrue(drawn > pixels.size / (if (sparse) 4000 else 200), "something is drawn on the page ($drawn of ${pixels.size} pixels)")
     }
 
     @Test
@@ -202,6 +202,42 @@ class RenderTest {
         }
         com.tmplayer.music.player.AudioEffectsSetting.choices.setEqualizerOn(false)
         player.close()
+    }
+
+    /** The library over an empty index in a temporary folder, so the pages that read it can draw their empty state. */
+    private fun emptyLibrary() {
+        com.tmplayer.music.data.Library.start(java.nio.file.Files.createTempDirectory("render-library").toFile())
+    }
+
+    @Test
+    fun `settings, playlists and favourites render over an empty library`() {
+        emptyLibrary()
+        val actions = SongActions({ _, _ -> }, {}, {}, {}, {}, {}, {})
+        for ((w, h) in listOf(900 to 700, 1600 to 1000)) {
+            assertBlackPageWithContent(
+                render("settings-${w}x$h", w, h) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        com.tmplayer.music.desktop.ui.library.SettingsScreen(onManageChats = {}, onLogOut = {})
+                    }
+                },
+            )
+            assertBlackPageWithContent(
+                render("playlists-${w}x$h", w, h) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        com.tmplayer.music.desktop.ui.library.PlaylistsScreen(onOpen = {})
+                    }
+                },
+                sparse = true,
+            )
+            assertBlackPageWithContent(
+                render("favourites-${w}x$h", w, h) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        com.tmplayer.music.desktop.ui.library.FavouritesPage(actions)
+                    }
+                },
+                sparse = true,
+            )
+        }
     }
 
     @Test
