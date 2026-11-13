@@ -23,9 +23,15 @@ object LanAddress {
             (address.address.size == 4 && (address.address[0].toInt() and 0xFF) == 100 &&
                 (address.address[1].toInt() and 0xC0) == 64)
 
+    /** Tunnel and VPN interfaces (tun0, ppp0, wg0, tap0, ipsec0, utun3): never an address a receiver on the Wi-Fi can reach. */
+    fun isTunnelInterface(name: String): Boolean {
+        val n = name.lowercase()
+        return TUNNEL_PREFIXES.any { n.startsWith(it) }
+    }
+
     /** The best of [candidates] for reaching [receiver] (null when not known); null when none is usable. */
     fun pick(candidates: List<Candidate>, receiver: InetAddress?): InetAddress? {
-        val usable = candidates.filter { it.address is Inet4Address && isLocalNetwork(it.address) && !it.address.isLoopbackAddress && !it.address.isLinkLocalAddress }
+        val usable = candidates.filter { !isTunnelInterface(it.interfaceName) && it.address is Inet4Address && isLocalNetwork(it.address) && !it.address.isLoopbackAddress && !it.address.isLinkLocalAddress }
         if (receiver != null) {
             usable.firstOrNull { sameSubnet(it.address, receiver, it.prefixLength) }?.let { return it.address }
         }
@@ -46,4 +52,6 @@ object LanAddress {
         }
         return true
     }
+
+    private val TUNNEL_PREFIXES = listOf("tun", "tap", "ppp", "wg", "ipsec", "utun")
 }
