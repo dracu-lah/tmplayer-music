@@ -4,9 +4,10 @@ import com.tmplayer.music.connect.ConnectServer
 import com.tmplayer.music.connect.LocalNet
 import com.tmplayer.music.connect.PairingGate
 import com.tmplayer.music.connect.PairingStore
+import com.tmplayer.music.connect.SasRequest
 import com.tmplayer.music.platform.Logger
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.IOException
 import java.net.InetAddress
+import java.util.concurrent.Executors
 
 /** What this computer's Connect server is doing, for its Settings line. */
 sealed interface ConnectHostStatus {
@@ -57,6 +59,19 @@ class DesktopConnectHost(
     private var server: ConnectServer? = null
     private var boundTo: InetAddress? = null
     private var pushJob: Job? = null
+    private var sasJob: Job? = null
+
+    /**
+     * One thread for the advert, so a register and the unregister that follows (a stop, a new address) run in the
+     * order they were asked for and never overlap, however the server's own start and stop interleave. It sleeps
+     * when idle and does not keep the program alive.
+     */
+    private val adverts = Executors.newSingleThreadExecutor { task -> Thread(task, "connect-advert").apply { isDaemon = true } }.asCoroutineDispatcher()
+
+    private val _sas = MutableStateFlow<SasRequest?>(null)
+
+    /** A phone gave the right code and waits for this screen's user to say whether it shows the same number. Null when none. */
+    val sasRequest: StateFlow<SasRequest?> = _sas.asStateFlow()
 
     /** The number of phones connected now; 0 while stopped. */
     val clients: StateFlow<Int> get() = server?.clients ?: ZERO
@@ -83,7 +98,8 @@ class DesktopConnectHost(
         boundTo = address
         handler.reply = s::sendTo
         pushJob = handler.watch(s.clients, s::broadcast)
-        scope.launch(Dispatchers.IO) { runCatching { advert.register(address, port, deviceId, deviceName) }.onFailure { Logger.w(TAG, "could not advertise", it) } }
+        sasJob = scope.launch { s.sasRequest.collect { _sas.value = it } }
+        scope.launch(adverts) { runCatching { advert.register(address, port, deviceId, deviceName) }.onFailure { Logger.w(TAG, "could not advertise", it) } }
         _status.value = ConnectHostStatus.Listening(address.hostAddress.orEmpty(), port)
     }
 
@@ -106,10 +122,13 @@ class DesktopConnectHost(
         boundTo = null
         pushJob?.cancel()
         pushJob = null
+        sasJob?.cancel()
+        sasJob = null
+        _sas.value = null
         handler.reply = { _, _ -> }
         gate.close()
         s.stop()
-        scope.launch(Dispatchers.IO) { runCatching { advert.unregister() } }
+        scope.launch(adverts) { runCatching { advert.unregister() } }
     }
 
     /** Shows a fresh code. False when the server is not listening. */
@@ -119,7 +138,11 @@ class DesktopConnectHost(
         return true
     }
 
-    fun closePairing() = gate.close()
+    /** The pairing screen is gone: no code on show, and a phone waiting to be confirmed is told no. */
+    fun closePairing() {
+        gate.close()
+        _sas.value?.decline()
+    }
 
     /** Forgets [id]: its pairing is removed and its connections end. */
     fun forget(id: String) {

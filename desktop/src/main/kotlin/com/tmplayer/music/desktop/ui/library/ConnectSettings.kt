@@ -100,10 +100,10 @@ fun ConnectSettingsSection() {
 }
 
 /** What the QR code says for the pairing on show; null while the server is not listening or no offer is open. */
-internal fun pairLinkText(status: ConnectHostStatus, deviceId: String, offer: PairingOffer?): String? {
+internal fun pairLinkText(status: ConnectHostStatus, deviceId: String, offer: PairingOffer?, deviceName: String = ""): String? {
     val listening = status as? ConnectHostStatus.Listening ?: return null
     offer ?: return null
-    return PairLink(listening.address, listening.port, deviceId, offer.token).text()
+    return PairLink(listening.address, listening.port, deviceId, offer.token, offer.fingerprint, deviceName).text()
 }
 
 /** The picture and the code on this screen. The code changes every two minutes and after a lock; the dialog says "paired" once a phone used it. */
@@ -114,17 +114,52 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
     val lockedUntil by host.gate.lockedUntil.collectAsState()
     val status by host.status.collectAsState()
     val phones by DesktopConnect.phones.list.collectAsState()
+    val sas by host.sasRequest.collectAsState()
     val before = remember { phones.map { it.id }.toSet() }
     val newcomer = phones.firstOrNull { it.id !in before }
     var locked by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { host.openPairing() }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { host.closePairing() } }
-    // A new code when this one runs out, while the dialog is up; nothing ticks otherwise.
-    LaunchedEffect(offer?.expiresAt) {
+    // A new code when this one runs out, while the dialog is up (and no phone waits to be confirmed); nothing ticks otherwise.
+    LaunchedEffect(offer?.expiresAt, sas == null) {
         val end = offer?.expiresAt ?: return@LaunchedEffect
+        if (sas != null) return@LaunchedEffect
         delay((end - System.nanoTime() / 1_000_000).coerceAtLeast(0))
         host.openPairing()
+    }
+    // After a no (the code was spent), the next phone needs a new code; after a yes the "paired" line shows instead.
+    var asked by remember { mutableStateOf(false) }
+    LaunchedEffect(sas) {
+        if (sas != null) {
+            asked = true
+        } else if (asked) {
+            asked = false
+            delay(400)
+            if (DesktopConnect.phones.list.value.none { it.id !in before }) host.openPairing()
+        }
+    }
+
+    // A phone gave the right code: nothing is stored until this screen's user says the phone shows the same number. Cancel is where the focus starts.
+    sas?.let { request ->
+        AlertDialog(
+            onDismissRequest = { request.decline() },
+            title = { Text(L.connectSasTitle) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(L.connectSasHostBody(request.phoneName.ifBlank { request.phoneId.take(8) }), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        request.sas,
+                        style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace),
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
+                    Text(L.connectSasNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { TextButton(onClick = { request.accept() }) { Text(L.commonOk) } },
+            dismissButton = { TextButton(modifier = Modifier.autoFocus(), onClick = { request.decline() }) { Text(L.commonCancel) } },
+        )
+        return
     }
     LaunchedEffect(lockedUntil) {
         val wait = lockedUntil - System.nanoTime() / 1_000_000
@@ -144,7 +179,7 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
                     Text(L.connectPairDone(newcomer.name.ifBlank { newcomer.id.take(8) }), style = MaterialTheme.typography.bodyLarge)
                 } else {
                     // The picture is the primary way: a one time 128 bit token and the address, nothing typed.
-                    val link = pairLinkText(status, DesktopConnect.deviceId, offer)
+                    val link = pairLinkText(status, DesktopConnect.deviceId, offer, DesktopConnect.computerName())
                     if (link != null) {
                         Box(Modifier.size(200.dp).background(Color.White, RoundedCornerShape(12.dp)).align(Alignment.CenterHorizontally)) {
                             QrCode(remember(link) { qrMatrix(link) }, L.connectPairQrDescription)

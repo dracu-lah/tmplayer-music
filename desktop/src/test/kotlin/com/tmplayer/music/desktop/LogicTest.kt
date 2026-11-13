@@ -33,6 +33,19 @@ class PrefsTest {
     private fun file(): File = File.createTempFile("prefs", ".properties").also { it.delete(); it.deleteOnExit() }
 
     @Test
+    fun `the settings file, which holds the pairing secrets, is readable by its owner only`() {
+        val f = file()
+        val prefs = DesktopPrefs(f)
+        prefs.putString("connect_paired_phones", "secret")
+        // A second write replaces the file and keeps the permissions.
+        prefs.putString("other", "x")
+        if ("posix" in java.nio.file.FileSystems.getDefault().supportedFileAttributeViews()) {
+            assertEquals("rw-------", java.nio.file.attribute.PosixFilePermissions.toString(java.nio.file.Files.getPosixFilePermissions(f.toPath())))
+        }
+        assertEquals("secret", DesktopPrefs(f).getString("connect_paired_phones"))
+    }
+
+    @Test
     fun `values survive a restart`() {
         val f = file()
         DesktopPrefs(f).apply {
