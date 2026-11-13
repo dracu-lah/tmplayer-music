@@ -72,6 +72,7 @@ fun SettingsScreen(onManageChats: () -> Unit, onLogOut: () -> Unit) {
         ScreenHeader(title = L.settingsTitle, subtitle = null)
         LibrarySection(onManageChats)
         PlaybackSection()
+        ConnectSettingsSection()
         StorageSection()
         KeptOfflineSection()
         LyricsSection()
