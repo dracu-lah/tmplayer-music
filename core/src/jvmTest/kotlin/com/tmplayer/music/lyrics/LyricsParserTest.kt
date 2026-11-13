@@ -37,7 +37,7 @@ class LyricsParserTest {
     }
 
     @Test
-    fun `enhanced word stamps are taken out of the text`() {
+    fun `enhanced word stamps leave the line text clean`() {
         val lyrics = LyricsParser.parse("[00:01.00]<00:01.00>Hello <00:01.50>world")!!
         assertEquals("Hello world", lyrics.lines[0].text)
     }

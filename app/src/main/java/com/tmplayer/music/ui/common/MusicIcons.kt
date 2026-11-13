@@ -177,6 +177,9 @@ object MusicIcons {
     /** add-01: add more (chats). */
     val Plus = icon("Plus", "M12 4V20M20 12H4")
 
+    /** minus */
+    val Minus = icon("Minus", "M20 12H4")
+
     /** refresh: a new code, try again. */
     val Refresh = icon(
         "Refresh",

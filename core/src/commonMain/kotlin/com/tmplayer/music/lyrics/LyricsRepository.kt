@@ -244,6 +244,10 @@ object LyricsOnline {
     var choices: LyricsChoices = LyricsChoices(MemoryKeyValues())
         private set
 
+    /** The per-track lyrics timing; in memory until [start]. */
+    var offsets: LyricsOffsets = LyricsOffsets(MemoryKeyValues())
+        private set
+
     @Volatile
     var repository: LyricsRepository? = null
         private set
@@ -262,6 +266,7 @@ object LyricsOnline {
 
     fun start(dir: File, store: KeyValues) {
         choices = LyricsChoices(store)
+        offsets = LyricsOffsets(store)
         val http = LyricsHttp { url, headers ->
             (httpOverride ?: UrlConnectionLyricsHttp(LyricsRepository.TIMEOUT_MS.toInt())).get(url, headers)
         }
