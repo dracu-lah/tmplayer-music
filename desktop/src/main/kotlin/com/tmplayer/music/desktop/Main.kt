@@ -5,6 +5,8 @@ import androidx.compose.foundation.DarkDefaultContextMenuRepresentation
 import androidx.compose.foundation.LocalContextMenuRepresentation
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,15 +20,18 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
 import com.tmplayer.music.data.AuthState
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.desktop.diagnostics.LogsHost
+import com.tmplayer.music.desktop.os.MediaControls
+import com.tmplayer.music.desktop.os.WindowMemory
 import com.tmplayer.music.desktop.ui.AppRoot
 import com.tmplayer.music.desktop.ui.common.BackKeys
 import com.tmplayer.music.desktop.ui.common.HeldKeys
@@ -38,6 +43,7 @@ import com.tmplayer.music.desktop.ui.common.Typing
 import com.tmplayer.music.desktop.ui.theme.MusicTheme
 import com.tmplayer.music.i18n.L
 import java.awt.Dimension
+import java.awt.SystemTray
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 
@@ -47,16 +53,58 @@ private val MIN_WINDOW = Dimension(900, 600)
 fun main() {
     DesktopApp.start()
     application {
-        val state = rememberWindowState(size = DpSize(1180.dp, 760.dp))
+        // The size, place and maximised state of the last run, kept sane for the screens attached now.
+        val state = remember { WindowMemory.load() }
+        LaunchedEffect(state) { WindowMemory.follow(state) }
+        var visible by remember { mutableStateOf(true) }
+        val closeToTray by DesktopApp.closeToTray.collectAsState()
+        // A tray the desktop has no place for would hide the app for good, so close to tray needs one.
+        val trayOk = remember { runCatching { SystemTray.isSupported() }.getOrDefault(false) }
+        val player = DesktopApp.player
+        val playerUi by player.ui.collectAsState()
+        val quit = {
+            WindowMemory.save(state)
+            DesktopApp.stop()
+            exitApplication()
+        }
+        val trayIcon = remember { iconPainter("tray.png") }
+        val windowIcon = remember { iconPainter("window.png") }
+        if (trayOk) {
+            Tray(
+                icon = trayIcon,
+                tooltip = playerUi.current?.let { "${it.title}, ${it.artist}".trimEnd(',', ' ') } ?: L.appName,
+                onAction = { visible = true },
+            ) {
+                Item(L.desktopTrayShow, onClick = { visible = true })
+                Separator()
+                Item(if (playerUi.playing) L.playerPause else L.playerPlay, enabled = !playerUi.queue.isEmpty, onClick = player::togglePlay)
+                Item(L.playerPrevious, enabled = !playerUi.queue.isEmpty, onClick = player::previous)
+                Item(L.playerNext, enabled = playerUi.queue.hasNext, onClick = player::next)
+                Separator()
+                Item(L.desktopTrayQuit, onClick = quit)
+            }
+        }
         Window(
-            onCloseRequest = {
-                DesktopApp.stop()
-                exitApplication()
-            },
+            visible = visible,
+            onCloseRequest = { if (closeToTray && trayOk) visible = false else quit() },
             state = state,
             title = L.appName,
+            icon = windowIcon,
             onPreviewKeyEvent = ::handleKey,
         ) {
+            DisposableEffect(window) {
+                // The media keys, headset buttons and the desktop's now playing widget.
+                val controls = MediaControls.start(
+                    player = player,
+                    window = window,
+                    raise = {
+                        visible = true
+                        javax.swing.SwingUtilities.invokeLater { runCatching { window.toFront() } }
+                    },
+                    quit = quit,
+                )
+                onDispose { controls.close() }
+            }
             DisposableEffect(window) {
                 window.minimumSize = MIN_WINDOW
                 val listener = object : WindowAdapter() {
@@ -113,4 +161,12 @@ private fun handleKey(event: KeyEvent): Boolean {
         Shortcut.SelectAll -> ListCommands.requestSelectAll()
     }
     return true
+}
+
+/** An image the app carries, as a painter for the window and the tray; a blank one when it cannot be read. */
+private fun iconPainter(name: String): Painter {
+    val image = runCatching {
+        DesktopApp::class.java.getResourceAsStream("/com/tmplayer/music/desktop/$name")?.use { org.jetbrains.skia.Image.makeFromEncoded(it.readBytes()) }
+    }.getOrNull()
+    return if (image != null) BitmapPainter(image.toComposeImageBitmap()) else androidx.compose.ui.graphics.painter.ColorPainter(androidx.compose.ui.graphics.Color.Transparent)
 }

@@ -248,7 +248,11 @@ private fun LibrarySection(onManageChats: () -> Unit) {
 private fun PlaybackSection() {
     val closeToTray by DesktopApp.closeToTray.collectAsState()
     SettingsSection(L.settingsPlayback) {
-        SwitchLine(L.desktopCloseToTray, L.desktopCloseToTrayDetail, closeToTray) { DesktopApp.setCloseToTray(it) }
+        val trayOk = remember { runCatching { java.awt.SystemTray.isSupported() }.getOrDefault(false) }
+        SwitchLine(L.desktopCloseToTray, L.desktopCloseToTrayDetail, closeToTray && trayOk) { if (trayOk) DesktopApp.setCloseToTray(it) }
+        // Without a tray the switch would hide the app for good, so it does nothing and says why.
+        if (!trayOk) SettingsHint(L.desktopTrayUnavailable)
+        if (!com.tmplayer.music.desktop.HostOs.mac) SettingsHint(L.desktopMediaKeysNote)
     }
 }
 
