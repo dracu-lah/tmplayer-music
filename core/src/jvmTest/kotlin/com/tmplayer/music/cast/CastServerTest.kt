@@ -180,4 +180,45 @@ class CastServerTest {
         out.write(get("a1.mp3", "bytes=1-9999").body)
         assertEquals(9999, out.size())
     }
+
+    @Test
+    fun `only a request with the token and a known name counts as served`() {
+        get("a1.mp3", token = "nope")
+        get("missing.mp3")
+        request("GET /${server.token}/../a1.mp3 HTTP/1.1\r\nConnection: close\r\n\r\n")
+        assertEquals(0, server.served.get())
+        get("a1.mp3")
+        assertEquals(1, server.served.get())
+    }
+
+    @Test
+    fun `an idle socket is dropped soon and never holds a slot for long`() {
+        server.stop()
+        server = CastServer(loopback, allowed = { true }, firstRequestTimeoutMs = 300)
+        server.start()
+        Socket(loopback, server.boundPort).use { idle ->
+            idle.soTimeout = 3_000
+            // The server closes it: a read ends with -1 (or a reset) well inside the test's own timeout.
+            val ended = runCatching { idle.getInputStream().read() }.getOrDefault(-1)
+            assertEquals(-1, ended)
+        }
+    }
+
+    @Test
+    fun `one address cannot hold more than its share of connections`() {
+        server.stop()
+        server = CastServer(loopback, allowed = { true }, maxPerAddress = 2)
+        server.start()
+        server.publish("a1.mp3", CastResource(source) { "audio/mpeg" })
+        val held = (1..2).map { Socket(loopback, server.boundPort) }
+        try {
+            // Let the accept loop admit both before the next one comes.
+            Thread.sleep(200)
+            assertEquals(403, get("a1.mp3").status)
+        } finally {
+            held.forEach { runCatching { it.close() } }
+        }
+        Thread.sleep(300)
+        assertEquals(200, get("a1.mp3").status)
+    }
 }

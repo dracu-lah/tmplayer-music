@@ -57,6 +57,10 @@ class CastServer(
     /** Who may ask; the private and link local ranges by default. Tests on loopback pass their own. */
     private val allowed: (InetAddress) -> Boolean = LanAddress::isLocalNetwork,
     private val maxConnections: Int = MAX_CONNECTIONS,
+    /** Open connections one address may hold, so one host cannot lock the real receiver out. */
+    private val maxPerAddress: Int = MAX_PER_ADDRESS,
+    /** How long a connection may stay silent before its first request for a real resource; then [READ_TIMEOUT_MS]. */
+    private val firstRequestTimeoutMs: Int = FIRST_REQUEST_TIMEOUT_MS,
 ) {
 
     /** This cast's secret: the first segment of every path. */
@@ -66,11 +70,16 @@ class CastServer(
     private val connections = CopyOnWriteArrayList<Socket>()
     private val streams = ConcurrentHashMap<String, CopyOnWriteArrayList<Socket>>()
     private val threadCount = AtomicInteger()
+    private val perAddress = HashMap<String, Int>()
+    private val refusing = AtomicInteger()
+
+    /** When each streaming socket last sent bytes, so a stream that is playing is never the one closed. */
+    private val lastBytes = ConcurrentHashMap<Socket, Long>()
 
     @Volatile
     private var server: ServerSocket? = null
 
-    /** Requests answered so far, for the tests and the log. */
+    /** Requests for a published resource (right token, known name) answered so far: a scan or a wrong token never counts. */
     val served = AtomicInteger()
 
     val running: Boolean get() = server?.isClosed == false
@@ -120,7 +129,12 @@ class CastServer(
                 if (!socket.isClosed) Logger.w(TAG, "Accept failed", e)
                 break
             }
-            if (!allowed(client.inetAddress) || connections.size >= maxConnections) {
+            val key = client.inetAddress?.hostAddress.orEmpty()
+            val admitted = allowed(client.inetAddress) && connections.size < maxConnections && synchronized(perAddress) {
+                val open = perAddress[key] ?: 0
+                (open < maxPerAddress).also { if (it) perAddress[key] = open + 1 }
+            }
+            if (!admitted) {
                 refuse(client)
                 continue
             }
@@ -133,10 +147,16 @@ class CastServer(
     }
 
     /**
-     * Answers a stranger (or a client past the connection bound) with a 403 and closes, on a
-     * thread of its own so a slow peer cannot hold up the accept loop.
+     * Answers a stranger (or a client past a connection bound) with a 403 and closes, on a
+     * thread of its own so a slow peer cannot hold up the accept loop. Past [MAX_REFUSING] such
+     * threads the connection is just closed, so a flood of connects cannot start threads without end.
      */
     private fun refuse(client: Socket) {
+        if (refusing.incrementAndGet() > MAX_REFUSING) {
+            refusing.decrementAndGet()
+            runCatching { client.close() }
+            return
+        }
         Thread({
             try {
                 client.soTimeout = REFUSE_READ_MS
@@ -149,6 +169,7 @@ class CastServer(
             } catch (_: Exception) {
             } finally {
                 runCatching { client.close() }
+                refusing.decrementAndGet()
             }
         }, "cast-refuse").apply {
             isDaemon = true
@@ -158,14 +179,14 @@ class CastServer(
 
     private fun handle(socket: Socket) {
         try {
-            socket.soTimeout = READ_TIMEOUT_MS
+            // Short until the first request for a real resource: an idle socket cannot sit on a slot.
+            socket.soTimeout = firstRequestTimeoutMs
             socket.tcpNoDelay = true
             val input = BufferedInputStream(socket.getInputStream())
             val output = socket.getOutputStream().buffered(SEND_BUFFER)
             // Keep-alive, so a receiver's run of small range reads does not pay a connect each.
             while (!socket.isClosed) {
                 val request = HttpRequest.read(input) ?: break
-                served.incrementAndGet()
                 val keepOpen = respond(socket, request, output)
                 output.flush()
                 if (!keepOpen || request.wantsClose) break
@@ -178,6 +199,13 @@ class CastServer(
             Logger.w(TAG, "Request failed", e)
         } finally {
             connections -= socket
+            lastBytes.remove(socket)
+            socket.inetAddress?.hostAddress?.let { key ->
+                synchronized(perAddress) {
+                    val left = (perAddress[key] ?: 1) - 1
+                    if (left <= 0) perAddress.remove(key) else perAddress[key] = left
+                }
+            }
             streams.values.forEach { it.remove(socket) }
             runCatching { socket.close() }
         }
@@ -185,16 +213,22 @@ class CastServer(
 
     /** Answers one request; false when the connection has to close after it. */
     private fun respond(socket: Socket, request: HttpRequest, out: OutputStream): Boolean {
+        val name = CastUrls.nameIn(request.path, token)
+        val resource = name?.let { resources[it] }
+        // Only a request with the token and a published name counts as the receiver: it gets the long idle timeout and is counted.
+        if (resource != null) {
+            served.incrementAndGet()
+            runCatching { socket.soTimeout = READ_TIMEOUT_MS }
+        }
         if (request.method == "OPTIONS") {
             writeHead(out, 204, "No Content", emptyMap(), 0)
-            return true
+            return resource != null
         }
         if (request.method != "GET" && request.method != "HEAD") {
             writeHead(out, 405, "Method Not Allowed", mapOf("Allow" to "GET, HEAD, OPTIONS"), 0)
             return false
         }
-        val name = CastUrls.nameIn(request.path, token) ?: return notFound(out)
-        val resource = resources[name] ?: return notFound(out)
+        if (name == null || resource == null) return notFound(out)
         return serveRanged(socket, name, resource, request, out, request.method == "HEAD")
     }
 
@@ -240,6 +274,7 @@ class CastServer(
                 val n = it.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
                 if (n < 0) throw IOException("Source ended $left bytes early")
                 out.write(buffer, 0, n)
+                lastBytes[socket] = System.currentTimeMillis()
                 left -= n
             }
         }
@@ -249,23 +284,33 @@ class CastServer(
 
     /**
      * Notes [socket] as one reading [name]. A receiver that seeks opens a new request and leaves
-     * the old one hanging; past [MAX_STREAMS] the oldest is closed, so two reads of one Telegram
-     * file do not pull its download in three directions.
+     * the old one hanging; past [MAX_STREAMS] the oldest idle one is closed, so two reads of one
+     * Telegram file do not pull its download in three directions. A read that sent bytes in the
+     * last [ACTIVE_MS] (the one that is playing) is never closed: with none idle, the extra waits.
      */
     private fun track(name: String, socket: Socket) {
         val list = streams.getOrPut(name) { CopyOnWriteArrayList() }
         list.remove(socket)
+        lastBytes[socket] = System.currentTimeMillis()
         list += socket
-        while (list.size > MAX_STREAMS) runCatching { list.removeAt(0).close() }
+        while (list.size > MAX_STREAMS) {
+            val now = System.currentTimeMillis()
+            val idle = list.firstOrNull { it !== socket && now - (lastBytes[it] ?: 0L) > ACTIVE_MS } ?: break
+            list.remove(idle)
+            lastBytes.remove(idle)
+            runCatching { idle.close() }
+        }
     }
 
     private fun untrack(name: String, socket: Socket) {
         streams[name]?.remove(socket)
+        lastBytes.remove(socket)
     }
 
+    /** A 404 closes the connection: only a request that found something keeps a slot. */
     private fun notFound(out: OutputStream): Boolean {
         writeHead(out, 404, "Not Found", emptyMap(), 0)
-        return true
+        return false
     }
 
     private fun writeHead(out: OutputStream, code: Int, reason: String, headers: Map<String, String>, length: Long?) {
@@ -290,9 +335,15 @@ class CastServer(
         private const val COPY_BUFFER = 64 * 1024
         private const val SEND_BUFFER = 64 * 1024
         private const val REFUSE_READ_MS = 300
+        private const val FIRST_REQUEST_TIMEOUT_MS = 8_000
+        private const val MAX_REFUSING = 8
+        private const val ACTIVE_MS = 10_000L
 
         /** Open connections at once; a receiver needs a few (audio, cover, a seek). */
         const val MAX_CONNECTIONS = 12
+
+        /** Open connections one address may hold. */
+        const val MAX_PER_ADDRESS = 6
 
         /** Reads of one resource at once, beyond which the oldest is closed. */
         const val MAX_STREAMS = 3
