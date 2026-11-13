@@ -231,7 +231,7 @@ class BrowseTree(
         return BrowseEntry(BrowseIds.INFO, EntryKind.Info, say)
     }
 
-    private fun folderEntry(folder: Folder): BrowseEntry? = when (folder) {
+    private suspend fun folderEntry(folder: Folder): BrowseEntry? = when (folder) {
         Folder.Root -> null
         Folder.Recent -> folder(BrowseIds.RECENT, text.recent)
         Folder.Favourites -> folder(BrowseIds.FAVOURITES, text.favourites)
@@ -239,8 +239,20 @@ class BrowseTree(
         Folder.Albums -> folder(BrowseIds.ALBUMS, text.albums)
         Folder.Artists -> folder(BrowseIds.ARTISTS, text.artists)
         Folder.Chats -> folder(BrowseIds.CHATS, text.chats)
-        // A deeper folder is only known once its parent listed it: the browser holds that row already.
-        else -> null
+        is Folder.AlbumOf -> index()?.let { library -> library.album(folder.key)?.let { album(library, it) } }
+        is Folder.ArtistOf -> index()?.artist(folder.key)?.let(::artist)
+        is Folder.ChatOf -> index()?.pickedChat(folder.id)?.takeIf { it.picked }?.let {
+            BrowseEntry(BrowseIds.chat(it.chatId), EntryKind.Folder, it.title, text.songCount(it.trackCount))
+        }
+        is Folder.Playlist -> index()?.playlists()?.firstOrNull { it.id == folder.id }?.let {
+            BrowseEntry(
+                id = BrowseIds.playlist(it.id),
+                kind = EntryKind.Folder,
+                title = it.name,
+                subtitle = text.songCount(it.songCount),
+                art = BrowseArt(it.coverKey, it.thumbFileId, null, CoverArt.keyOfPlaylist(it.id)),
+            )
+        }
     }
 
     private fun folder(id: String, title: String) = BrowseEntry(id, EntryKind.Folder, title)

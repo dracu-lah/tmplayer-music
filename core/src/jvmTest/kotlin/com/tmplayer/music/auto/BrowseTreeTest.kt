@@ -183,6 +183,29 @@ class BrowseTreeTest {
     }
 
     @Test
+    fun deeperFoldersCanBeLookedUpOnTheirOwn() = runBlocking {
+        val index = filled(10)
+        val tree = tree(index)
+        val album = index.albums(null, 1).single()
+        assertEquals(album.title, tree.entry(BrowseIds.album(album.key))?.title)
+        assertEquals("Road mix", tree.entry(BrowseIds.chat(1))?.title)
+        assertNull(tree.entry(BrowseIds.chat(99)))
+        assertNull(tree.entry(BrowseIds.album("nope")))
+        assertEquals("Albums", tree.entry(BrowseIds.ALBUMS)?.title)
+        assertNull(tree.entry("garbage"))
+    }
+
+    @Test
+    fun onlyTheAppTrustedCallersAndCarHostsMayBrowse() {
+        assertTrue(BrowserAccess.allows("com.tmplayer.music", "com.tmplayer.music", false))
+        assertTrue(BrowserAccess.allows("com.google.android.projection.gearhead", "com.tmplayer.music", false))
+        assertTrue(BrowserAccess.allows("some.system.app", "com.tmplayer.music", true))
+        assertEquals(false, BrowserAccess.allows("com.example.snoop", "com.tmplayer.music", false))
+        assertEquals(false, BrowserAccess.allows(null, "com.tmplayer.music", true))
+        assertEquals(false, BrowserAccess.allows("", "com.tmplayer.music", true))
+    }
+
+    @Test
     fun idsParseAndGarbageDoesNot() {
         assertEquals(Folder.Playlist(7), BrowseIds.parse(BrowseIds.playlist(7)))
         assertEquals(Folder.AlbumOf("a:b:c"), BrowseIds.parse(BrowseIds.album("a:b:c")))
