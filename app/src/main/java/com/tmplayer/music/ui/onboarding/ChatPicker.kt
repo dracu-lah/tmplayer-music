@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.onboarding
 
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -310,7 +312,7 @@ fun ChatPicker(
                     confirmAll = null
                 }) { Text(L.pickerConfirmAllYes) }
             },
-            dismissButton = { TextButton(onClick = { confirmAll = null }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { confirmAll = null }) { Text(L.commonCancel) } },
         )
     }
 }

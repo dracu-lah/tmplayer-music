@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.TvSheet
 import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.rememberedFocus
@@ -181,7 +183,7 @@ fun PlaylistScreen(playlist: Playlist, actions: SongActions, onDeleted: () -> Un
                     scope.launch { guarded({ error = it }) { Library.index().deletePlaylist(playlist.id); onDeleted() } }
                 }) { Text(L.playlistDelete) }
             },
-            dismissButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { deleting = false }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { deleting = false }) { Text(L.commonCancel) } },
         )
     }
 }

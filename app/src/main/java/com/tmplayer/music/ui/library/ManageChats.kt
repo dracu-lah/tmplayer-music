@@ -1,5 +1,11 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.FocusMemory
+import com.tmplayer.music.ui.tv.LocalFocusScope
+import com.tmplayer.music.ui.tv.handOver
+import com.tmplayer.music.ui.tv.neighbourAfterRemoval
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.clickable
@@ -51,6 +57,7 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
     var chats by remember { mutableStateOf<List<ChatRow>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var removing by remember { mutableStateOf<ChatRow?>(null) }
+    val focusScope = LocalFocusScope.current
 
     LaunchedEffect(changes) {
         try {
@@ -123,6 +130,11 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
             confirmButton = {
                 TextButton(modifier = Modifier.tvFocusRing(), onClick = {
                     removing = null
+                    // The D-pad goes to the chat that takes this one's place, not to the top of the list.
+                    val all = chats.orEmpty()
+                    val rest = all.filter { it.chatId != chat.chatId }
+                    neighbourAfterRemoval(all.indexOfFirst { it.chatId == chat.chatId }, rest.size)
+                        ?.let { FocusMemory.handOver(focusScope, rest[it].chatId) }
                     scope.launch {
                         try {
                             Library.removeChat(chat.chatId)
@@ -134,7 +146,7 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
                     }
                 }) { Text(L.manageRemove) }
             },
-            dismissButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { removing = null }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { removing = null }) { Text(L.commonCancel) } },
         )
     }
 }
