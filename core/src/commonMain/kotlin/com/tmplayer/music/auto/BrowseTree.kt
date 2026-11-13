@@ -161,7 +161,7 @@ class BrowseTree(
                     subtitle = text.songCount(it.trackCount),
                 )
             }
-            is Folder.Playlist -> library.playlistSongs(folder.id).drop(from).take(n).map(::song)
+            is Folder.Playlist -> library.playlistSongsPage(folder.id, from, n).map(::song)
             is Folder.AlbumOf -> library.albumSongs(folder.key, from + n).drop(from).map(::song)
             is Folder.ArtistOf -> {
                 // The artist's albums first, then every song of the artist.
