@@ -7,8 +7,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * The few primitives Connect rests on, all from the JDK and Android's own providers (no library):
- * HMAC-SHA256, a password stretch (PBKDF2 over that HMAC, written out because Android 6 to 7 have
- * no PBKDF2WithHmacSHA256), random bytes and a comparison that does not stop at the first
+ * HMAC-SHA256, HKDF-SHA256, SHA-256, random bytes and a comparison that does not stop at the first
  * difference.
  */
 object ConnectCrypto {
@@ -30,17 +29,34 @@ object ConnectCrypto {
 
     fun hmacHex(key: ByteArray, vararg parts: String): String = hex(hmac(key, *parts))
 
-    /** PBKDF2 with HMAC-SHA256, one 32 byte block (RFC 8018, the first block is all that is needed). */
-    fun stretch(password: String, salt: ByteArray, iterations: Int): ByteArray {
+    fun sha256(vararg parts: ByteArray): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        for (p in parts) digest.update(p)
+        return digest.digest()
+    }
+
+    fun sha256(text: String): ByteArray = sha256(text.toByteArray(Charsets.UTF_8))
+
+    private fun hmacBytes(key: ByteArray, data: ByteArray): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(password.toByteArray(Charsets.UTF_8).let { if (it.isEmpty()) ByteArray(1) else it }, "HmacSHA256"))
-        mac.update(salt)
-        mac.update(byteArrayOf(0, 0, 0, 1))
-        var u = mac.doFinal()
-        val out = u.copyOf()
-        for (i in 1 until iterations) {
-            u = mac.doFinal(u)
-            for (j in out.indices) out[j] = (out[j].toInt() xor u[j].toInt()).toByte()
+        mac.init(SecretKeySpec((if (key.isEmpty()) ByteArray(1) else key), "HmacSHA256"))
+        return mac.doFinal(data)
+    }
+
+    /** HKDF-SHA256 (RFC 5869): [length] bytes (at most 255 * 32) from [ikm], [salt] and [info]. */
+    fun hkdf(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int = 32): ByteArray {
+        require(length in 1..255 * 32)
+        val prk = hmacBytes(if (salt.isEmpty()) ByteArray(32) else salt, ikm)
+        val out = ByteArray(length)
+        var block = ByteArray(0)
+        var done = 0
+        var counter = 1
+        while (done < length) {
+            block = hmacBytes(prk, block + info + byteArrayOf(counter.toByte()))
+            val n = minOf(block.size, length - done)
+            System.arraycopy(block, 0, out, done, n)
+            done += n
+            counter++
         }
         return out
     }

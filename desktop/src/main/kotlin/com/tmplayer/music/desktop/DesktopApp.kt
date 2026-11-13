@@ -85,10 +85,13 @@ object DesktopApp {
         OfflineDownloads.start(DesktopPaths.offlineDir, prefs, lowRam = false)
         // Covers found online, under the lyrics and covers switch (on by default).
         CoverOnline.start(File(DesktopPaths.cacheDir, "covers-online"))
+        // A phone as the remote of this computer: only when the Settings switch was left on (off by default).
+        runCatching { com.tmplayer.music.desktop.connect.DesktopConnect.start() }.onFailure { Logger.w(TAG, "Connect could not start", it) }
     }
 
     /** The queue is saved and the player let go; the window is closing. */
     fun stop() {
+        runCatching { com.tmplayer.music.desktop.connect.DesktopConnect.stop() }
         runCatching { player.close() }
         runCatching { volumeSaver.flush() }
         runCatching { OfflineDownloads.flush() }

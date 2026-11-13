@@ -100,6 +100,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.appdirs)
     implementation(libs.zxing.core)
+    // Advertises this computer on the local network (mDNS, the same service type the phone looks for).
+    implementation(libs.jmdns)
     implementation(libs.dbus.java.core)
     implementation(libs.dbus.java.transport.native.unixsocket)
     implementation(libs.jna)
@@ -171,8 +173,8 @@ compose.desktop {
             appResourcesRootDir.set(legalResources)
             // What the runtime reaches beyond the modules Compose already adds: jdk.security.auth is
             // dbus-java's UnixSystem credentials (MPRIS), jdk.net its unix socket options,
-            // jdk.unsupported the Unsafe some libraries use.
-            modules("jdk.unsupported", "jdk.security.auth", "jdk.net")
+            // jdk.unsupported the Unsafe some libraries use, java.logging the logger JmDNS (Connect) writes to.
+            modules("jdk.unsupported", "jdk.security.auth", "jdk.net", "java.logging")
             linux {
                 packageName = "tmplayer-music"
                 iconFile.set(packagingDir.file("icons/tmplayer-music.png"))

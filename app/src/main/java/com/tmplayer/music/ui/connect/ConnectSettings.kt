@@ -1,8 +1,17 @@
 package com.tmplayer.music.ui.connect
 
 import android.os.SystemClock
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import com.tmplayer.music.connect.PairLink
+import com.tmplayer.music.connect.PairingOffer
+import com.tmplayer.music.ui.auth.QrCode
+import com.tmplayer.music.ui.auth.qrMatrix
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -143,6 +152,7 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
     val offer by TvConnect.gate.offer.collectAsStateWithLifecycle()
     val lockedUntil by TvConnect.gate.lockedUntil.collectAsStateWithLifecycle()
     val phones by Connect.phones.list.collectAsStateWithLifecycle()
+    val status by TvConnect.status.collectAsStateWithLifecycle()
     val before = remember { phones.map { it.id }.toSet() }
     val newcomer = phones.firstOrNull { it.id !in before }
     var locked by remember { mutableStateOf(false) }
@@ -172,6 +182,13 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
                 if (newcomer != null) {
                     Text(L.connectPairDone(newcomer.name.ifBlank { newcomer.id.take(8) }), style = MaterialTheme.typography.bodyLarge)
                 } else {
+                    // The picture is the primary way: it carries a one time 128 bit token and the address, so nothing is typed.
+                    val link = pairLinkText(status, offer)
+                    if (link != null) {
+                        Box(Modifier.size(200.dp).background(Color.White, RoundedCornerShape(12.dp)).align(Alignment.CenterHorizontally)) {
+                            QrCode(remember(link) { qrMatrix(link) }, L.connectPairQrDescription)
+                        }
+                    }
                     Text(
                         offer?.code?.chunked(3)?.joinToString("  ") ?: "",
                         style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace),
@@ -186,6 +203,13 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
             TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = onDismiss) { Text(if (newcomer != null) L.commonOk else L.commonCancel) }
         },
     )
+}
+
+/** What the QR code says for the pairing on show; null while the server is not listening or no offer is open. */
+private fun pairLinkText(status: HostStatus, offer: PairingOffer?): String? {
+    val listening = status as? HostStatus.Listening ?: return null
+    offer ?: return null
+    return PairLink(listening.address, listening.port, Connect.deviceId, offer.token).text()
 }
 
 // ---- The phone: paired TVs, pair, open the remote.
@@ -299,6 +323,69 @@ fun PairTvDialog(onDismiss: () -> Unit, onPaired: () -> Unit) {
             ) { Text(if (busy) L.connectPairing else L.connectPairGo) }
         },
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(L.commonCancel) } },
+    )
+}
+
+/**
+ * The TV's QR code, scanned with the phone's camera app, opens this: one question (never a silent
+ * pairing), then the pairing runs with the code's token and no typing. Nothing is shown otherwise.
+ */
+@Composable
+fun PairLinkHost() {
+    val link by PhoneRemote.pendingLink.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var done by remember { mutableStateOf(false) }
+    val pending = link ?: return
+    AlertDialog(
+        onDismissRequest = {
+            if (!busy) {
+                PhoneRemote.dismissLink()
+                error = null
+                done = false
+            }
+        },
+        title = { Text(L.connectPairLinkTitle) },
+        text = {
+            Text(
+                when {
+                    done -> L.connectPairLinkDone
+                    error != null -> error.orEmpty()
+                    else -> L.connectPairLinkBody(pending.host)
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    if (done) {
+                        PhoneRemote.dismissLink()
+                        done = false
+                        return@TextButton
+                    }
+                    busy = true
+                    error = null
+                    scope.launch {
+                        when (val r = PhoneRemote.pairLink(pending)) {
+                            is PairResult.Success -> done = true
+                            is PairResult.Refused -> error = refusal(r)
+                            is PairResult.Unreachable -> error = L.connectErrUnreachable
+                        }
+                        busy = false
+                    }
+                },
+            ) { Text(if (busy) L.connectPairing else if (done) L.commonOk else L.connectPairGo) }
+        },
+        dismissButton = {
+            if (!done) {
+                TextButton(enabled = !busy, onClick = {
+                    PhoneRemote.dismissLink()
+                    error = null
+                }) { Text(L.commonCancel) }
+            }
+        },
     )
 }
 

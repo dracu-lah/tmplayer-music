@@ -143,11 +143,13 @@ class ConnectServer(
                 out.flush()
             }
             val sn = ConnectHandshake.newNonce()
-            write(ConnectFrame.Hello(ConnectLimits.VERSION, sn, hostId, hostName))
+            // A new key pair for every connection: nothing recorded fits another one.
+            val key = EphemeralKey.generate()
+            write(ConnectFrame.Hello(ConnectLimits.VERSION, sn, hostId, hostName, key.publicHex))
             val first = ConnectFrames.parse(lines.next() ?: return)
             val (id, channel) = when (first) {
-                is ConnectFrame.Auth -> authenticate(first, sn, ::write) ?: return
-                is ConnectFrame.Pair -> pair(first, sn, ::write) ?: return
+                is ConnectFrame.Auth -> authenticate(first, sn, key, ::write) ?: return
+                is ConnectFrame.Pair -> pair(first, sn, key, ::write) ?: return
                 else -> {
                     write(ConnectFrame.Err(ConnectErrors.MALFORMED))
                     return
@@ -180,7 +182,7 @@ class ConnectServer(
     }
 
     /** A paired phone: it must prove the secret, and the host proves it back. */
-    private fun authenticate(frame: ConnectFrame.Auth, sn: String, write: (ConnectFrame) -> Unit): Pair<String, SecureChannel>? {
+    private fun authenticate(frame: ConnectFrame.Auth, sn: String, key: EphemeralKey, write: (ConnectFrame) -> Unit): Pair<String, SecureChannel>? {
         if (frame.version != ConnectLimits.VERSION) {
             write(ConnectFrame.Err(ConnectErrors.VERSION))
             return null
@@ -191,35 +193,52 @@ class ConnectServer(
             write(ConnectFrame.Err(ConnectErrors.UNPAIRED))
             return null
         }
-        if (!ConnectCrypto.same(frame.mac, ConnectHandshake.authMac(secret, sn, frame.nonce, frame.id))) {
+        val shared = key.agree(frame.key)
+        if (shared == null) {
+            write(ConnectFrame.Err(ConnectErrors.MALFORMED))
+            return null
+        }
+        val th = ConnectHandshake.transcript("auth", frame.version, sn, frame.nonce, hostId, key.publicHex, frame.id, frame.name, frame.key)
+        if (!ConnectCrypto.same(frame.mac, ConnectHandshake.authMac(secret, th))) {
             write(ConnectFrame.Err(ConnectErrors.DENIED))
             return null
         }
-        write(ConnectFrame.Ready(ConnectHandshake.readyMac(secret, sn, frame.nonce)))
-        return frame.id to ConnectHandshake.channel(secret, sn, frame.nonce, host = true)
+        write(ConnectFrame.Ready(ConnectHandshake.readyMac(secret, th)))
+        return frame.id to ConnectHandshake.channel(shared, secret, th, host = true)
     }
 
-    /** A new phone: it must show the code on the screen. Wrong tries are counted for the whole TV. */
-    private fun pair(frame: ConnectFrame.Pair, sn: String, write: (ConnectFrame) -> Unit): Pair<String, SecureChannel>? {
+    /**
+     * A new phone: it must prove the code on the screen (or the token of its QR code) inside the key
+     * exchange. Wrong tries are counted for the whole TV, so each attempt is one guess.
+     */
+    private fun pair(frame: ConnectFrame.Pair, sn: String, key: EphemeralKey, write: (ConnectFrame) -> Unit): Pair<String, SecureChannel>? {
         if (frame.version != ConnectLimits.VERSION) {
             write(ConnectFrame.Err(ConnectErrors.VERSION))
             return null
         }
-        var key: ByteArray? = null
-        val verdict = gate.attempt { code ->
-            val candidate = ConnectHandshake.codeKey(code, sn, frame.nonce)
-            val right = ConnectCrypto.same(frame.mac, ConnectHandshake.pairMac(candidate, sn, frame.nonce, frame.id))
-            if (right) key = candidate
+        val shared = key.agree(frame.key)
+        if (shared == null) {
+            // Not a guess at the code: no point of the curve, no try counted.
+            write(ConnectFrame.Err(ConnectErrors.MALFORMED))
+            return null
+        }
+        val th = ConnectHandshake.transcript(frame.via.wire, frame.version, sn, frame.nonce, hostId, key.publicHex, frame.id, frame.name, frame.key)
+        var confirmed: ByteArray? = null
+        val verdict = gate.attempt { offer ->
+            val proof = if (frame.via == ConnectHandshake.Via.Token) offer.token else offer.code
+            val candidate = ConnectHandshake.confirmKey(shared, th, frame.via, proof)
+            val right = ConnectCrypto.same(frame.mac, ConnectHandshake.pairMac(candidate, th))
+            if (right) confirmed = candidate
             right
         }
-        val codeKey = key
+        val confirmKey = confirmed
         when (verdict) {
             PairingVerdict.Accepted -> {
-                if (codeKey == null) return null
+                if (confirmKey == null) return null
                 val secret = ConnectHandshake.newSecret()
                 phones.add(Paired(frame.id, frame.name.ifBlank { "Phone" }, ConnectCrypto.hex(secret), clock() / 1000))
-                write(ConnectFrame.Paired(ConnectHandshake.wrap(secret, codeKey, sn, frame.nonce, frame.id), ConnectHandshake.pairedMac(secret, sn, frame.nonce)))
-                return frame.id to ConnectHandshake.channel(secret, sn, frame.nonce, host = true)
+                write(ConnectFrame.Paired(ConnectHandshake.wrap(secret, confirmKey, th), ConnectHandshake.pairedMac(secret, th)))
+                return frame.id to ConnectHandshake.channel(shared, secret, th, host = true)
             }
             is PairingVerdict.Wrong -> write(ConnectFrame.Err(ConnectErrors.BAD_CODE, left = verdict.left))
             is PairingVerdict.Locked -> write(ConnectFrame.Err(ConnectErrors.LOCKED, retrySeconds = ((verdict.retryMs + 999) / 1000).toInt()))

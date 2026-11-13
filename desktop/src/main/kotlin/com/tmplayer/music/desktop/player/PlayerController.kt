@@ -228,6 +228,31 @@ class PlayerController(
         if (empty) openCurrent(0, playNow = true) else saveSoon()
     }
 
+    /** [playNext] for entries already resolved (a phone's Send to this computer). */
+    fun playNextEntries(entries: List<QueueEntry>) = run {
+        if (entries.isEmpty()) return@run
+        val empty = _ui.value.queue.isEmpty
+        dropPrefetch()
+        _ui.update { it.copy(queue = it.queue.playNext(entries)) }
+        if (empty) openCurrent(0, playNow = true) else saveSoon()
+    }
+
+    /** [addToQueue] for entries already resolved (a phone's Send to this computer). */
+    fun addEntries(entries: List<QueueEntry>) = run {
+        if (entries.isEmpty()) return@run
+        val empty = _ui.value.queue.isEmpty
+        dropPrefetch()
+        _ui.update { it.copy(queue = it.queue.append(entries)) }
+        if (empty) openCurrent(0, playNow = true) else saveSoon()
+    }
+
+    fun setRepeat(mode: RepeatMode) = run {
+        if (_ui.value.queue.repeat == mode) return@run
+        dropPrefetch()
+        _ui.update { it.copy(queue = it.queue.withRepeat(mode)) }
+        saveSoon()
+    }
+
     fun skipTo(index: Int) = run {
         if (index !in _ui.value.queue.entries.indices) return@run
         keepSpot()

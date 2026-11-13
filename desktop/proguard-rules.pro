@@ -52,6 +52,9 @@
 -keep class * implements kotlinx.coroutines.CoroutineExceptionHandler { *; }
 -keepnames class * implements org.slf4j.spi.SLF4JServiceProvider
 -keep class org.slf4j.** { *; }
+
+# JmDNS (Connect on the desktop) finds its record types and listeners by reflection.
+-keep class javax.jmdns.** { *; }
 -keep class org.slf4j.nop.** { *; }
 
 # FileKit's dialogs reach the platform through JNA and Swing.

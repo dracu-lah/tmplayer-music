@@ -2,6 +2,13 @@ package com.tmplayer.music.ui.connect
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.Alignment
+import com.tmplayer.music.connect.ChatSend
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -62,5 +69,41 @@ fun TvMenuLines(song: Song, onDismiss: () -> Unit) {
                 onDismiss()
             }.padding(horizontal = 20.dp, vertical = 14.dp),
         )
+    }
+}
+
+/**
+ * Play on TV and Add to TV queue for a whole chat. The chat's tracks are read page by page in the
+ * background (never all at once), up to [ChatSend.CAP] per send, which a line says. While it runs
+ * the buttons give way to a progress line with Cancel. Nothing when no TV is paired.
+ */
+@Composable
+fun SendChatToTvButtons(chatId: Long, modifier: Modifier = Modifier) {
+    if (!hasPairedTv()) return
+    val context = LocalContext.current
+    val state by PhoneRemote.chatSend.collectAsStateWithLifecycle()
+    Column(modifier) {
+        val running = state
+        if (running == null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(modifier = Modifier.tvFocusRing(), onClick = { PhoneRemote.sendChatAndTell(context, chatId, SendHow.Play) }) { Text(L.connectPlayOnTv) }
+                TextButton(modifier = Modifier.tvFocusRing(), onClick = { PhoneRemote.sendChatAndTell(context, chatId, SendHow.Add) }) { Text(L.connectAddToTvQueue) }
+            }
+            Text(L.connectSendChatLimit(ChatSend.CAP), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                when (running) {
+                    is PhoneRemote.ChatSendUi.Reading -> {
+                        LinearProgressIndicator(progress = { (running.count.toFloat() / ChatSend.CAP).coerceIn(0f, 1f) }, modifier = Modifier.width(96.dp))
+                        Text(L.connectSendChatReading(running.count), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    PhoneRemote.ChatSendUi.Sending -> {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text(L.connectSendChatSending, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                TextButton(modifier = Modifier.tvFocusRing(), onClick = { PhoneRemote.cancelChatSend() }) { Text(L.commonCancel) }
+            }
+        }
     }
 }

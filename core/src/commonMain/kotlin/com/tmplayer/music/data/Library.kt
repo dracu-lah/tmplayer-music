@@ -243,17 +243,21 @@ object Library {
      * coming back to the chat shows what was loaded where it was scrolled to.
      */
     fun chatLoader(chatId: Long, order: ChatOrder): ChatLoader = synchronized(loaders) {
-        loaders.getOrPut(chatId to order) {
-            ChatLoader(
-                chatId = chatId,
-                order = order,
-                store = IndexChatStore,
-                feedOf = { o, onWait -> ChatFeed(o, { pass, from, offset, limit -> fetchChatPage(chatId, pass, from, offset, limit) }, onWait) },
-                online = Td.connected,
-                hiddenMask = { choices.hiddenMask },
-            )
-        }
+        loaders.getOrPut(chatId to order) { newChatLoader(chatId, order) }
     }
+
+    /**
+     * A page of one chat that is not kept and not shared with a screen: for work that reads a chat
+     * page by page in the background (Send to TV) without moving the open page's rows or scroll.
+     */
+    fun newChatLoader(chatId: Long, order: ChatOrder): ChatLoader = ChatLoader(
+        chatId = chatId,
+        order = order,
+        store = IndexChatStore,
+        feedOf = { o, onWait -> ChatFeed(o, { pass, from, offset, limit -> fetchChatPage(chatId, pass, from, offset, limit) }, onWait) },
+        online = Td.connected,
+        hiddenMask = { choices.hiddenMask },
+    )
 
     private fun dropLoaders(chatId: Long? = null) = synchronized(loaders) {
         if (chatId == null) loaders.clear() else loaders.keys.removeAll { it.first == chatId }

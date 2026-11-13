@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
                     AppRoot()
                     CrashOffer()
                     SupportAskHost()
+                    if (BuildConfig.CONNECT) com.tmplayer.music.ui.connect.PairLinkHost()
                     // The update check when the app opens and its popup; nothing in a store build.
                     com.tmplayer.music.ui.update.UpdateHost()
                 }
@@ -51,6 +52,10 @@ class MainActivity : ComponentActivity() {
      * `adb shell am start -n com.tmplayer.music/.MainActivity --ez support_reminder true`.
      */
     private fun handleLaunch(intent: Intent?) {
+        // A TV's pairing QR code opened by the camera app: only asks the user whether to pair (regular APK, phones).
+        if (BuildConfig.CONNECT && intent?.action == Intent.ACTION_VIEW && !com.tmplayer.music.ui.tv.isTv(this)) {
+            com.tmplayer.music.connect.PhoneRemote.offerLink(intent.dataString)
+        }
         if (intent?.getStringExtra(SupportChecks.EXTRA_OPEN) == SupportChecks.OPEN_SUPPORT) SupportReminder.requestOpen()
         if (BuildConfig.DEBUG && intent?.getBooleanExtra(EXTRA_SUPPORT_REMINDER, false) == true) SupportReminder.forced = true
     }

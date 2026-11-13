@@ -293,7 +293,7 @@ private fun QrStepLine(number: Int, text: String) {
     }
 }
 
-private fun qrMatrix(link: String): BitMatrix =
+internal fun qrMatrix(link: String): BitMatrix =
     QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.MARGIN to 0))
 
 /**
@@ -301,8 +301,7 @@ private fun qrMatrix(link: String): BitMatrix =
  * needs to find the corners. The only fixed colours in the sign in: a camera needs this contrast.
  */
 @Composable
-private fun QrCode(matrix: BitMatrix) {
-    val description = L.signinQrDescription
+internal fun QrCode(matrix: BitMatrix, description: String = L.signinQrDescription) {
     Canvas(
         Modifier
             .fillMaxSize()

@@ -14,6 +14,7 @@ lifecycle = "2.11.0"
 coroutines = "1.11.0"
 tdl = "15.0.0"
 zxing = "3.5.4"
+jmdns = "3.5.9"
 desugarJdkLibs = "2.1.5"
 kotlinxSerialization = "1.11.0"
 junit = "4.13.2"
@@ -75,6 +76,7 @@ jna-platform = { group = "net.java.dev.jna", name = "jna-platform", version.ref 
 filekit-dialogs-compose = { group = "io.github.vinceglb", name = "filekit-dialogs-compose", version.ref = "filekit" }
 slf4j-nop = { group = "org.slf4j", name = "slf4j-nop", version.ref = "slf4j" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+jmdns = { group = "org.jmdns", name = "jmdns", version.ref = "jmdns" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

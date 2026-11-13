@@ -92,6 +92,8 @@ additional permission to be combined with it; see
 - Kotlin standard library, kotlinx.coroutines 1.11.0 and kotlinx.serialization 1.11.0: Apache
   License 2.0: <https://github.com/JetBrains/kotlin>, <https://github.com/Kotlin/kotlinx.coroutines>
   and <https://github.com/Kotlin/kotlinx.serialization>
+- JmDNS 3.5.9 (the desktop app announces itself to a paired phone on the local network): Apache
+  License 2.0: <https://github.com/jmdns/jmdns>
 - ZXing Core 3.5.4 (the sign in QR code): Apache License 2.0:
   <https://github.com/zxing/zxing/tree/zxing-3.5.4>
 

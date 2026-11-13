@@ -36,8 +36,8 @@ object LocalNet {
 
 /** What a Send to the TV turns into on the wire: bounded messages, in an order that keeps the user's order. */
 object SendPlan {
-    /** The most tracks one Send carries over; more is cut around the start, as a local play does. */
-    const val MAX_TOTAL = 2_000
+    /** The most tracks one Send carries over (the UI says so); more is cut around the start, as a local play does. */
+    const val MAX_TOTAL = 5_000
 
     /**
      * The messages for [how] with [refs]. Play: a window of up to [ConnectLimits.MAX_SEND_ITEMS]

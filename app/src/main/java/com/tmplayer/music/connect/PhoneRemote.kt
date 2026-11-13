@@ -225,17 +225,77 @@ object PhoneRemote {
         val tv = Connect.activeTv() ?: return
         val refs = songs.map { TrackRef(it.defaultTrack.chatId, it.defaultTrack.messageId, it.groupKey, it.title) }
         scope.launch {
-            val text = when (val outcome = sendToTv(app, tv, how, refs, start, shuffle)) {
-                is SendOutcome.Done -> listOfNotNull(
-                    com.tmplayer.music.i18n.L.connectSentOk(outcome.tvName).takeIf { outcome.ok > 0 || outcome.missingCount == 0 },
-                    com.tmplayer.music.i18n.L.connectSentMissing(outcome.missingCount, outcome.missing.joinToString(", ")).takeIf { outcome.missingCount > 0 },
-                ).joinToString(" ")
-                is SendOutcome.Unreachable -> com.tmplayer.music.i18n.L.connectSendFailed(outcome.tvName)
-                is SendOutcome.Forgotten -> com.tmplayer.music.i18n.L.connectSendForgotten(outcome.tvName)
-                SendOutcome.NoTv -> return@launch
-            }
-            withContext(Dispatchers.Main) { android.widget.Toast.makeText(app, text, android.widget.Toast.LENGTH_LONG).show() }
+            val text = tell(sendToTv(app, tv, how, refs, start, shuffle)) ?: return@launch
+            toast(app, text)
         }
+    }
+
+    private fun tell(outcome: SendOutcome): String? = when (outcome) {
+        is SendOutcome.Done -> listOfNotNull(
+            com.tmplayer.music.i18n.L.connectSentOk(outcome.tvName).takeIf { outcome.ok > 0 || outcome.missingCount == 0 },
+            com.tmplayer.music.i18n.L.connectSentMissing(outcome.missingCount, outcome.missing.joinToString(", ")).takeIf { outcome.missingCount > 0 },
+        ).joinToString(" ")
+        is SendOutcome.Unreachable -> com.tmplayer.music.i18n.L.connectSendFailed(outcome.tvName)
+        is SendOutcome.Forgotten -> com.tmplayer.music.i18n.L.connectSendForgotten(outcome.tvName)
+        SendOutcome.NoTv -> null
+    }
+
+    private suspend fun toast(app: Context, text: String) {
+        withContext(Dispatchers.Main) { android.widget.Toast.makeText(app, text, android.widget.Toast.LENGTH_LONG).show() }
+    }
+
+    /** What a chat's send is doing now, for the chat page's progress line and Cancel. */
+    sealed interface ChatSendUi {
+        /** Reading the chat's tracks page by page: [count] so far, up to [ChatSend.CAP]. */
+        data class Reading(val count: Int) : ChatSendUi
+
+        /** Handing them to the TV. */
+        data object Sending : ChatSendUi
+    }
+
+    private val _chatSend = MutableStateFlow<ChatSendUi?>(null)
+    val chatSend: StateFlow<ChatSendUi?> = _chatSend.asStateFlow()
+    private var chatJob: Job? = null
+
+    /**
+     * Send to TV for a whole chat: pages the chat's tracks in the background (up to [ChatSend.CAP],
+     * in the chat's own order, never all in memory), then sends them like any other list. One chat
+     * send runs at a time (a second press while it runs does nothing); [cancelChatSend] stops it, and
+     * what already reached the TV stays queued there. Runs on its own scope, so leaving the page does not cancel it.
+     */
+    @Synchronized
+    fun sendChatAndTell(context: Context, chatId: Long, how: SendHow) {
+        if (chatJob?.isActive == true) return
+        val app = context.applicationContext
+        val tv = Connect.activeTv() ?: return
+        _chatSend.value = ChatSendUi.Reading(0)
+        chatJob = scope.launch {
+            try {
+                val loader = com.tmplayer.music.data.Library.newChatLoader(chatId, com.tmplayer.music.data.Library.choices.chatOrder(chatId))
+                val got = ChatSend.collect(loader) { _chatSend.value = ChatSendUi.Reading(it) }
+                if (got.refs.isEmpty()) {
+                    toast(app, com.tmplayer.music.i18n.L.connectSendChatEmpty)
+                    return@launch
+                }
+                _chatSend.value = ChatSendUi.Sending
+                val sent = tell(sendToTv(app, tv, how, got.refs)) ?: return@launch
+                val note = when {
+                    got.stopped != null -> com.tmplayer.music.i18n.L.connectSendChatStopped(got.refs.size)
+                    got.capped -> com.tmplayer.music.i18n.L.connectSendChatCapped(ChatSend.CAP)
+                    else -> null
+                }
+                toast(app, listOfNotNull(sent, note).joinToString(" "))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                withContext(NonCancellable) { toast(app, com.tmplayer.music.i18n.L.connectSendChatCancelled) }
+                throw e
+            } finally {
+                _chatSend.value = null
+            }
+        }
+    }
+
+    fun cancelChatSend() {
+        chatJob?.cancel()
     }
 
     /** Pairs with a TV found by [FoundTv] or typed ("host:port"), with [code]; stores the pairing when it works. */
@@ -246,6 +306,34 @@ object PhoneRemote {
             Connect.setActiveTv(result.paired.id)
         }
         return result
+    }
+
+    /**
+     * Pairs with the TV a scanned [link] named, with its one time token (nothing typed). Stores the
+     * pairing when it works, like [pair].
+     */
+    suspend fun pairLink(link: PairLink): PairResult {
+        val result = withContext(Dispatchers.IO) { ConnectClient.pair(link, me()) }
+        if (result is PairResult.Success) {
+            Connect.tvs.add(result.paired)
+            Connect.setActiveTv(result.paired.id)
+        }
+        return result
+    }
+
+    private val _pendingLink = MutableStateFlow<PairLink?>(null)
+
+    /** A TV's pairing link that was just opened (from the phone's camera app), waiting for the user to confirm. */
+    val pendingLink: StateFlow<PairLink?> = _pendingLink.asStateFlow()
+
+    /** Takes the text a camera app opened us with; ignored unless it is a well formed link. */
+    fun offerLink(text: String?) {
+        if (!Connect.available) return
+        _pendingLink.value = PairLink.parse(text) ?: return
+    }
+
+    fun dismissLink() {
+        _pendingLink.value = null
     }
 
     /** Forgets [id] on this phone (the TV keeps listing this phone until it forgets it too). */
