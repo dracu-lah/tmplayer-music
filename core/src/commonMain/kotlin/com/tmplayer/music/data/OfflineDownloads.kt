@@ -7,6 +7,9 @@ import com.tmplayer.music.platform.Logger
 import dev.g000sha256.tdl.TdlResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -93,8 +96,11 @@ object OfflineDownloads {
 
     fun isKept(id: TrackId): Boolean = store.isKept(id)
 
-    /** The kept file of [id] to play, or null when it is not kept (or its file is gone). */
-    fun pathOf(id: TrackId): File? = store.pathOf(id)
+    /**
+     * The kept file of [id] to play, or null when it is not kept (or its file is gone). With a
+     * [uniqueId], the same file kept from another chat plays too.
+     */
+    fun pathOf(id: TrackId, uniqueId: String = ""): File? = store.pathOf(id, uniqueId)
 
     fun freeBytes(): Long = store.folder?.let { runCatching { it.usableSpace }.getOrDefault(0L) } ?: 0L
 
@@ -105,7 +111,7 @@ object OfflineDownloads {
             tracks = tracks,
             kept = kept.keys,
             queued = pending.value,
-            keptUniques = kept.values.mapTo(HashSet()) { it.uniqueId },
+            keptUniques = kept.values.filter { OfflinePlanner.isRealUnique(it.uniqueId) }.mapTo(HashSet()) { it.uniqueId },
             freeBytes = freeBytes(),
         )
     }
@@ -117,6 +123,8 @@ object OfflineDownloads {
             Logger.w(TAG, "keep before start: ignored")
             return
         }
+        // The same file kept from another chat: no copy, linked at once.
+        plan.links.forEach { store.link(it) }
         running.enqueue(plan.toKeep)
     }
 
@@ -148,6 +156,35 @@ object OfflineDownloads {
         awaitIdle { it.chatId == chatId }
         store.removeChat(chatId)
     }
+
+    /**
+     * Several chats at once, at most [PURGE_PARALLEL] together, so the waits do not add up. One that
+     * fails does not stop the others.
+     */
+    suspend fun purgeChats(chatIds: Collection<Long>) {
+        if (chatIds.isEmpty()) return
+        val gate = Semaphore(PURGE_PARALLEL)
+        kotlinx.coroutines.supervisorScope {
+            chatIds.map { id ->
+                launch {
+                    gate.withPermit {
+                        try {
+                            purgeChat(id)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Logger.w(TAG, "could not purge the kept tracks of chat $id", e)
+                        }
+                    }
+                }
+            }.forEach { it.join() }
+        }
+    }
+
+    /** How many tracks kept offline come from [chatIds]: what unpicking them would delete. */
+    fun keptIn(chatIds: Set<Long>): Int = store.kept.value.values.count { it.chatId in chatIds }
+
+    private const val PURGE_PARALLEL = 4
 
     /** Logging out or another account: everything goes. */
     suspend fun purgeAll() {

@@ -190,6 +190,18 @@ class BackupTest {
     }
 
     @Test
+    fun `plays past the cap trim the oldest by time, not the user's own lowest ids`() = runBlocking {
+        val index = open()
+        index.library(1, "Velo Marin", "Lumen Tide")
+        repeat(10) { index.recordPlay(TrackId(1, 10), index.named("Velo Marin").groupKey, 1_700_000_000L + it) }
+        val data = Backup.Data(1, plays = listOf(Backup.PlayData(index.refOf("Lumen Tide"), LibraryIndex.MAX_PLAYS, 1_000)))
+        index.restoreBackup(data, replace = false, commit = true)
+        val plays = index.backupData().plays
+        assertEquals(LibraryIndex.MAX_PLAYS, plays.sumOf { it.count })
+        assertEquals(listOf(10, LibraryIndex.MAX_PLAYS - 10), plays.map { it.count }.sorted())
+    }
+
+    @Test
     fun `a file from a newer version is refused with its number`() {
         val text = "{\"format\":\"${Backup.FORMAT}\",\"version\":${Backup.VERSION + 1},\"favourites\":\"anything\"}"
         assertEquals(Backup.Result.Newer(Backup.VERSION + 1L), Backup.decode(text))

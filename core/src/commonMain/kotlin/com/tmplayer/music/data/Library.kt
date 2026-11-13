@@ -86,6 +86,27 @@ object Library {
     val changes: StateFlow<Long> = _changes.asStateFlow()
 
     /** False until the account check has run after sign in, so screens do not show another account's rows. */
+    private val _indexRecovery = MutableStateFlow<LibraryIndex.Recovery?>(null)
+
+    /**
+     * Set when the library file could not be used and was moved aside (never deleted): damaged, or
+     * from a newer app. The screens say so, and Send logs carries the reason.
+     */
+    val indexRecovery: StateFlow<LibraryIndex.Recovery?> = _indexRecovery.asStateFlow()
+
+    fun dismissIndexRecovery() {
+        _indexRecovery.value = null
+    }
+
+    private fun openIndex(): LibraryIndex =
+        LibraryIndex.open(File(dir, "library.db").path).also { opened ->
+            opened.hiddenMask = choices.hiddenMask
+            opened.recovery?.let {
+                _indexRecovery.value = it
+                JobFailures.handle("Library index", IllegalStateException("the library file was set aside (${it.reason}), kept as ${it.keptAs}"))
+            }
+        }
+
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready.asStateFlow()
 
@@ -132,7 +153,7 @@ object Library {
             version = { Updates.installedVersion }
             start(File(dir, "lyrics-online"), store)
         }
-        index = LibraryIndex.open(File(dir, "library.db").path).also { it.hiddenMask = choices.hiddenMask }
+        index = openIndex()
         scanner = LibraryScanner(IndexScanStore(), ::fetchPage, scope)
         if (choices.paused.value) scanner.pause()
         // Only the app on screen counts: playing in the background reads only what is about to play.
@@ -280,24 +301,27 @@ object Library {
     suspend fun pick(chats: List<ChatPick>) {
         val before = index().pickedChats().map { it.chatId }.toSet()
         val after = chats.map { it.chatId }.toSet()
-        (before - after).forEach {
+        val dropped = before - after
+        dropped.forEach {
             scanner.forget(it)
             dropLoaders(it)
-            // Kept offline files of a chat that is no longer picked go with its rows.
-            OfflineDownloads.purgeChat(it)
         }
+        // The index first: if the change fails, nothing kept offline was touched. The kept files of
+        // a chat that is no longer picked go after it, together and not one wait after the other.
         index().setPicked(chats)
         _changes.value++
+        OfflineDownloads.purgeChats(dropped)
         scanner.scan(after.toList())
     }
 
     /** Removes one chat and its tracks, for Manage chats. */
     suspend fun removeChat(chatId: Long) {
         scanner.forget(chatId)
-        OfflineDownloads.purgeChat(chatId)
         index().removeChat(chatId)
         dropLoaders(chatId)
         _changes.value++
+        // After the index change, so a failed one leaves the kept files alone.
+        OfflineDownloads.purgeChat(chatId)
     }
 
     /** Scans every chosen chat again from where it stopped, and tops up the finished ones. */
@@ -403,7 +427,7 @@ object Library {
         com.tmplayer.music.covers.CoverOnline.clear()
         dropLoaders()
         File(dir, ACCOUNT_FILE).delete()
-        index = LibraryIndex.open(File(dir, "library.db").path).also { it.hiddenMask = choices.hiddenMask }
+        index = openIndex()
         _changes.value++
     }
 

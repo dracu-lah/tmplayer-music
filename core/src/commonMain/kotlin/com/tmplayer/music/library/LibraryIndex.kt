@@ -90,6 +90,13 @@ class LibraryIndex private constructor(
     private val clusters: (List<Long>, Boolean) -> List<Int>,
 ) : AutoCloseable {
 
+    /** What open did with a file it could not use (set aside, never deleted), or null. The caller tells the user. */
+    var recovery: Recovery? = null
+        private set
+
+    /** A library file that was not used as it was: where it is kept now, and why. */
+    class Recovery(val reason: String, val keptAs: String?, val schema: Int?)
+
     private val lock = ReentrantLock()
     private val statements = HashMap<String, SQLiteStatement>()
 
@@ -1314,7 +1321,12 @@ class LibraryIndex private constructor(
             playSongs++
         }
         if (playRows > MAX_PLAYS) {
-            exec("DELETE FROM plays WHERE play_id <= (SELECT play_id FROM plays ORDER BY play_id DESC LIMIT 1 OFFSET $MAX_PLAYS)")
+            // The oldest plays by time go, not the lowest ids: those are the user's own, and a restore
+            // adds its rows after them with the times they were played.
+            exec(
+                "DELETE FROM plays WHERE play_id IN (SELECT play_id FROM plays ORDER BY at_sec ASC, play_id ASC " +
+                    "LIMIT MAX(0, (SELECT COUNT(*) FROM plays) - $MAX_PLAYS))",
+            )
         }
 
         val picked = query("SELECT chat_id FROM chats WHERE picked = 1 LIMIT $MAX_ROWS") { it.getLong(0) }.toHashSet()
@@ -1827,20 +1839,29 @@ class LibraryIndex private constructor(
 
         /**
          * Opens the index at [path] (":memory:" for a throwaway one), creating or migrating it.
-         * A file that is not a database, is damaged or comes from a newer app is renamed to
-         * `<path>.broken` and a fresh index is created, so a bad file never stops the app. Call it
-         * off the main thread: it touches the disk.
+         * A file that is not a database or is damaged is moved aside, and one from a newer app that
+         * this build cannot read as it is ([IndexSchema.openMode]) is too, each under a name of its
+         * own (an earlier one is never deleted), and a fresh index is created, so a bad file never
+         * stops the app and never costs the user a library a newer app could still read. The move
+         * is reported in [recovery]. Call it off the main thread: it touches the disk.
          */
         fun open(
             path: String,
             pick: (List<Track>) -> Track? = { TrackVersions.pick(it) },
             clusters: (List<Long>, Boolean) -> List<Int> = GroupKey::clusters,
         ): LibraryIndex {
+            var recovery: Recovery? = null
             val db = try {
                 connect(path)
             } catch (e: Exception) {
                 Logger.w(TAG, "the library index could not be read, starting a fresh one", e)
-                moveAside(path)
+                val newer = (e as? NewerSchema)?.found
+                val kept = moveAside(path, if (newer != null) "newer-v$newer" else "broken")
+                recovery = Recovery(
+                    reason = if (newer != null) "newer app schema $newer" else (e.message ?: e::class.simpleName.orEmpty()),
+                    keptAs = kept,
+                    schema = newer,
+                )
                 try {
                     connect(path)
                 } catch (again: Exception) {
@@ -1849,6 +1870,7 @@ class LibraryIndex private constructor(
                 }
             }
             val index = LibraryIndex(db, pick, clusters)
+            index.recovery = recovery
             // Older rows get today's names; a failure here only leaves them as they were.
             runCatching { index.lock.withLock { index.tidyStoredNamesLocked() } }
                 .onSuccess { if (it > 0) Logger.i(TAG, "tidied the names of $it stored files") }
@@ -1863,7 +1885,7 @@ class LibraryIndex private constructor(
                 db.execSQL("PRAGMA synchronous = NORMAL")
                 db.execSQL("PRAGMA foreign_keys = OFF")
                 val version = db.prepare("PRAGMA user_version").use { if (it.step()) it.getLong(0).toInt() else 0 }
-                check(version <= IndexSchema.VERSION) { "index schema $version is newer than ${IndexSchema.VERSION}" }
+                if (IndexSchema.openMode(version) == IndexSchema.Open.SetAside) throw NewerSchema(version)
                 // Each step commits its own work and moves user_version on by one (see MIGRATIONS).
                 for (from in version until IndexSchema.VERSION) {
                     val step = IndexSchema.MIGRATIONS[from] ?: error("no migration from index schema $from")
@@ -1884,16 +1906,29 @@ class LibraryIndex private constructor(
             }
         }
 
-        private fun moveAside(path: String) {
-            if (path == ":memory:" || path.isEmpty()) return
-            runCatching {
+        /** A file from a newer app than this build can read as it is. */
+        private class NewerSchema(val found: Int) : Exception("index schema $found is newer than ${IndexSchema.VERSION}")
+
+        /**
+         * Moves the file (and its WAL, so the pair still opens) to `<path>.<label>-<time>`, a name no
+         * earlier file has. Returns where it went, or null when it could not be moved. Nothing is
+         * deleted: a file that cannot be moved is left, and the fresh index is kept in memory.
+         */
+        private fun moveAside(path: String, label: String): String? {
+            if (path == ":memory:" || path.isEmpty()) return null
+            return runCatching {
                 val file = File(path)
-                val broken = File("$path.broken")
-                broken.delete()
-                if (file.exists() && !file.renameTo(broken)) file.delete()
-                File("$path-wal").delete()
-                File("$path-shm").delete()
-            }.onFailure { Logger.w(TAG, "could not move the broken library index aside", it) }
+                if (!file.exists()) return@runCatching null
+                var stamp = System.currentTimeMillis()
+                var target = File("$path.$label-$stamp")
+                while (target.exists()) target = File("$path.$label-${++stamp}")
+                if (!file.renameTo(target)) return@runCatching null
+                for (suffix in listOf("-wal", "-shm")) {
+                    val side = File(path + suffix)
+                    if (side.exists() && !side.renameTo(File(target.path + suffix))) side.delete()
+                }
+                target.path
+            }.onFailure { Logger.w(TAG, "could not move the library index aside", it) }.getOrNull()
         }
 
         /**

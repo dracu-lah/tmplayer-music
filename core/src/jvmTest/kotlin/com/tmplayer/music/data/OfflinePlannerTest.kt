@@ -75,9 +75,11 @@ class OfflinePlannerTest {
     }
 
     @Test
-    fun `a forward of a kept file in another chat is a duplicate`() {
+    fun `a forward of a kept file in another chat is linked, not fetched again`() {
         val p = plan(listOf(track(7, mb, unique = "abc", chat = 9)), free = 100 * mb, uniques = setOf("abc"))
-        assertTrue(p.nothingNew)
+        assertTrue(p.toKeep.isEmpty() && p.tooBig.isEmpty())
+        assertFalse(p.nothingNew)
+        assertEquals(listOf(7L), p.links.map { it.messageId })
         assertEquals(1, p.duplicates)
     }
 

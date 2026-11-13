@@ -139,7 +139,7 @@ object OfflineUi {
         // The plan was made a moment ago (or before a question was answered): the queue looks at the
         // space again before each track, so a disk that filled meanwhile skips what no longer fits.
         OfflineDownloads.keep(plan)
-        toasts.tryEmit(L.offlineKeeping(plan.toKeep.size))
+        toasts.tryEmit(L.offlineKeeping(plan.toKeep.size + plan.links.size))
     }
 
     /** Removes kept tracks: one at once, several after asking. */

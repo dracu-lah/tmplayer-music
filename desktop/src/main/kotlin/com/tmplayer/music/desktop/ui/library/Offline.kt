@@ -150,7 +150,7 @@ object OfflineUi {
         // The queue looks at the space again before each track, so a disk that filled meanwhile
         // skips what no longer fits.
         OfflineDownloads.keep(plan)
-        notify(L.offlineKeeping(plan.toKeep.size))
+        notify(L.offlineKeeping(plan.toKeep.size + plan.links.size))
     }
 
     /** Removes kept tracks: one at once, several after asking. */

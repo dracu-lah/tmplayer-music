@@ -8,7 +8,8 @@ import com.tmplayer.music.library.TrackId
  * in the free space, and whether the step is big enough to ask first. Pure, so the disk-full and
  * duplicate cases are unit tests (AGENTS.md: space and size, several at once).
  *
- * The same file posted in three chats (one unique id) is kept once. A track whose size Telegram
+ * The same file posted in three chats (one unique id) is kept once, and the other chats' copies of
+ * it are linked to that file ([Plan.links]) so each chat shows it as kept and plays it offline. A track whose size Telegram
  * does not say is counted as [CachePolicy.UNKNOWN_SIZE], so it is not waved through a full disk.
  */
 object OfflinePlanner {
@@ -28,9 +29,14 @@ object OfflinePlanner {
         /** The bytes of [toKeep]. */
         val keepBytes: Long,
         val freeBytes: Long,
+        /**
+         * Tracks that are a file kept from another chat already (the same unique id): they are kept
+         * here too with no copy and no space, by linking them to that file.
+         */
+        val links: List<QueuedTrack> = emptyList(),
     ) {
         val fitsAll: Boolean get() = tooBig.isEmpty()
-        val nothingNew: Boolean get() = toKeep.isEmpty() && tooBig.isEmpty()
+        val nothingNew: Boolean get() = toKeep.isEmpty() && tooBig.isEmpty() && links.isEmpty()
 
         /** A big step is confirmed first: many tracks, or many bytes. */
         val needsConfirm: Boolean get() = toKeep.size >= CONFIRM_TRACKS || keepBytes >= CONFIRM_BYTES
@@ -51,6 +57,7 @@ object OfflinePlanner {
         val seenIds = HashSet<TrackId>()
         val seenUniques = HashSet<String>()
         val fresh = ArrayList<QueuedTrack>()
+        val links = ArrayList<QueuedTrack>()
         var already = 0
         var duplicates = 0
         for (track in tracks) {
@@ -59,12 +66,8 @@ object OfflinePlanner {
                 already++
                 continue
             }
-            val unique = track.uniqueId.takeIf { it.isNotEmpty() && !STAND_IN.matches(it) }
-            if (unique != null && (unique in keptUniques || !seenUniques.add(unique))) {
-                duplicates++
-                continue
-            }
-            fresh += QueuedTrack(
+            val unique = track.uniqueId.takeIf { isRealUnique(it) }
+            val item = QueuedTrack(
                 chatId = track.chatId,
                 messageId = track.messageId,
                 title = track.title,
@@ -73,6 +76,16 @@ object OfflinePlanner {
                 sizeBytes = track.sizeBytes.coerceAtLeast(0),
                 uniqueId = track.uniqueId,
             )
+            if (unique != null && unique in keptUniques) {
+                duplicates++
+                links += item
+                continue
+            }
+            if (unique != null && !seenUniques.add(unique)) {
+                duplicates++
+                continue
+            }
+            fresh += item
         }
         val free = freeBytes.coerceAtLeast(0)
         var budget = (free - reserveBytes).coerceAtLeast(0)
@@ -91,11 +104,14 @@ object OfflinePlanner {
                 left += item
             }
         }
-        return Plan(fit, left, already, duplicates, needed, keep, free)
+        return Plan(fit, left, already, duplicates, needed, keep, free, links)
     }
 
     /** The id the mapper makes up when Telegram gives no unique id: it names nothing across chats. */
     private val STAND_IN = Regex("f\\d+")
+
+    /** True for a unique id that names one file across chats, not the stand-in or an empty one. */
+    fun isRealUnique(uniqueId: String): Boolean = uniqueId.isNotEmpty() && !STAND_IN.matches(uniqueId)
 
     /** What a track is counted as when planning: its size, or the stand-in for an unknown one. */
     fun planned(sizeBytes: Long): Long = if (sizeBytes > 0) sizeBytes else CachePolicy.UNKNOWN_SIZE

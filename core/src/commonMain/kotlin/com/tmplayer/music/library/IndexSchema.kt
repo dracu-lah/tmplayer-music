@@ -15,6 +15,23 @@ internal object IndexSchema {
     const val VERSION = 5
 
     /**
+     * The newest schema whose changes (every migration up to it) only add tables, indexes and
+     * columns with defaults. A file at a newer version than [VERSION] but not newer than this is
+     * opened as it is, its version left alone, because the tables this build reads are unchanged.
+     * Raise it with each migration that is purely additive; a migration that is not leaves it behind.
+     */
+    const val ADDITIVE_UP_TO = 5
+
+    /** How a file at schema [found] is opened by a build that knows [VERSION]. */
+    enum class Open { Migrate, AsItIs, SetAside }
+
+    fun openMode(found: Int, version: Int = VERSION, additiveUpTo: Int = ADDITIVE_UP_TO): Open = when {
+        found <= version -> Open.Migrate
+        found <= additiveUpTo -> Open.AsItIs
+        else -> Open.SetAside
+    }
+
+    /**
      * Steps from one version to the next, keyed by the version they start from. Each step commits
      * its own work and sets `user_version` to the next version in its last transaction, so a step
      * cut short (the app killed part way) leaves the old version and runs again from the start on

@@ -42,7 +42,7 @@ object TdTrackSource : TrackSource {
     override suspend fun open(entry: QueueEntry): MediaData {
         val track = trackOf(entry) ?: throw IOException(L.desktopTrackGone)
         // Kept offline: the file in the app's own folder plays with no TDLib at all.
-        OfflineDownloads.pathOf(track.id)?.let { return LocalFileMediaData(it) }
+        OfflineDownloads.pathOf(track.id, track.uniqueId)?.let { return LocalFileMediaData(it) }
         // The id saved in the index belongs to the session that scanned it: ask the message again.
         val current = FileIds.of(track.id)?.takeIf { it.fileId != 0 } ?: throw IOException(L.desktopTrackGone)
         val session = withTimeout(SESSION_TIMEOUT_MS) { Td.awaitAuthorizedSession() }

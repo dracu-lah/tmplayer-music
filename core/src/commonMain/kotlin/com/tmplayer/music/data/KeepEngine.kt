@@ -109,6 +109,10 @@ data class KeepState(
  *   going. Past a few waits in a row the track is skipped with the reason.
  * - No connection, or a metered one with Wi-Fi only on: the queue waits, the partial bytes stay,
  *   and it goes on by itself when the connection allows. Nothing polls: waiting is a suspended flow.
+ * - A fetch that goes quiet is put at the back of the queue once with what landed kept, and only
+ *   a second silence gives up on it; a silence on a full disk is NoSpace, not Stalled.
+ * - Each running fetch holds the bytes it still needs, so two workers cannot both pass the space
+ *   check for the same room.
  * - Cancel removes what the fetch left behind, Pause keeps TDLib's partial for the resume. A track
  *   is in the offline folder whole or not at all.
  * - The queue is saved ([OfflineStore.saveQueue]) and [restore]d, so a killed app carries on.
@@ -127,7 +131,7 @@ class KeepEngine(
     private val onForeground: (Boolean) -> Unit = {},
 ) {
     /** What became of a track's turn. */
-    private enum class After { Kept, Skipped, Requeue, Dropped }
+    private enum class After { Kept, Skipped, Requeue, RequeueLast, Dropped }
 
     private class Active(val item: QueuedTrack) {
         @Volatile var job: Job? = null
@@ -137,6 +141,9 @@ class KeepEngine(
         var started = false
         var downloaded = 0L
         var total = item.sizeBytes
+
+        /** Set once the space check passed: the bytes still to arrive count against the free space of the others. */
+        var reserved = false
         var waitUntilMs = 0L
         var lastPublishMs = 0L
 
@@ -159,6 +166,9 @@ class KeepEngine(
     private var lastSavedMs = 0L
     private var foreground = false
     private var silentNext = false
+
+    /** Tracks that already went quiet once: the second silence is the end of them. */
+    private val stalledOnce = HashSet<TrackId>()
 
     private val _state = MutableStateFlow(KeepState())
     val state: StateFlow<KeepState> = _state.asStateFlow()
@@ -259,15 +269,19 @@ class KeepEngine(
     }
 
     /** Stops keeping [id]: out of the queue, or its fetch cancelled with its partial files removed. */
-    fun cancel(id: TrackId) = cancelWhere { it == id }
+    fun cancel(id: TrackId) = cancelWhere(silent = false) { it == id }
 
-    /** Stops everything. Nothing is left half done; what was kept already stays. */
-    fun cancelAll() = cancelWhere { true }
+    /** Stops everything. Nothing is left half done; what was kept already stays. No summary follows. */
+    fun cancelAll() = cancelWhere(silent = true) { true }
 
     /** A chat was left or removed: its waiting and running tracks stop. */
-    fun cancelChat(chatId: Long) = cancelWhere { it.chatId == chatId }
+    fun cancelChat(chatId: Long) = cancelWhere(silent = false) { it.chatId == chatId }
 
-    private fun cancelWhere(match: (TrackId) -> Boolean) {
+    /**
+     * Only [cancelAll] is silent: the user stopped the whole run. Stopping one track or one chat
+     * leaves the rest running, and what they kept and skipped is still told when they end.
+     */
+    private fun cancelWhere(silent: Boolean, match: (TrackId) -> Boolean) {
         synchronized(lock) {
             val before = waiting.size
             waiting.removeAll { match(it.id) }
@@ -278,8 +292,7 @@ class KeepEngine(
                 a.job?.cancel()
             }
             runTotal = (runTotal - (before - waiting.size)).coerceAtLeast(0)
-            // Stopped by the user's hand: no summary of it.
-            silentNext = true
+            if (silent) silentNext = true
             _pending.value = pendingIds()
             saveQueue(force = true)
             maybeFinish()
@@ -346,6 +359,7 @@ class KeepEngine(
         val fate = a.outcome ?: a.disposition ?: After.Requeue
         synchronized(lock) {
             active.remove(a.item.id)
+            if (fate != After.RequeueLast) stalledOnce.remove(a.item.id)
             when (fate) {
                 After.Kept -> {
                     runKept++
@@ -353,6 +367,7 @@ class KeepEngine(
                 }
                 After.Skipped -> a.skip?.let { runSkipped += it }
                 After.Requeue -> waiting.addFirst(a.item)
+                After.RequeueLast -> waiting.addLast(a.item)
                 After.Dropped -> runTotal = (runTotal - 1).coerceAtLeast(0)
             }
             _pending.value = pendingIds()
@@ -418,8 +433,8 @@ class KeepEngine(
         a.total = size
         if (store.isKept(item.id)) return After.Kept
 
-        // 2. room for it, now
-        if (freeBytes() < OfflinePlanner.planned(size) + reserveBytes) return skip(a, Skip.NoSpace)
+        // 2. room for it, now, counting what the other running fetches still have to write
+        if (!reserveRoom(a, size)) return skip(a, Skip.NoSpace)
 
         // 3. fetch it
         a.started = true
@@ -475,6 +490,16 @@ class KeepEngine(
                             last = now.downloaded
                             continue
                         }
+                        if (diskFull(size, last)) {
+                            skip(a, Skip.NoSpace)
+                            return@coroutineScope null
+                        }
+                        // Once more, later, from what landed; the second silence is the end of it.
+                        if (synchronized(lock) { stalledOnce.add(a.item.id) }) {
+                            Logger.i(TAG, "${a.item.id} went quiet: back of the queue once")
+                            a.outcome = After.RequeueLast
+                            return@coroutineScope null
+                        }
                         skip(a, Skip.Stalled)
                         return@coroutineScope null
                     }
@@ -496,6 +521,24 @@ class KeepEngine(
             }
         }
     }
+
+    /**
+     * Whether [a] fits in the free space now, with the bytes the other running fetches still have
+     * to write held back; if it does, the same bytes are held for it. One step under the lock, so
+     * two workers cannot both pass for the same room.
+     */
+    private fun reserveRoom(a: Active, size: Long): Boolean = synchronized(lock) {
+        val others = active.values.filter { it !== a && it.reserved }.sumOf { other ->
+            (OfflinePlanner.planned(other.total) - other.downloaded).coerceAtLeast(0)
+        }
+        val fits = freeBytes() - others >= OfflinePlanner.planned(size) + reserveBytes
+        if (fits) a.reserved = true
+        fits
+    }
+
+    /** True when the disk has no room left for what is still to arrive: a silence then is a full disk. */
+    private fun diskFull(size: Long, downloaded: Long): Boolean =
+        freeBytes() < (OfflinePlanner.planned(size) - downloaded).coerceAtLeast(0) + reserveBytes
 
     private fun progress(a: Active, file: KeepFile, size: Long) {
         val now = clockMs()
