@@ -538,7 +538,6 @@
     "body": "A player for the audio files already in your own Telegram chats. You choose which chats it reads; nothing else is touched."
   },
   "widget": {
-    "empty": "Nothing queued. Tap to open TMPlayer Music.",
-    "name": "Now playing"
+    "empty": "Nothing queued. Tap to open TMPlayer Music."
   }
 }
