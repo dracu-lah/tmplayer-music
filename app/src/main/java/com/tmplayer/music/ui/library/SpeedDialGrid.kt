@@ -1,6 +1,10 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvHold
 import com.tmplayer.music.ui.tv.rememberedFocus
+import com.tmplayer.music.ui.tv.FocusMemory
+import com.tmplayer.music.ui.tv.handOver
+import com.tmplayer.music.ui.tv.neighbourAfterRemoval
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -213,6 +217,7 @@ internal fun SpeedDialContent(
             // A TV: one row of cards the D-pad walks along, in place of swiped pages.
             val row = androidx.compose.foundation.lazy.rememberLazyListState()
             val all = pages.flatten()
+            val focusScope = com.tmplayer.music.ui.tv.LocalFocusScope.current
             TvRowStartsAtFirst(row, all.firstOrNull()?.key)
             androidx.compose.foundation.lazy.LazyRow(
                 state = row,
@@ -226,7 +231,12 @@ internal fun SpeedDialContent(
                             size = TV_CELL,
                             playing = if (item.track == current) playing else null,
                             onTap = { onTap(item) },
-                            onRemove = { onRemove(item) }.takeIf { item.track != current },
+                            onRemove = {
+                                // The D-pad goes to the card that takes this one's place.
+                                val rest = all - item
+                                neighbourAfterRemoval(all.indexOf(item), rest.size)?.let { FocusMemory.handOver(focusScope, "dial:${rest[it].key}") }
+                                onRemove(item)
+                            }.takeIf { item.track != current },
                         )
                     }
                 }
@@ -286,6 +296,8 @@ private fun DialCard(item: DialItem, size: Dp, playing: Boolean?, onTap: () -> U
         Modifier
             .size(size)
             .clip(MaterialTheme.shapes.medium)
+            // A TV: hold OK, or the Menu or Info key, opens Remove (a long press does on a phone).
+            .tvHold(onRemove?.let { { menu = true } })
             .combinedClickable(
                 onClickLabel = if (playing == true) L.playerPause else L.listeningResume,
                 onLongClick = onRemove?.let { { menu = true } },

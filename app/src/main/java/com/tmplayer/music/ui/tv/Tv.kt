@@ -201,13 +201,17 @@ object FocusMemory {
 
     fun restore(scope: String) {
         pending = scope.takeIf { it in last }
+        since = System.nanoTime()
     }
+
+    private var since = 0L
 
     /** True once, for the row in [scope] keyed [key] that should take focus back. */
     fun take(scope: String, key: Any): Boolean {
         if (pending != scope || last[scope] != key) return false
         pending = null
-        return true
+        // A request nobody took for a while (its row never came into view) is stale: drop it.
+        return System.nanoTime() - since < PENDING_TTL_NS
     }
 
     fun giveUp() {
@@ -215,6 +219,7 @@ object FocusMemory {
     }
 
     private const val MAX_SCOPES = 32
+    private const val PENDING_TTL_NS = 3_000_000_000L
 }
 
 /** The name of the list the rows below belong to, for [FocusMemory]; null means no memory. */

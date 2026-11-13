@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvHold
 import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.rememberedFocus
 import android.content.res.Configuration
@@ -423,6 +424,7 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onLongClick: () -> Unit)
         Modifier
             .fillMaxWidth()
             .rememberedFocus(track.id)
+            .tvHold(onLongClick)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = listOf(title, artist, length).filter { it.isNotBlank() }.joinToString(", ")
