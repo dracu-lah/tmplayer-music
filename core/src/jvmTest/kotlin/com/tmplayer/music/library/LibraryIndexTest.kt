@@ -1,6 +1,7 @@
 package com.tmplayer.music.library
 
 import kotlinx.coroutines.runBlocking
+import androidx.sqlite.execSQL
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -320,9 +321,53 @@ class LibraryIndexTest {
         file.writeBytes(ByteArray(8_192) { (it * 31 + 7).toByte() })
         val index = open(file.path)
         assertEquals(0, index.songCount())
-        assertTrue(File(dir, "library.db.broken").exists())
+        assertTrue(dir.list()!!.any { it.startsWith("library.db.broken-") })
+        assertNotNull(index.recovery)
         index.pick(1)
         assertEquals(1, index.upsert(listOf(track(1, 1))))
+    }
+
+    @Test
+    fun aSecondBadFileNeverDeletesTheFirstOneSetAside() = runBlocking {
+        val file = File(dir, "library.db")
+        repeat(2) { n ->
+            file.writeBytes(ByteArray(8_192) { (it * 31 + 7 + n).toByte() })
+            open(file.path).close()
+            file.delete()
+        }
+        assertEquals(2, dir.list()!!.count { it.startsWith("library.db.broken-") && !it.endsWith("-wal") && !it.endsWith("-shm") })
+    }
+
+    @Test
+    fun aFileFromANewerAppIsKeptWhole() = runBlocking {
+        val path = File(dir, "library.db").path
+        val first = open(path)
+        first.pick(1)
+        first.upsert(listOf(track(1, 1)))
+        first.close()
+        androidx.sqlite.driver.bundled.BundledSQLiteDriver().open(path).use { db ->
+            db.execSQL("PRAGMA user_version = ${IndexSchema.VERSION + 7}")
+        }
+        val again = open(path)
+        assertEquals(0, again.songCount())
+        val recovery = assertNotNull(again.recovery)
+        assertEquals(IndexSchema.VERSION + 7, recovery.schema)
+        // The newer app's file is there under its own name and still opens with its rows.
+        val kept = File(assertNotNull(recovery.keptAs))
+        assertTrue(kept.exists())
+        androidx.sqlite.driver.bundled.BundledSQLiteDriver().open(kept.path).use { db ->
+            db.prepare("SELECT COUNT(*) FROM tracks").use { assertTrue(it.step() && it.getLong(0) == 1L) }
+            db.prepare("PRAGMA user_version").use { assertTrue(it.step() && it.getLong(0).toInt() == IndexSchema.VERSION + 7) }
+        }
+    }
+
+    @Test
+    fun theOpenModeFollowsWhatIsAdditive() {
+        assertEquals(IndexSchema.Open.Migrate, IndexSchema.openMode(3, version = 5, additiveUpTo = 5))
+        assertEquals(IndexSchema.Open.Migrate, IndexSchema.openMode(5, version = 5, additiveUpTo = 5))
+        assertEquals(IndexSchema.Open.AsItIs, IndexSchema.openMode(6, version = 5, additiveUpTo = 6))
+        assertEquals(IndexSchema.Open.SetAside, IndexSchema.openMode(7, version = 5, additiveUpTo = 6))
+        assertEquals(IndexSchema.Open.SetAside, IndexSchema.openMode(6, version = 5, additiveUpTo = 5))
     }
 
     @Test
