@@ -37,7 +37,6 @@ import com.tmplayer.music.library.Track
 import com.tmplayer.music.library.TrackId
 import com.tmplayer.music.platform.JobFailures
 import com.tmplayer.music.platform.Logger
-import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -68,6 +67,7 @@ class PlaybackService : MediaSessionService() {
     private var failuresInARow = 0
     private var saveJob: Job? = null
     private var checkpointJob: Job? = null
+    private var effects: AudioEffectsEngine? = null
 
     /** When the cache was last trimmed to its ceiling, so a run of skips does not trim each time. */
     private var trimmedAt = 0L
@@ -81,7 +81,8 @@ class PlaybackService : MediaSessionService() {
             DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notify) },
         )
         val sources = TdDataSource.Factory(this)
-        val renderers = NextRenderersFactory(this).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        val gain = GainAudioProcessor()
+        val renderers = EffectsRenderersFactory(this, gain).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         val player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(sources))
             .setAudioAttributes(
@@ -93,6 +94,7 @@ class PlaybackService : MediaSessionService() {
             .build()
         player.addListener(Watcher(player))
         SleepTimer.attach(player, scope)
+        effects = AudioEffectsEngine(player, gain, scope).also { it.start() }
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -122,6 +124,8 @@ class PlaybackService : MediaSessionService() {
         Library.setPlaying(false)
         save()
         checkpointJob?.cancel()
+        effects?.release()
+        effects = null
         session?.run {
             player.release()
             release()
@@ -364,7 +368,10 @@ class PlaybackService : MediaSessionService() {
                 .setDurationMs(track.durationMs.takeIf { it > 0 })
                 .setIsPlayable(true)
                 .setIsBrowsable(false)
-                .setExtras(android.os.Bundle().apply { putString(MediaIds.COVER_ART, CoverArt.keyOf(track)) })
+                .setExtras(android.os.Bundle().apply {
+                    putString(MediaIds.COVER_ART, CoverArt.keyOf(track))
+                    putString(AudioEffectsState.GAIN_KEY, track.replayGain.encode())
+                })
                 .build()
             return MediaItem.Builder()
                 .setMediaId(MediaIds.of(track.id, songKey))
