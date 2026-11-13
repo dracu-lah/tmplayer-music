@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -198,8 +200,9 @@ fun CoffeeDialog(completedTracks: Int, onLater: () -> Unit, onNever: () -> Unit)
                 CoffeeButton(onClick = { context.openSupportLink(About.COFFEE) }, modifier = Modifier.fillMaxWidth())
                 QuietWays()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onNever, modifier = Modifier.weight(1f)) { Text(L.supportDontShow, textAlign = TextAlign.Center) }
-                    OutlinedButton(onClick = onLater, modifier = Modifier.weight(1f)) { Text(L.supportMaybeLater, textAlign = TextAlign.Center) }
+                    TextButton(onClick = onNever, modifier = Modifier.weight(1f).tvFocusRing()) { Text(L.supportDontShow, textAlign = TextAlign.Center) }
+                    // The remote starts on Maybe later: a stray OK never ends the asks for good.
+                    OutlinedButton(onClick = onLater, modifier = Modifier.weight(1f).tvAutoFocus().tvFocusRing()) { Text(L.supportMaybeLater, textAlign = TextAlign.Center) }
                 }
             }
         }
