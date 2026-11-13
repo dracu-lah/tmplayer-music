@@ -86,6 +86,15 @@ fun CastButton(modifier: Modifier = Modifier) {
     if (open) CastSheet(support) { open = false }
 }
 
+/** True while a cast is on (connected), for screens that change what they offer then. Always false in a store build and on a television. */
+@Composable
+fun rememberCasting(): Boolean {
+    val context = LocalContext.current
+    val support = remember { Cast.support(context) }
+    val state by support.state.collectAsStateWithLifecycle()
+    return state is CastState.Connected
+}
+
 /**
  * The Cast sheet: the devices found on the Wi-Fi while it is open (looking stops when it closes), the
  * state of the connection, and, once connected, the device's volume and Stop casting. It says what
