@@ -36,7 +36,9 @@ import com.tmplayer.music.library.Backup
 import com.tmplayer.music.library.ChatPick
 import com.tmplayer.music.platform.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,7 +76,7 @@ fun BackupSection() {
             try {
                 val file = FilePicker.save(L.backupSave, "tmplayer-music-backup-${today()}.json", "json") ?: return@launch
                 val data = Library.index().backupData()
-                val text = Backup.encode(data)
+                val text = withContext(Dispatchers.Default) { Backup.encode(data) }
                 if (text.length > Backup.MAX_FILE_BYTES / 2) throw java.io.IOException("backup too large")
                 UserFiles.writeText(file, text)
                 say(L.backupSaved + "\n" + contents(data))
@@ -101,7 +103,20 @@ fun BackupSection() {
                     return@launch
                 }
                 // Read and checked whole before anything is touched; a bad file changes nothing.
-                when (val result = Backup.decode(String(bytes, Charsets.UTF_8))) {
+                // Off the window's thread: a large backup is megabytes of JSON. Too big to hold is the
+                // same answer as too big to read.
+                val decoded = withContext(Dispatchers.Default) {
+                    try {
+                        Backup.decode(String(bytes, Charsets.UTF_8))
+                    } catch (_: OutOfMemoryError) {
+                        null
+                    }
+                }
+                if (decoded == null) {
+                    say(L.backupTooBig, error = true)
+                    return@launch
+                }
+                when (val result = decoded) {
                     is Backup.Result.Newer -> say(L.backupNewer(result.version), error = true)
                     is Backup.Result.Bad -> {
                         Logger.w(TAG, "backup refused: ${result.problem} ${result.detail}")
