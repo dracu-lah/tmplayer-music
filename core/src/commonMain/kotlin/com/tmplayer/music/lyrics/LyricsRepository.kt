@@ -286,4 +286,14 @@ object LyricsOnline {
     fun clear() {
         repository?.clear()
     }
+
+    /** Forgets every saved timing, for a log out. The settings' clear keeps them: they are the user's own. */
+    fun forgetAllOffsets() {
+        offsets.clear()
+    }
+
+    /** Forgets the saved timing of the tracks of chats the user left. */
+    fun forgetChats(chatIds: Collection<Long>) {
+        offsets.forgetChats(chatIds)
+    }
 }

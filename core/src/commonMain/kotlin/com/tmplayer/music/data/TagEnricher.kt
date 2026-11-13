@@ -1,6 +1,7 @@
 package com.tmplayer.music.data
 
 import com.tmplayer.music.library.AudioFormat
+import com.tmplayer.music.library.ReplayGain
 import com.tmplayer.music.library.TagCounts
 import com.tmplayer.music.library.TagResult
 import com.tmplayer.music.library.Tags
@@ -40,6 +41,12 @@ interface TagStore {
 
     /** Up to [limit] waiting tracks whose duration is unknown (audio sent as documents), newest first. */
     suspend fun pendingDocuments(limit: Int): List<Track> = emptyList()
+
+    /** The stored track for [id], or null; the gain backfill looks at the one that starts playing. */
+    suspend fun track(id: TrackId): Track? = null
+
+    /** Stores the gain read for a track whose tags were read before gains were kept. */
+    suspend fun applyGain(id: TrackId, gain: ReplayGain) {}
 
     /** What one batch read, written together. A null [TagResult.tags] marks that file unreadable. */
     suspend fun applyTags(results: List<TagResult>)
@@ -192,9 +199,51 @@ class TagEnricher(
         val next = ids.take(UPCOMING)
         if (next == upcoming) return
         upcoming = next
+        next.firstOrNull()?.let(::backfillGain)
         if (next.isNotEmpty()) {
             wake.update { it + 1 }
             kick()
+        }
+    }
+
+    /** Tracks whose gain was tried this session (read or not), bounded; guarded by [gainLock]. */
+    private val gainTried = LinkedHashSet<TrackId>()
+    private val gainLock = Any()
+    private var gainBusy = false
+
+    /**
+     * ReplayGain for a track already in the library whose tags were read before gains were kept:
+     * when it starts playing, its tag head is read once and the gain stored ([GainBackfill] decides).
+     * One at a time, once per track per session, never a loop, so there is nothing running when idle.
+     */
+    private fun backfillGain(id: TrackId) {
+        if (!GainBackfill.allowed(policy.value, online.value)) return
+        synchronized(gainLock) {
+            if (gainBusy || id in gainTried) return
+            gainBusy = true
+            if (gainTried.size >= GainBackfill.MAX_TRIED) gainTried.remove(gainTried.first())
+            gainTried += id
+        }
+        scope.launch {
+            try {
+                val track = runCatching { store.track(id) }.getOrNull()
+                if (!GainBackfill.needs(track)) return@launch
+                val gain = try {
+                    readTags(track!!)?.replayGain ?: return@launch
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // The bytes came and could not be parsed: settled, never read again for a gain.
+                    ReplayGain.NONE
+                }
+                store.applyGain(id, gain)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(TAG, "the gain of ${id.chatId}/${id.messageId} could not be read", e)
+            } finally {
+                synchronized(gainLock) { gainBusy = false }
+            }
         }
     }
 

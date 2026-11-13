@@ -160,4 +160,34 @@ class LyricsExtrasTest {
         assertTrue(shared.length < LyricsShare.MAX_CHARS + 100)
         assertTrue(shared.contains("a line of words\n\nt, a"))
     }
+
+    @Test
+    fun `leaving a chat forgets only its offsets and keeps the rest saved`() {
+        val store = MemoryKeyValues()
+        val offsets = LyricsOffsets(store)
+        offsets.set("1:10", 500)
+        offsets.set("1:11", -200)
+        offsets.set("11:10", 300)
+        offsets.set("2:10", 100)
+        assertEquals(2, offsets.forgetChats(listOf(1L)))
+        assertEquals(0L, offsets.get("1:10"))
+        assertEquals(300L, offsets.get("11:10"))
+        assertEquals(100L, offsets.get("2:10"))
+        // What is left is what a restart reads back.
+        val again = LyricsOffsets(store)
+        assertEquals(0L, again.get("1:11"))
+        assertEquals(300L, again.get("11:10"))
+        assertEquals(0, offsets.forgetChats(listOf(99L)))
+        assertEquals(0, offsets.forgetChats(emptyList()))
+    }
+
+    @Test
+    fun `logging out clears every offset`() {
+        val store = MemoryKeyValues()
+        val offsets = LyricsOffsets(store)
+        offsets.set("1:10", 500)
+        offsets.clear()
+        assertEquals(0L, offsets.get("1:10"))
+        assertEquals(0L, LyricsOffsets(store).get("1:10"))
+    }
 }

@@ -4,7 +4,7 @@ import java.util.Properties
 
 // TMPlayer Music for Windows, Linux and macOS: a Compose Desktop front end over :core, playing
 // through libmpv (mediamp). The setup follows ../TMPlayer/desktop/build.gradle.kts (GPL-3.0), left
-// out until a later task: packaging (MSI, AppImage, DMG), ProGuard and the TDLib jar trimming.
+// out until a later task: the AppImage and DMG packaging and the TDLib jar trimming.
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -148,6 +148,17 @@ compose.desktop {
         // apple.awt.application.appearance lets the macOS title bar follow the system's light or dark look.
         jvmArgs += listOf("--enable-native-access=ALL-UNNAMED", "-Dsun.java2d.uiScale.enabled=true", "-Dapple.awt.application.appearance=system")
         // JNA (TDLib's and libmpv's loaders) on a newer JDK warns about native access.
+        // The release image can run ProGuard (shrinking only, no obfuscation) to drop the code nothing
+        // reaches. It is off until the shrunk image has been run once: -PdesktopProguard=true turns it on.
+        // desktop/proguard-rules.pro says what must survive (reflection, JNI, ServiceLoader).
+        if (providers.gradleProperty("desktopProguard").orNull == "true") {
+            buildTypes.release.proguard {
+                isEnabled.set(true)
+                obfuscate.set(false)
+                optimize.set(false)
+                configurationFiles.from(project.file("proguard-rules.pro"))
+            }
+        }
         // No signing here, and no secrets: a signed, notarised build is the owner's step.
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Msi, TargetFormat.Dmg)
@@ -201,4 +212,17 @@ compose.desktop {
         javaHome = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
             .get().metadata.installationPath.asFile.absolutePath
     }
+}
+
+// Windows MSI cab compression. jpackage's own main.wxs has no CompressionLevel on its Media element
+// (WiX then uses its mszip default) and offers no hook to change it, but its --resource-dir lets a
+// main.wxs of our own replace the built-in one. desktop/packaging/windows/main.wxs is the stock file
+// of the JDK we build with plus CompressionLevel="high" (LZX), copied from ../TMPlayer. Only the MSI
+// tasks get it, and only on a Windows host, because that is the only place the WiX step runs.
+if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+    tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>()
+        .matching { it.targetFormat == TargetFormat.Msi }
+        .configureEach {
+            freeArgs.addAll("--resource-dir", layout.projectDirectory.dir("packaging/windows").asFile.absolutePath)
+        }
 }

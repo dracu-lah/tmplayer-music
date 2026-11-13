@@ -17,6 +17,8 @@ data class ReadPolicy(
     val documents: Boolean = true,
     val trickle: Boolean = true,
     val documentsCap: Int = Int.MAX_VALUE,
+    /** One head read for the playing track's ReplayGain ([GainBackfill]): never on mobile data without the user's yes. */
+    val gainBackfill: Boolean = true,
 ) {
     companion object {
         /** Everything, as before the policy existed; what tests and a desktop build use. */
@@ -47,11 +49,12 @@ object TagPolicy {
     const val METERED_DOCUMENTS = 60
 
     fun policy(net: NetState, mobileAllowed: Boolean, active: Boolean, paused: Boolean): ReadPolicy {
-        if (net == NetState.Offline) return ReadPolicy(onDemand = false, documents = false, trickle = false, documentsCap = 0)
-        if (paused) return ReadPolicy(onDemand = true, documents = false, trickle = false, documentsCap = 0)
+        if (net == NetState.Offline) return ReadPolicy(onDemand = false, documents = false, trickle = false, documentsCap = 0, gainBackfill = false)
+        if (paused) return ReadPolicy(onDemand = true, documents = false, trickle = false, documentsCap = 0, gainBackfill = false)
         val cheap = net == NetState.Unmetered || mobileAllowed
         return ReadPolicy(
             onDemand = true,
+            gainBackfill = cheap,
             documents = active,
             trickle = cheap && active,
             documentsCap = if (cheap) Int.MAX_VALUE else METERED_DOCUMENTS,
