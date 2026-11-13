@@ -117,16 +117,19 @@ object LyricsParser {
         for (rawLine in text.lineSequence()) {
             if (++lineCount > MAX_LINES) break
             val line = rawLine.trimEnd('\r')
-            var rest = line
+            // Walks the line by position: cutting the front off a line of thousands of stamps again and
+            // again would be quadratic.
+            var pos = 0
             val stamps = ArrayList<Long>()
             var header = false
-            while (rest.startsWith("[")) {
-                val close = rest.indexOf(']')
-                if (close < 0) break
-                val inside = rest.substring(1, close)
+            while (pos < line.length && line[pos] == '[') {
+                val close = line.indexOf(']', pos)
+                if (close < 0 || close - pos > MAX_TAG) break
+                val inside = line.substring(pos + 1, close)
                 val stamp = stamp(inside)
                 if (stamp != null) {
-                    stamps += stamp
+                    // Stamps past the cap are read over and dropped, so a line of them cannot grow the list.
+                    if (stamps.size < MAX_STAMPS) stamps += stamp
                 } else {
                     val tag = HEADER.matchEntire(inside)
                     if (tag == null) break
@@ -135,12 +138,14 @@ object LyricsParser {
                         offset = tag.groupValues[2].trim().toLongOrNull()?.coerceIn(-MAX_OFFSET, MAX_OFFSET) ?: offset
                     }
                 }
-                rest = rest.substring(close + 1)
+                pos = close + 1
             }
+            val rest = line.substring(pos)
             val enhanced = if (stamps.isNotEmpty()) wordsOf(rest, stamps[0]) else null
             val words = enhanced?.text ?: WORD_STAMP.replace(rest, "").trim()
             when {
                 stamps.isNotEmpty() -> for (s in stamps) {
+                    if (timed.size >= MAX_LINES) break
                     // Word times are absolute; a repeated line (several stamps) moves them with its stamp.
                     val delta = s - stamps[0]
                     timed += LyricLine(
@@ -181,8 +186,9 @@ object LyricsParser {
      */
     private fun wordsOf(body: String, lineMs: Long): Enhanced? {
         if (body.indexOf('<') < 0) return null
-        val matches = WORD_STAMP.findAll(body).toList()
-        if (matches.isEmpty()) return null
+        // More stamps than a line may have words: not trusted, and not worth walking to the end.
+        val matches = WORD_STAMP.findAll(body).take(MAX_WORDS + 2).toList()
+        if (matches.isEmpty() || matches.size > MAX_WORDS + 1) return null
         val times = ArrayList<Long>()
         val texts = ArrayList<StringBuilder>()
         var endMs = -1L
@@ -247,6 +253,12 @@ object LyricsParser {
     private val WORD_STAMP = Regex("""<\d{1,4}:\d{1,2}(?:[.:]\d{1,3})?>""")
 
     private const val MAX_WORDS = 400
+
+    /** Time stamps kept on one line (a repeated chorus); more are read over and dropped. */
+    private const val MAX_STAMPS = 50
+
+    /** The longest `[...]` tag read: a stamp or a header is far shorter. */
+    private const val MAX_TAG = 64
 
     const val MAX_BYTES = 1024 * 1024
     private const val MAX_CHARS = 1024 * 1024

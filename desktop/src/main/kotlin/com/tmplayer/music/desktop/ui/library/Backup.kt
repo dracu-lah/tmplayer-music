@@ -36,6 +36,8 @@ import com.tmplayer.music.library.Backup
 import com.tmplayer.music.library.ChatPick
 import com.tmplayer.music.platform.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -101,7 +103,7 @@ fun BackupSection() {
                     return@launch
                 }
                 // Read and checked whole before anything is touched; a bad file changes nothing.
-                when (val result = Backup.decode(String(bytes, Charsets.UTF_8))) {
+                when (val result = withContext(Dispatchers.Default) { Backup.decode(String(bytes, Charsets.UTF_8)) }) {
                     is Backup.Result.Newer -> say(L.backupNewer(result.version), error = true)
                     is Backup.Result.Bad -> {
                         Logger.w(TAG, "backup refused: ${result.problem} ${result.detail}")

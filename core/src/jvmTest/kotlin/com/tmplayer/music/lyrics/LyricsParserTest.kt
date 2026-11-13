@@ -24,6 +24,23 @@ class LyricsParserTest {
     }
 
     @Test
+    fun `a line of thousands of stamps keeps the first fifty and stays fast`() {
+        val started = System.nanoTime()
+        val lyrics = LyricsParser.parse("[00:10]".repeat(140_000) + "Chorus")!!
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 5_000)
+        assertEquals(50, lyrics.lines.size)
+        assertTrue(lyrics.lines.all { it.text == "Chorus" })
+    }
+
+    @Test
+    fun `a line with more words than the cap is lit whole`() {
+        val line = "[00:01.00]" + (1..450).joinToString("") { "<00:%02d.00>w$it ".format(it % 60) }
+        val lyrics = LyricsParser.parse(line)!!
+        assertEquals(1, lyrics.lines.size)
+        assertFalse(lyrics.lines[0].hasWords)
+    }
+
+    @Test
     fun `headers are dropped and offset moves every line earlier`() {
         val lyrics = LyricsParser.parse("[ar:Nadia Okafor]\n[ti:Morning Tide]\n[offset:+500]\n[00:10.00]Line")!!
         assertEquals(1, lyrics.lines.size)

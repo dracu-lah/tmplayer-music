@@ -79,6 +79,8 @@ import com.tmplayer.music.library.Playlist
 import com.tmplayer.music.library.Song
 import com.tmplayer.music.platform.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 /** Tells the user a line (a snackbar in the shell); a no-op where there is none (a preview). */
@@ -592,13 +594,13 @@ fun ImportPlaylistButton(onError: (String) -> Unit, onImported: () -> Unit) {
                             onError(L.playlistImportTooBig)
                             return@guarded
                         }
-                        val parsed = M3u.parse(M3u.decode(bytes))
+                        val parsed = withContext(Dispatchers.Default) { M3u.parse(M3u.decode(bytes)) }
                         if (parsed.entries.isEmpty()) {
                             state = null
                             onError(L.playlistImportEmpty)
                             return@guarded
                         }
-                        val matched = M3u.match(parsed.entries, Library.index().songSource())
+                        val matched = withContext(Dispatchers.Default) { M3u.match(parsed.entries, Library.index().songSource()) }
                         state = ImportState.Preview(parsed, matched, parsed.name ?: file.nameWithoutExtension)
                     } catch (e: CancellationException) {
                         throw e

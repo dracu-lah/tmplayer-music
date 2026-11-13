@@ -28,8 +28,11 @@ object Backup {
     /** What this build writes and the newest it reads. A file with a higher number is refused, never half read. */
     const val VERSION = 1
 
-    /** The largest file that is read (bytes); the caller checks the size before decoding. */
-    const val MAX_FILE_BYTES = 24 * 1024 * 1024
+    /**
+     * The largest file that is read (bytes); the caller checks the size before decoding. The parsed
+     * tree is several times the text, so this stays well under what a low memory phone can hold.
+     */
+    const val MAX_FILE_BYTES = 16 * 1024 * 1024
 
     /** Chats one backup may list. */
     const val MAX_CHATS = 5_000
@@ -178,6 +181,8 @@ object Backup {
             return Result.Bad(Problem.NotJson, e.javaClass.simpleName)
         } catch (e: StackOverflowError) {
             return Result.Bad(Problem.NotJson, "nesting")
+        } catch (e: OutOfMemoryError) {
+            return Result.Bad(Problem.TooLarge, "memory")
         }
         return try {
             read(root)
@@ -185,6 +190,8 @@ object Backup {
             Result.Bad(e.problem, e.detail)
         } catch (e: Exception) {
             Result.Bad(Problem.Damaged, e.javaClass.simpleName)
+        } catch (e: OutOfMemoryError) {
+            Result.Bad(Problem.TooLarge, "memory")
         }
     }
 

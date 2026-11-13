@@ -186,13 +186,14 @@ fun ImportPlaylistButton(onError: (String) -> Unit, onImported: () -> Unit) {
                     onError(L.playlistImportTooBig)
                     return@launch
                 }
-                val parsed = M3u.parse(M3u.decode(bytes))
+                // Parsing and matching are CPU work: off the main thread.
+                val parsed = withContext(Dispatchers.Default) { M3u.parse(M3u.decode(bytes)) }
                 if (parsed.entries.isEmpty()) {
                     state = null
                     onError(L.playlistImportEmpty)
                     return@launch
                 }
-                val matched = M3u.match(parsed.entries, Library.index().songSource())
+                val matched = withContext(Dispatchers.Default) { M3u.match(parsed.entries, Library.index().songSource()) }
                 state = ImportState.Preview(parsed, matched, parsed.name ?: displayName(context, uri))
             } catch (e: CancellationException) {
                 throw e
@@ -346,7 +347,7 @@ fun BackupSection() {
                     return@launch
                 }
                 // Read and checked whole before anything is touched; a bad file changes nothing.
-                when (val result = Backup.decode(String(bytes, Charsets.UTF_8))) {
+                when (val result = withContext(Dispatchers.Default) { Backup.decode(String(bytes, Charsets.UTF_8)) }) {
                     is Backup.Result.Newer -> say(L.backupNewer(result.version), error = true)
                     is Backup.Result.Bad -> {
                         Logger.w(TAG, "backup refused: ${result.problem} ${result.detail}")
