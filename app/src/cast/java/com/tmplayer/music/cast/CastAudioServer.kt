@@ -29,7 +29,12 @@ internal object WifiNetworks {
     private fun wifi(context: Context): List<Network> {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return emptyList()
         return runCatching {
-            cm.allNetworks.filter { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
+            // A VPN over Wi-Fi can report the Wi-Fi transport too: only the plain Wi-Fi network counts, never a tunnel.
+            cm.allNetworks.filter {
+                val caps = cm.getNetworkCapabilities(it)
+                caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            }
         }.getOrDefault(emptyList())
     }
 
@@ -115,6 +120,12 @@ internal class CastAudioServer(private val context: Context, private val sources
      * Keeps the Wi-Fi and the CPU awake while the user wants music playing (the screen may be off and the
      * receiver still fetching from here), and lets them sleep when it is paused or the cast is over. A
      * wake lock that is never let go would drain the battery, so it carries a timeout too.
+     *
+     * DEVICE CHECK (not done, no phone testing): `WIFI_MODE_FULL_HIGH_PERF` is deprecated and from API 29 the
+     * system treats it as `WIFI_MODE_FULL_LOW_LATENCY`, which Android only honours while the app is in the
+     * foreground with the screen on. Whether the cast keeps streaming with the screen off on API 29+ (the
+     * foreground playback service may or may not be enough) has to be seen on a real phone before the mode
+     * is changed; the CPU wake lock below is what keeps the server thread running meanwhile.
      */
     @Suppress("DEPRECATION")
     fun hold(on: Boolean) {
@@ -189,25 +200,40 @@ internal class CastAudioServer(private val context: Context, private val sources
     }
 }
 
+private const val SOURCE_TAG = "TdCastSource"
+
 /**
  * A Telegram file (or one kept offline) read through the player's own data source: TDLib's partial
- * download behind TdByteWindow, asked for at the byte the receiver wants. The length is the one the
- * index holds; with none, it is asked of the source once by opening it at the start.
+ * download behind TdByteWindow, asked for at the byte the receiver wants. The length is the data
+ * source's own, asked once by opening it at the start; the index's size is only the fallback for a
+ * source that does not say (a wrong Content-Length would cut the file short or hang the receiver).
  */
 @UnstableApi
-internal class TdCastSource(private val factory: DataSource.Factory, private val uri: Uri, knownLength: Long) : CastSource {
+internal class TdCastSource(private val factory: DataSource.Factory, private val uri: Uri, indexLength: Long) : CastSource {
 
     @Volatile
-    private var known = knownLength
+    private var known = indexLength
+
+    @Volatile
+    private var asked = false
 
     override val length: Long
         get() {
-            if (known > 0) return known
+            if (asked && known > 0) return known
             val source = factory.createDataSource()
             try {
                 val remaining = source.open(DataSpec(uri, 0, C.LENGTH_UNSET.toLong()))
-                if (remaining <= 0) throw IOException("The length is not known")
-                known = remaining
+                if (remaining > 0) {
+                    // Logged without ids: only that the index was off, and by how much.
+                    if (known > 0 && known != remaining) Logger.i(SOURCE_TAG, "The index length differs from the file's by ${remaining - known} bytes; the file's is used")
+                    known = remaining
+                } else if (known <= 0) {
+                    throw IOException("The length is not known")
+                }
+                asked = true
+            } catch (e: IOException) {
+                // The index's size stands in; a file that cannot open fails again, cleanly, at open().
+                if (known <= 0) throw e
             } finally {
                 runCatching { source.close() }
             }

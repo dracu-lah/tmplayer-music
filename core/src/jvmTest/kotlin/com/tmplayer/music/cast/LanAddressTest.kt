@@ -38,4 +38,17 @@ class LanAddressTest {
         assertNull(LanAddress.pick(listOf(candidate("8.8.8.8"), candidate("fe80::1", 64)), null))
         assertNull(LanAddress.pick(emptyList(), ip("192.168.1.2")))
     }
+
+    @Test
+    fun `a tunnel interface is never picked, even with a private address`() {
+        assertTrue(LanAddress.isTunnelInterface("tun0"))
+        assertTrue(LanAddress.isTunnelInterface("WG0"))
+        assertTrue(LanAddress.isTunnelInterface("ppp1"))
+        assertTrue(LanAddress.isTunnelInterface("ipsec0"))
+        assertFalse(LanAddress.isTunnelInterface("wlan0"))
+        assertFalse(LanAddress.isTunnelInterface(""))
+        val vpn = LanAddress.Candidate("tun0", ip("10.8.0.2"), 24)
+        assertEquals(ip("192.168.1.5"), LanAddress.pick(listOf(vpn, candidate("192.168.1.5")), ip("10.8.0.9")))
+        assertNull(LanAddress.pick(listOf(vpn), ip("10.8.0.9")))
+    }
 }
