@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.dracu_lah.TMPlayerMusic</id>
+  <name>TMPlayer Music</name>
+  <summary>Play the audio files already in your own Telegram chats</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>TMPlayer Music is a player for the audio files already in your own Telegram chats. Pick the chats that hold your tracks, and it lists them as songs, albums and artists, with playlists, favourites, lyrics and the sound controls of a music player.</p>
+    <p>Unofficial, not affiliated with Telegram.</p>
+  </description>
+  <url type="homepage">https://github.com/dracu-lah/tmplayer-music</url>
+  <url type="bugtracker">https://github.com/dracu-lah/tmplayer-music/issues</url>
+  <launchable type="desktop-id">io.github.dracu_lah.TMPlayerMusic.desktop</launchable>
+  <provides>
+    <binary>TMPlayerMusic</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

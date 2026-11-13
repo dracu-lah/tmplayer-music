@@ -1,3 +1,4 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
@@ -23,6 +24,12 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 val desktopVersion: String = providers.gradleProperty("desktopVersion").getOrElse("0.1.0-dev")
+
+// The installer version jpackage wants: a plain x.y.z from the version asked for (-PdesktopVersion=1.2.3-beta.1 gives 1.2.3).
+// An MSI, a deb and a macOS bundle all refuse anything else; 0.1.0 is the development build's.
+val packageVersionName: String = desktopVersion.removePrefix("v").substringBefore('-').substringBefore('+')
+    .takeIf { Regex("""\d+\.\d+\.\d+""").matches(it) } ?: "0.1.0"
+val packagingDir = layout.projectDirectory.dir("packaging")
 
 // The same local.properties the Android build reads, for the same Telegram API credentials.
 val localProps = Properties().apply {
@@ -125,14 +132,73 @@ tasks.test {
     }
 }
 
+// LICENSE, the OpenSSL permission and the third party notices travel inside the app image, so the
+// MSI, the DMG, the tarball and the AppImage all carry them without each packaging step copying them
+// again. Compose copies appResourcesRootDir/common into the image's app resources.
+val legalResources = layout.buildDirectory.dir("legal-resources")
+val syncLegalResources = tasks.register<Sync>("syncLegalResources") {
+    from(rootProject.file("LICENSE"), rootProject.file("LICENSE-OPENSSL-EXCEPTION.md"), rootProject.file("THIRD_PARTY_NOTICES.md"))
+    into(legalResources.map { it.dir("common") })
+}
+tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(syncLegalResources) }
+
 compose.desktop {
     application {
         mainClass = "com.tmplayer.music.desktop.MainKt"
+        // apple.awt.application.appearance lets the macOS title bar follow the system's light or dark look.
+        jvmArgs += listOf("--enable-native-access=ALL-UNNAMED", "-Dsun.java2d.uiScale.enabled=true", "-Dapple.awt.application.appearance=system")
+        // JNA (TDLib's and libmpv's loaders) on a newer JDK warns about native access.
+        // No signing here, and no secrets: a signed, notarised build is the owner's step.
+        nativeDistributions {
+            targetFormats(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Msi, TargetFormat.Dmg)
+            packageName = "TMPlayerMusic"
+            packageVersion = packageVersionName
+            vendor = "TMPlayer Music"
+            description = "A player for the audio files already in your own Telegram chats. Unofficial, not affiliated with Telegram."
+            copyright = "GPL-3.0-or-later"
+            licenseFile.set(rootProject.file("LICENSE"))
+            appResourcesRootDir.set(legalResources)
+            // What the runtime reaches beyond the modules Compose already adds: jdk.security.auth is
+            // dbus-java's UnixSystem credentials (MPRIS), jdk.net its unix socket options,
+            // jdk.unsupported the Unsafe some libraries use.
+            modules("jdk.unsupported", "jdk.security.auth", "jdk.net")
+            linux {
+                packageName = "tmplayer-music"
+                iconFile.set(packagingDir.file("icons/tmplayer-music.png"))
+                menuGroup = "AudioVideo;Audio;Player;"
+                appCategory = "audio"
+                debMaintainer = "TMPlayer Music <noreply@github.com>"
+                rpmLicenseType = "GPLv3+"
+                shortcut = true
+            }
+            // The DMG is Apple Silicon only (the mpv runtime is). macOS 26 is the floor because the
+            // TDLib in tdl-coroutines is built for it, so an older Mac says so instead of failing at sign in.
+            macOS {
+                bundleID = "io.github.dracu-lah.tmplayermusic"
+                iconFile.set(packagingDir.file("icons/tmplayer-music.icns"))
+                appCategory = "public.app-category.music"
+                minimumSystemVersion = "26.0"
+                dockName = "TMPlayer Music"
+            }
+            windows {
+                iconFile.set(packagingDir.file("icons/tmplayer-music.ico"))
+                // Start menu folder, desktop shortcut, installed under %LOCALAPPDATA% without an
+                // administrator prompt. The upgrade code never changes: it is what lets a newer MSI
+                // replace an older one instead of installing beside it.
+                menu = true
+                menuGroup = "TMPlayer Music"
+                shortcut = true
+                perUserInstall = true
+                // Not %LOCALAPPDATA%\TMPlayerMusic: that is where the app keeps its sign in, settings and
+                // cache, and the MSI deletes its whole install folder when it uninstalls (every upgrade runs that).
+                installationPath = "TMPlayer Music App"
+                dirChooser = false
+                upgradeUuid = "b3a5d7f0-4c1e-4f6a-8d92-5e7c1a0b9d38"
+            }
+        }
         // The plugin runs the app on the JDK that runs Gradle, which may be a headless one (no AWT
         // windows): run it on the same JDK 21 the module compiles with.
         javaHome = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
             .get().metadata.installationPath.asFile.absolutePath
-        // JNA (TDLib's and libmpv's loaders) on a newer JDK warns about native access.
-        jvmArgs("--enable-native-access=ALL-UNNAMED", "-Dsun.java2d.uiScale.enabled=true")
     }
 }
