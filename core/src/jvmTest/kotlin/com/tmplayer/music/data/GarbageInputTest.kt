@@ -367,6 +367,40 @@ class GarbageInputTest {
     }
 
     @Test
+    fun `the offline index on garbage opens as a list that can be used and never crashes`() {
+        val random = Random(31)
+        val dir = kotlin.io.path.createTempDirectory("offline-garbage").toFile()
+        try {
+            val good = """{"version":1,"kept":[{"chatId":1,"messageId":2,"file":"k1_2.mp3","sizeBytes":3}],""" +
+                """"queue":[{"chatId":1,"messageId":9,"title":"t"}],"paused":true}"""
+            val odd = listOf(
+                "", "{", "[", "null", "1", "\"x\"", "[]", "{}", "[null,1,\"a\",[],{}]",
+                """{"kept":"x","queue":5}""", """{"kept":[1,null,{},[]],"queue":[{"chatId":"a"}]}""",
+                """{"kept":[{"chatId":1,"messageId":1,"file":"../../etc/passwd"},{"chatId":1,"messageId":2,"file":"a/b"}]}""",
+                """{"kept":[{"chatId":9999999999999999999999,"messageId":1,"file":"x"}]}""",
+                """{"paused":[],"kept":[{"file":null}]}""",
+                "[" + "[".repeat(5_000), "{\"a\":".repeat(3_000), "\uD800", "x".repeat(200_000),
+            )
+            val cuts = (0..good.length).map { good.take(it) }
+            repeat(600) {
+                val text = when {
+                    it < odd.size -> odd[it]
+                    it < odd.size + cuts.size -> cuts[it - odd.size]
+                    else -> String(CharArray(random.nextInt(0, 400)) { random.nextInt(0, 0xFFFF).toChar() })
+                }
+                java.io.File(dir, OfflineStore.INDEX).writeText(text)
+                val store = OfflineStore()
+                store.open(dir)
+                store.kept.value.values.forEach { assertTrue(it.file.none { c -> c == '/' || c == '\\' }) }
+                store.savedQueue()
+                store.pathOf(com.tmplayer.music.library.TrackId(1, 2))
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `name tidying and bar letters on garbage never crash`() {
         val random = Random(23)
         val odd = listOf(

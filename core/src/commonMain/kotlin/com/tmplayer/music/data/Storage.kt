@@ -75,7 +75,9 @@ object Storage {
                 immunity,
                 AUDIO_TYPES,
                 longArrayOf(),
-                longArrayOf(),
+                // The chats a Keep offline fetch is filling: their downloads are not trimmed from under it.
+                // (Kept files themselves are outside this cache and never listed here.)
+                OfflineDownloads.protectedChats(),
                 true,
                 0,
             )

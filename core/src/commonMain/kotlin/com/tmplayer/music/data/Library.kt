@@ -283,6 +283,8 @@ object Library {
         (before - after).forEach {
             scanner.forget(it)
             dropLoaders(it)
+            // Kept offline files of a chat that is no longer picked go with its rows.
+            OfflineDownloads.purgeChat(it)
         }
         index().setPicked(chats)
         _changes.value++
@@ -292,6 +294,7 @@ object Library {
     /** Removes one chat and its tracks, for Manage chats. */
     suspend fun removeChat(chatId: Long) {
         scanner.forget(chatId)
+        OfflineDownloads.purgeChat(chatId)
         index().removeChat(chatId)
         dropLoaders(chatId)
         _changes.value++
@@ -389,6 +392,8 @@ object Library {
     /** Wipes the library before a log out, so nothing of this account stays on the device. */
     suspend fun wipe() = gate.withLock {
         Logger.i(TAG, "wiping the library")
+        // Nothing of the account stays kept offline either: the queue stops and the files go.
+        OfflineDownloads.purgeAll()
         runCatching { index.close() }
         File(dir, "library.db").let { db -> listOf(db, File(db.path + "-wal"), File(db.path + "-shm")).forEach { it.delete() } }
         File(dir, "covers").deleteRecursively()
