@@ -13,7 +13,11 @@ import com.tmplayer.music.covers.CoverAnswer
 import com.tmplayer.music.covers.CoverHttpAnswer
 import com.tmplayer.music.lyrics.GatewayAnswer
 import com.tmplayer.music.lyrics.HttpAnswer
+import com.tmplayer.music.lyrics.LyricLine
+import com.tmplayer.music.lyrics.Lyrics
+import com.tmplayer.music.lyrics.LyricsOffsets
 import com.tmplayer.music.lyrics.LyricsParser
+import com.tmplayer.music.lyrics.LyricsShare
 import com.tmplayer.music.player.SavedQueue
 import com.tmplayer.music.tags.Samples
 import com.tmplayer.music.tags.TagReader
@@ -150,14 +154,37 @@ class GarbageInputTest {
         val cases = listOf(
             "[", "]", "[[[[", "[00:", "[00:00", "[99999:99.999]x", "[-1:00]x", "[offset:abc]", "[offset:99999999999999999999]",
             "[00:01]".repeat(50_000), "<00:01>".repeat(10_000), "\u0000\u0001[00:01]\u0002",
+            "[00:01.00]<", "[00:01.00]<00:0", "[00:01.00]<00:01.00>", "[00:01.00]<99999:99.999>x", "[00:01.00]<00:05.00>a<00:01.00>b",
+            "[00:01.00]" + "<00:01.00>a ".repeat(5_000), "[00:01.00][00:09.00]<00:01.00>a<00:02.00>b<00:03.00>", "[00:01.00]<00:01.00><00:02.00><00:03.00>",
         )
         for (case in cases) LyricsParser.parse(case)
         LyricsParser.parse(ByteArray(LyricsParser.MAX_BYTES + 1))
         repeat(2000) {
             LyricsParser.parse(random.nextBytes(random.nextInt(0, 4096)))
-            val alphabet = "[]:.0123456789<>ab\n"
+            val alphabet = "[]:.0123456789<>ab \n"
             LyricsParser.parse(String(CharArray(random.nextInt(0, 400)) { alphabet[random.nextInt(alphabet.length)] }))
         }
+    }
+
+    @Test
+    fun `lyrics offsets and share text from garbage never crash`() {
+        val random = Random(31)
+        val cases = listOf(
+            "", "\t", "5\t", "abc\tkey", "99999999999999999999\tkey", "-5\t\t", "100\tkey\n100\tkey\n0\tzero", "x".repeat(300_000),
+            "100\t" + "k".repeat(5_000), "\n\n\n",
+        )
+        for (case in cases) LyricsOffsets.decode(case)
+        repeat(1000) {
+            val alphabet = "0123456789-\t\nkey "
+            LyricsOffsets.decode(String(CharArray(random.nextInt(0, 300)) { alphabet[random.nextInt(alphabet.length)] }))
+            LyricsOffsets.step(random.nextLong(), random.nextInt())
+            val text = String(CharArray(random.nextInt(0, 200)) { random.nextInt(0, 300).toChar() })
+            LyricsShare.line(text, text, text)
+            LyricsShare.all(Lyrics(emptyList(), text), text, null)
+            LyricsShare.all(Lyrics(listOf(LyricLine(0, text)), ""), null, text)
+        }
+        LyricsShare.all(Lyrics(emptyList(), "line\n".repeat(200_000)), "t", "a")
+        LyricsShare.line("y".repeat(2_000_000), "t", "a")
     }
 
     @Test
