@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.graphics.scale
@@ -26,6 +28,8 @@ import com.tmplayer.music.platform.Logger
 import com.tmplayer.music.ui.common.GeneratedCover
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -47,10 +51,26 @@ object NowPlayingWidget {
     const val ACTION_NEXT = "com.tmplayer.music.widget.NEXT"
 
     /** What was last drawn, and what to compare the next event with so an unchanged state draws nothing. */
-    private class Snapshot(val state: WidgetState, val cover: Bitmap?, val key: String)
+    private class Snapshot(
+        val state: WidgetState,
+        val cover: Bitmap?,
+        val key: String,
+        /** The media id of the item, so a cover is never kept for another track with the same title. */
+        val mediaId: String = "",
+        /** Which cover bytes [cover] was decoded from; empty when it was not decoded from the session's. */
+        val artId: String = "",
+    )
 
     @Volatile
     private var last: Snapshot? = null
+
+    /** The session's player while the service runs, so a widget placed mid-song reads what really plays. */
+    @Volatile
+    private var live: Player? = null
+
+    /** The cover being decoded off the main thread, and the state it is for. */
+    private var decoding: Job? = null
+    private var decodingKey: String? = null
 
     private val scope = JobFailures.scope("NowPlayingWidget", Dispatchers.IO)
 
@@ -61,7 +81,13 @@ object NowPlayingWidget {
 
     /** The service is gone: the next redraw reads the saved queue again instead of trusting what it last saw. */
     fun serviceStopped() {
+        live = null
         last = null
+    }
+
+    /** The service's player: from now on the widget can read the live state (until [serviceStopped]). */
+    fun attach(player: Player) {
+        live = player
     }
 
     /** The session's item and state changed: draws the widgets, unless there are none or nothing differs. Main thread. */
@@ -78,11 +104,28 @@ object NowPlayingWidget {
         val state = WidgetState.of(item?.mediaId, metadata.title ?: item?.mediaMetadata?.title, metadata.artist ?: item?.mediaMetadata?.artist, playing)
         val art = metadata.artworkData
         val key = "${item?.mediaId}|${state.title}|${state.artist}|${state.playing}|${art?.size}|${art?.contentHashCode()}"
-        if (last?.key == key) return
-        // A new cover is decoded here only when the bytes are new; the same track keeps its bitmap.
-        val keepCover = last?.takeIf { it.state.hasItem && it.state.title == state.title && art == null }?.cover
-        val cover = if (art != null) small(art) else keepCover
-        draw(app, Snapshot(state, cover, key), ids)
+        if (last?.key == key || decodingKey == key) return
+        val mediaId = item?.mediaId.orEmpty()
+        val artId = if (art == null) "" else "${art.size}|${art.contentHashCode()}"
+        // The same item and the same cover bytes keep their bitmap; an item whose cover is not in the
+        // session yet (no bytes) keeps the one drawn for it, never one drawn for another track.
+        val before = last?.takeIf { it.state.hasItem && it.mediaId == mediaId }
+        val keepCover = if (art == null) before?.cover else before?.takeIf { it.artId == artId }?.cover
+        decoding?.cancel()
+        decodingKey = null
+        if (art == null || keepCover != null) {
+            draw(app, Snapshot(state, keepCover, key, mediaId, artId), ids)
+            return
+        }
+        // New cover bytes: the text and buttons are drawn at once, the bitmap is decoded off the main thread.
+        draw(app, Snapshot(state, before?.cover, key, mediaId), ids)
+        decodingKey = key
+        decoding = scope.launch {
+            val cover = small(art)
+            if (!isActive) return@launch
+            if (decodingKey == key) decodingKey = null
+            if (cover != null) draw(app, Snapshot(state, cover, key, mediaId, artId), ids)
+        }
     }
 
     /** The launcher placed, resized or refreshed the widgets [ids]: draws what is known, or reads the saved queue first. */
@@ -92,6 +135,21 @@ object NowPlayingWidget {
         if (known != null) {
             draw(app, known, ids)
             pending?.finish()
+            return
+        }
+        // The service runs but nothing was drawn yet (the last widget was removed while music played):
+        // read the live player, on the main thread it belongs to, not the saved queue.
+        val player = live
+        if (player != null) {
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    if (live === player) onPlayerChanged(app, player) else refresh(app, null, ids)
+                } catch (e: Throwable) {
+                    Logger.w(TAG, "the widget could not read the player", e)
+                } finally {
+                    pending?.finish()
+                }
+            }
             return
         }
         scope.launch {

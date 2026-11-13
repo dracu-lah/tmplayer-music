@@ -103,6 +103,7 @@ class PlaybackService : MediaLibraryService() {
         val shown = SessionArtworkPlayer(player, scope)
         // The home screen widget follows the session: redrawn when the track or the state changes, never on a timer.
         shown.addListener(WidgetSync(this, shown))
+        com.tmplayer.music.widget.NowPlayingWidget.attach(shown)
         // Also the browse tree for cars (Android Auto) and voice search; see BrowseCallback.
         session = MediaLibrarySession.Builder(this, shown, BrowseCallback(this, scope) { resolve(it) })
             .setSessionActivity(open)
