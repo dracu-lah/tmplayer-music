@@ -384,4 +384,54 @@ class GarbageInputTest {
         com.tmplayer.music.library.TitleFallback.tidyTitle(null)
         com.tmplayer.music.library.TitleFallback.tidyArtist(null)
     }
+
+    @Test
+    fun `playlist lists that are garbage read as a bounded list, never a crash`() {
+        val good = com.tmplayer.music.library.M3u.export("Mix", emptyList()) + "#EXTINF:12,A - B\nA - B\n"
+        val odd = listOf(
+            "", "#", "#EXTINF", "#EXTINF:", "#EXTINF:,", "#EXTINF:-5,", "#EXTINF:99999999999999999999,A", "#PLAYLIST:",
+            "\uFEFF", "\u0000\u0000", "\uD800", "%", "%zz%", "http://", "C:\\", "/", "////", "\\\\", "a/b/c/", "?#",
+            "x".repeat(5_000_000), "#EXTINF:1,".repeat(100_000), "- - -\n".repeat(50_000), "a\r".repeat(200_000),
+            good.substring(0, good.length / 2),
+        )
+        val random = Random(31)
+        repeat(1_500) {
+            val text = if (it < odd.size) odd[it] else String(CharArray(random.nextInt(0, 400)) { random.nextInt(0, 0xFFFF).toChar() })
+            val parsed = com.tmplayer.music.library.M3u.parse(text)
+            assertTrue("too many entries", parsed.entries.size <= com.tmplayer.music.library.M3u.MAX_ENTRIES)
+            for (entry in parsed.entries) assertTrue("blank title", entry.title.isNotBlank())
+        }
+        com.tmplayer.music.library.M3u.parse(null)
+    }
+
+    @Test
+    fun `backup files that are garbage are refused whole, never a crash`() {
+        val head = "{\"format\":\"${com.tmplayer.music.library.Backup.FORMAT}\",\"version\":1,"
+        val good = com.tmplayer.music.library.Backup.encode(
+            com.tmplayer.music.library.Backup.Data(
+                1,
+                favourites = listOf(com.tmplayer.music.library.Backup.Favourite(com.tmplayer.music.library.Backup.Ref(1, 2, "k"), 3)),
+            ),
+        )
+        val cases = listOf(
+            null, "", " ", "{", "[]", "null", "42", "\"text\"", "{}", "{\"format\":1}", head + "}", head + "\"favourites\":5}",
+            head + "\"favourites\":[null]}", head + "\"favourites\":[[]]}", head + "\"playlists\":[{\"items\":5}]}",
+            head + "\"playlists\":[{\"name\":1}]}", head + "\"plays\":[{\"count\":1.5}]}", head + "\"chats\":[{\"id\":0}]}",
+            "[".repeat(1_000_000), "{\"a\":".repeat(100_000), "\"" + "x".repeat(2_000_000),
+            good.substring(0, good.length / 2), good.substring(0, good.length - 1),
+        )
+        for (case in cases) {
+            val result = com.tmplayer.music.library.Backup.decode(case)
+            assertTrue(case?.take(40), result !is com.tmplayer.music.library.Backup.Result.Ok)
+        }
+        val random = Random(37)
+        repeat(2_000) {
+            val text = String(CharArray(random.nextInt(0, 300)) { random.nextInt(0, 0x2FFF).toChar() })
+            com.tmplayer.music.library.Backup.decode(text)
+            com.tmplayer.music.library.Backup.decode(good.substring(0, random.nextInt(0, good.length)))
+            // One flipped character of a good file: still a result, never a crash.
+            val flipped = good.toCharArray().also { chars -> chars[random.nextInt(chars.size)] = random.nextInt(32, 0x7F).toChar() }
+            com.tmplayer.music.library.Backup.decode(String(flipped))
+        }
+    }
 }

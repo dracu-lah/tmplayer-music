@@ -969,12 +969,23 @@ class LibraryIndex private constructor(
      * Creates an empty playlist and returns its id. The name is trimmed, a blank one becomes
      * "Playlist" and a long one is cut to 200 characters. Returns -1 when [MAX_PLAYLISTS] exist.
      */
-    suspend fun createPlaylist(name: String): Long = io {
+    suspend fun createPlaylist(name: String): Long = io { tx { insertPlaylist(name) } }
+
+    private fun insertPlaylist(name: String, createdSec: Long = nowSec(), updatedSec: Long = createdSec): Long {
+        if (count("SELECT COUNT(*) FROM playlists") >= MAX_PLAYLISTS) return -1L
+        exec("INSERT INTO playlists(name, created_sec, updated_sec) VALUES(?, ?, ?)", playlistName(name), createdSec, updatedSec)
+        return query("SELECT last_insert_rowid()") { it.getLong(0) }.firstOrNull() ?: -1L
+    }
+
+    /**
+     * Creates a playlist holding [songs] in order, or nothing: both steps are one transaction, so a
+     * failure part way leaves no empty playlist behind. Returns the id, or -1 when [MAX_PLAYLISTS] exist.
+     */
+    suspend fun createPlaylistWith(name: String, songs: List<Song>): Long = io {
         tx {
-            if (count("SELECT COUNT(*) FROM playlists") >= MAX_PLAYLISTS) return@tx -1L
-            val now = nowSec()
-            exec("INSERT INTO playlists(name, created_sec, updated_sec) VALUES(?, ?, ?)", playlistName(name), now, now)
-            query("SELECT last_insert_rowid()") { it.getLong(0) }.firstOrNull() ?: -1L
+            val id = insertPlaylist(name)
+            if (id >= 0) appendSongs(id, songs)
+            id
         }
     }
 
@@ -996,28 +1007,28 @@ class LibraryIndex private constructor(
      * resolves to) and repeats within [songs]. Each entry stores the song's current default file.
      * Stops at [MAX_PLAYLIST_ITEMS] entries. Returns how many were added; 0 for an unknown id.
      */
-    suspend fun addToPlaylist(id: Long, songs: List<Song>): Int = io {
-        tx {
-            if (count("SELECT COUNT(*) FROM playlists WHERE playlist_id = ?", id) == 0) return@tx 0
-            val entries = playlistEntries(id)
-            val have = entries.mapNotNullTo(HashSet()) { it.songKey }
-            var total = entries.size
-            var added = 0
-            for (song in songs) {
-                if (total >= MAX_PLAYLIST_ITEMS) break
-                val key = song.groupKey
-                if (key.isEmpty() || !have.add(key)) continue
-                val target = currentDefault(song)
-                exec(
-                    "INSERT INTO playlist_items(playlist_id, position, chat_id, message_id, song_key, base_key) VALUES(?, ?, ?, ?, ?, ?)",
-                    id, total, target.chatId, target.messageId, key, baseOfSongKey(key),
-                )
-                total++
-                added++
-            }
-            if (added > 0) touchPlaylist(id)
-            added
+    suspend fun addToPlaylist(id: Long, songs: List<Song>): Int = io { tx { appendSongs(id, songs) } }
+
+    private fun appendSongs(id: Long, songs: List<Song>): Int {
+        if (count("SELECT COUNT(*) FROM playlists WHERE playlist_id = ?", id) == 0) return 0
+        val entries = playlistEntries(id)
+        val have = entries.mapNotNullTo(HashSet()) { it.songKey }
+        var total = entries.size
+        var added = 0
+        for (song in songs) {
+            if (total >= MAX_PLAYLIST_ITEMS) break
+            val key = song.groupKey
+            if (key.isEmpty() || !have.add(key)) continue
+            val target = currentDefault(song)
+            exec(
+                "INSERT INTO playlist_items(playlist_id, position, chat_id, message_id, song_key, base_key) VALUES(?, ?, ?, ?, ?, ?)",
+                id, total, target.chatId, target.messageId, key, baseOfSongKey(key),
+            )
+            total++
+            added++
         }
+        if (added > 0) touchPlaylist(id)
+        return added
     }
 
     /**
@@ -1070,6 +1081,248 @@ class LibraryIndex private constructor(
         if (song.groupKey.isEmpty()) return@io emptySet()
         refsOf("playlist_items", "r.playlist_id", song.groupKey) { it.getLong(0) }.toHashSet()
     }
+
+    // Import, backup and restore
+
+    /** The index as M3U matching reads it. */
+    fun songSource(): M3u.SongSource = object : M3u.SongSource {
+        override suspend fun byBase(bases: Collection<String>): Map<String, List<Song>> = songsByBase(bases)
+
+        override suspend fun byTitle(title: String): List<Song> = search(title, MATCH_CANDIDATES).songs
+    }
+
+    /** The songs of each group base key (one per duration cluster), by key; a key with no song is absent. */
+    suspend fun songsByBase(bases: Collection<String>): Map<String, List<Song>> = io {
+        val out = HashMap<String, List<Song>>()
+        for (base in bases) {
+            val rows = query("SELECT $SONG_COLUMNS FROM songs WHERE base_key = ? LIMIT 20", base, map = ::readSong)
+            if (rows.isNotEmpty()) out[base] = rows
+        }
+        out
+    }
+
+    /**
+     * What a backup holds, read in one pass: favourites (oldest first, so a restore keeps the order), every
+     * playlist with its entries in order (hidden entries too, so they come back with their chat), plays
+     * counted per file with the last time, and the chosen chats. Rows that could not be restored (a zero id)
+     * are left out so the file always decodes.
+     */
+    suspend fun backupData(): Backup.Data = io {
+        val key = "COALESCE(s.song_key, r.song_key)"
+        val favourites = query(
+            "SELECT r.chat_id, r.message_id, $key, s.title, s.artist, r.added_sec FROM favourites r " +
+                "LEFT JOIN songs s ON s.song_key = ${resolved("r")} ORDER BY r.added_sec, r.rowid LIMIT $MAX_FAVOURITES",
+        ) { refAt(it)?.let { ref -> Backup.Favourite(ref, it.getLong(5).coerceAtLeast(0)) } }.filterNotNull()
+        val playlists = query(
+            "SELECT playlist_id, name, created_sec, updated_sec FROM playlists ORDER BY playlist_id LIMIT $MAX_PLAYLISTS",
+        ) { Backup.PlaylistData(text(it, 1), it.getLong(2).coerceAtLeast(0), it.getLong(3).coerceAtLeast(0), listOf()) to it.getLong(0) }
+            .map { (head, id) ->
+                val items = query(
+                    "SELECT r.chat_id, r.message_id, $key, s.title, s.artist FROM playlist_items r " +
+                        "LEFT JOIN songs s ON s.song_key = ${resolved("r")} WHERE r.playlist_id = ? " +
+                        "ORDER BY r.position, r.item_id LIMIT $MAX_PLAYLIST_ITEMS",
+                    id,
+                ) { refAt(it) }.filterNotNull()
+                head.copy(items = items)
+            }
+        val plays = query(
+            "SELECT p.chat_id, p.message_id, COALESCE((SELECT NULLIF(t.song_key, '') FROM tracks t WHERE t.chat_id = p.chat_id " +
+                "AND t.message_id = p.message_id), p.song_key), '', '', COUNT(*), MAX(p.at_sec) FROM plays p " +
+                "GROUP BY p.chat_id, p.message_id ORDER BY MAX(p.at_sec), MIN(p.play_id) LIMIT $MAX_PLAYS",
+        ) { refAt(it)?.let { ref -> Backup.PlayData(ref, it.getLong(5).toInt().coerceIn(1, MAX_PLAYS), it.getLong(6).coerceAtLeast(0)) } }
+            .filterNotNull()
+        val chats = query(
+            "SELECT chat_id, title FROM chats WHERE picked = 1 ORDER BY added_at, chat_id LIMIT ${Backup.MAX_CHATS}",
+        ) { Backup.ChatData(it.getLong(0), text(it, 1)) }.filter { it.chatId != 0L }
+        Backup.Data(nowSec(), favourites, playlists, plays, chats)
+    }
+
+    /** A backup reference from a row of (chat, message, key, title, artist), or null when it cannot be restored. */
+    private fun refAt(s: SQLiteStatement): Backup.Ref? {
+        val chat = s.getLong(0)
+        val message = s.getLong(1)
+        val key = text(s, 2)
+        if (chat == 0L || message <= 0 || key.isEmpty() || key.length > Backup.MAX_KEY) return null
+        return Backup.Ref(chat, message, key, text(s, 3), text(s, 4))
+    }
+
+    /**
+     * Applies [data] to what the user keeps, all in one transaction, and says what it did. With
+     * [commit] false it does everything and then rolls back, so the same function gives the preview and
+     * the real result, and a failure part way (or a preview) changes nothing. Merging adds what is
+     * missing: a favourite or playlist entry already there (by the song it resolves to) is skipped, a
+     * playlist of the same name gets the missing entries at its end, plays are raised to the larger
+     * count. [replace] first clears favourites, playlists and plays. Entries whose song is not in the
+     * library yet are stored by key and show once the chat is indexed. Chosen chats are not touched
+     * here: [Backup.Summary.newChats] lists the ones to add.
+     */
+    suspend fun restoreBackup(data: Backup.Data, replace: Boolean, commit: Boolean): Backup.Summary = io {
+        db.execSQL("BEGIN IMMEDIATE")
+        try {
+            val summary = applyBackup(data, replace)
+            db.execSQL(if (commit) "COMMIT" else "ROLLBACK")
+            summary
+        } catch (e: Throwable) {
+            runCatching { db.execSQL("ROLLBACK") }
+            throw e
+        }
+    }
+
+    private fun applyBackup(data: Backup.Data, replace: Boolean): Backup.Summary {
+        var removedFavourites = 0
+        var removedPlaylists = 0
+        var removedPlays = 0
+        if (replace) {
+            removedFavourites = count("SELECT COUNT(*) FROM favourites")
+            removedPlaylists = count("SELECT COUNT(*) FROM playlists")
+            removedPlays = count("SELECT COUNT(*) FROM plays")
+            exec("DELETE FROM favourites")
+            exec("DELETE FROM playlist_items")
+            exec("DELETE FROM playlists")
+            exec("DELETE FROM plays")
+        }
+        var pending = 0
+        var dropped = 0
+
+        var favouritesAdded = 0
+        var favouritesKnown = 0
+        val haveFavourite = query("SELECT ${resolved("f")}, f.song_key FROM favourites f LIMIT $MAX_ROWS") {
+            storedKey(if (it.isNull(0)) null else it.getText(0), text(it, 1))
+        }.toHashSet()
+        var favouriteRows = count("SELECT COUNT(*) FROM favourites")
+        for (favourite in data.favourites) {
+            val ref = favourite.ref
+            val resolvedKey = resolveKey(ref)
+            if (!haveFavourite.add(storedKey(resolvedKey, ref.songKey))) {
+                favouritesKnown++
+                continue
+            }
+            if (favouriteRows >= MAX_FAVOURITES) {
+                dropped++
+                continue
+            }
+            exec(
+                "INSERT OR IGNORE INTO favourites(chat_id, message_id, song_key, base_key, added_sec) VALUES(?, ?, ?, ?, ?)",
+                ref.chatId, ref.messageId, ref.songKey, baseOfSongKey(ref.songKey), favourite.addedSec,
+            )
+            if (count("SELECT changes()") > 0) {
+                favouritesAdded++
+                favouriteRows++
+                if (resolvedKey == null) pending++
+            } else {
+                favouritesKnown++
+            }
+        }
+
+        var playlistsCreated = 0
+        var playlistsMerged = 0
+        var itemsAdded = 0
+        // Only the playlists that were there before: two playlists of one name in the file stay two.
+        val byName = HashMap<String, Long>()
+        val before = query("SELECT playlist_id, name FROM playlists ORDER BY playlist_id LIMIT $MAX_ROWS") { it.getLong(0) to text(it, 1) }
+        for ((id, name) in before) byName.putIfAbsent(recentSearchKey(name), id)
+        var playlistRows = count("SELECT COUNT(*) FROM playlists")
+        for (playlist in data.playlists) {
+            val name = playlistName(playlist.name)
+            val existing = byName[recentSearchKey(name)]
+            val id = existing ?: if (playlistRows >= MAX_PLAYLISTS) {
+                dropped++
+                -1L
+            } else {
+                insertPlaylist(name, playlist.createdSec, playlist.updatedSec).also { if (it >= 0) playlistRows++ }
+            }
+            if (id < 0) continue
+            val have = HashSet<String>()
+            var total = 0
+            if (existing != null) {
+                val held = query(
+                    "SELECT ${resolved("i")}, i.song_key FROM playlist_items i WHERE i.playlist_id = ? LIMIT $MAX_PLAYLIST_ITEMS", id,
+                ) { storedKey(if (it.isNull(0)) null else it.getText(0), text(it, 1)) }
+                have.addAll(held)
+                total = held.size
+            }
+            var added = 0
+            for (item in playlist.items) {
+                val resolvedKey = resolveKey(item)
+                if (!have.add(storedKey(resolvedKey, item.songKey))) continue
+                if (total >= MAX_PLAYLIST_ITEMS) {
+                    dropped++
+                    continue
+                }
+                exec(
+                    "INSERT INTO playlist_items(playlist_id, position, chat_id, message_id, song_key, base_key) VALUES(?, ?, ?, ?, ?, ?)",
+                    id, total, item.chatId, item.messageId, item.songKey, baseOfSongKey(item.songKey),
+                )
+                total++
+                added++
+                if (resolvedKey == null) pending++
+            }
+            itemsAdded += added
+            if (existing == null) {
+                playlistsCreated++
+            } else {
+                playlistsMerged++
+                if (added > 0) touchPlaylist(id)
+            }
+        }
+
+        // Plays: the count per song is raised to the file's, at the time it was last played.
+        var playSongs = 0
+        val counted = HashMap<String, LongArray>()
+        val playRowsNow = query(
+            "SELECT ${resolved("p")}, p.song_key, COUNT(*), MAX(p.at_sec) FROM plays p GROUP BY p.chat_id, p.message_id, p.song_key LIMIT $MAX_ROWS",
+        ) { Triple(storedKey(if (it.isNull(0)) null else it.getText(0), text(it, 1)), it.getLong(2), it.getLong(3)) }
+        for ((key, n, last) in playRowsNow) {
+            val have = counted.getOrPut(key) { longArrayOf(0, 0) }
+            have[0] += n
+            have[1] = maxOf(have[1], last)
+        }
+        var playRows = count("SELECT COUNT(*) FROM plays")
+        for (play in data.plays.sortedBy { it.lastSec }) {
+            val ref = play.ref
+            val have = counted.getOrPut(storedKey(resolveKey(ref), ref.songKey)) { longArrayOf(0, 0) }
+            val missing = play.count - have[0]
+            if (missing <= 0) continue
+            repeat(missing.toInt()) {
+                exec(
+                    "INSERT INTO plays(chat_id, message_id, song_key, base_key, at_sec) VALUES(?, ?, ?, ?, ?)",
+                    ref.chatId, ref.messageId, ref.songKey, baseOfSongKey(ref.songKey), play.lastSec,
+                )
+            }
+            have[0] += missing
+            have[1] = maxOf(have[1], play.lastSec)
+            playRows += missing.toInt()
+            playSongs++
+        }
+        if (playRows > MAX_PLAYS) {
+            exec("DELETE FROM plays WHERE play_id <= (SELECT play_id FROM plays ORDER BY play_id DESC LIMIT 1 OFFSET $MAX_PLAYS)")
+        }
+
+        val picked = query("SELECT chat_id FROM chats WHERE picked = 1 LIMIT $MAX_ROWS") { it.getLong(0) }.toHashSet()
+        return Backup.Summary(
+            favouritesAdded = favouritesAdded,
+            favouritesKnown = favouritesKnown,
+            playlistsCreated = playlistsCreated,
+            playlistsMerged = playlistsMerged,
+            playlistItemsAdded = itemsAdded,
+            playedSongs = playSongs,
+            pending = pending,
+            dropped = dropped,
+            newChats = data.chats.filter { it.chatId !in picked },
+            removedFavourites = removedFavourites,
+            removedPlaylists = removedPlaylists,
+            removedPlays = removedPlays,
+        )
+    }
+
+    /** What two stored rows are the same by: the song they resolve to, or for a hidden one its own key. */
+    private fun storedKey(resolved: String?, songKey: String): String = resolved ?: ("\u0002" + songKey)
+
+    /** The song a backup entry resolves to now (the way a stored row does), null while its song is not in the library. */
+    private fun resolveKey(ref: Backup.Ref): String? = query(
+        "SELECT ${resolved("x")} FROM (SELECT ? AS chat_id, ? AS message_id, ? AS song_key, ? AS base_key) x",
+        ref.chatId, ref.messageId, ref.songKey, baseOfSongKey(ref.songKey),
+    ) { if (it.isNull(0)) null else it.getText(0) }.firstOrNull()
 
     // Search
 
@@ -1517,6 +1770,9 @@ class LibraryIndex private constructor(
 
         /** Entries one playlist may hold. */
         const val MAX_PLAYLIST_ITEMS = 10_000
+
+        /** Songs [songSource] hands back to look through for a title with no artist. */
+        private const val MATCH_CANDIDATES = 50
 
         /** Recent searches kept. */
         const val MAX_RECENT_SEARCHES = 10
