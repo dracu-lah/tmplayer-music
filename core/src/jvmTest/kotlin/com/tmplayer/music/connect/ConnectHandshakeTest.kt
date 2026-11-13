@@ -7,7 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The pairing and connect arithmetic of protocol 2: ECDH, HKDF, the transcript, the key confirmation, the QR link. */
+/** The pairing and connect arithmetic of protocol 3: ECDH, HKDF, the transcript, the key confirmation, the QR link. */
 class ConnectHandshakeTest {
     private val hostId = "11".repeat(16)
     private val clientId = "22".repeat(16)
@@ -145,7 +145,8 @@ class ConnectHandshakeTest {
 
     @Test
     fun aPairLinkRoundTripsAndGarbageIsRefused() {
-        val link = PairLink("192.168.1.20", 41000, hostId, "ab".repeat(16))
+        val fp = "cd".repeat(16)
+        val link = PairLink("192.168.1.20", 41000, hostId, "ab".repeat(16), fp, "Living room")
         assertEquals(link, PairLink.parse(link.text()))
         assertEquals(link, PairLink.parse("  " + link.text() + "\n"))
         listOf(
@@ -153,7 +154,7 @@ class ConnectHandshakeTest {
             link.text().replace("p=41000", "p=0"), link.text().replace("p=41000", "p=99999"), link.text().replace("p=41000", "p=abc"),
             link.text().replace("t=" + "ab".repeat(16), "t=short"), link.text().replace("t=" + "ab".repeat(16), "t=" + "zz".repeat(16)),
             link.text().replace("i=$hostId", "i=zz"), link.text().replace("h=192.168.1.20", "h=evil.example.com/x"),
-            link.text() + "x".repeat(300), "http://x", "tmplayermusic://other?h=1",
+            link.text() + "x".repeat(400), link.text().replace("&f=$fp", ""), link.text().replace("f=$fp", "f=abcd"), link.text().replace("f=$fp", "f=" + "zz".repeat(16)), "http://x", "tmplayermusic://other?h=1",
         ).forEach { assertNull(it, PairLink.parse(it)) }
     }
 
@@ -175,5 +176,122 @@ class ConnectHandshakeTest {
         assertEquals(auth, ConnectFrames.parse(ConnectFrames.encode(auth)))
         val hello = ConnectFrame.Hello(ConnectLimits.VERSION, "aa".repeat(8), hostId, "TV", key)
         assertEquals(hello, ConnectFrames.parse(ConnectFrames.encode(hello)))
+    }
+
+    /** One leg of an exchange as the phone and the TV each see it: their own view of the keys and nonces. */
+    private class Leg(val sn: String, val cn: String, val host: EphemeralKey, val client: EphemeralKey, val commit: String)
+
+    private fun sasOf(leg: Leg, tvReveal: String, phoneReveal: String, side: String): String {
+        val th = ConnectHandshake.transcript("c", ConnectLimits.VERSION, leg.sn, leg.cn, hostId, leg.host.publicHex, clientId, "Pixel", leg.client.publicHex, leg.commit)
+        val shared = if (side == "tv") leg.host.agree(leg.client.publicHex)!! else leg.client.agree(leg.host.publicHex)!!
+        return ConnectHandshake.sas(shared, th, tvReveal, phoneReveal)
+    }
+
+    @Test
+    fun bothEndsOfAnHonestExchangeShowTheSameSixDigits() {
+        val reveal = ConnectHandshake.newReveal()
+        val leg = Leg(ConnectHandshake.newNonce(), ConnectHandshake.newNonce(), EphemeralKey.generate(), EphemeralKey.generate(), ConnectHandshake.commit(reveal))
+        val tvReveal = ConnectHandshake.newReveal()
+        val phone = sasOf(leg, tvReveal, reveal, "phone")
+        assertEquals(phone, sasOf(leg, tvReveal, reveal, "tv"))
+        assertTrue(Regex("\\d{3} \\d{3}").matches(phone))
+    }
+
+    @Test
+    fun aRelayedEcdhGivesTheTwoEndsDifferentStrings() {
+        // The man in the middle holds two exchanges: phone to him (keys, nonces of that leg) and him to the TV.
+        // Even when the code is known to him and every MAC passes, the strings the two users see are not the same.
+        var same = 0
+        repeat(300) {
+            val reveal = ConnectHandshake.newReveal()
+            val tvReveal = ConnectHandshake.newReveal()
+            val phoneLeg = Leg(ConnectHandshake.newNonce(), ConnectHandshake.newNonce(), EphemeralKey.generate(), EphemeralKey.generate(), ConnectHandshake.commit(reveal))
+            val tvLeg = Leg(ConnectHandshake.newNonce(), ConnectHandshake.newNonce(), EphemeralKey.generate(), EphemeralKey.generate(), ConnectHandshake.commit(reveal))
+            if (sasOf(phoneLeg, tvReveal, reveal, "phone") == sasOf(tvLeg, tvReveal, reveal, "tv")) same++
+        }
+        // 1 in a million per run: none in 300 (a failure here would mean the strings do not depend on the exchange).
+        assertEquals(0, same)
+    }
+
+    @Test
+    fun theStringDependsOnEveryPartOfTheTranscriptAndBothRevealedValues() {
+        val reveal = ConnectHandshake.newReveal()
+        val tvReveal = ConnectHandshake.newReveal()
+        val leg = Leg(ConnectHandshake.newNonce(), ConnectHandshake.newNonce(), EphemeralKey.generate(), EphemeralKey.generate(), ConnectHandshake.commit(reveal))
+        val base = sasOf(leg, tvReveal, reveal, "tv")
+        assertFalse(base == sasOf(leg, ConnectHandshake.newReveal(), reveal, "tv"))
+        assertFalse(base == sasOf(leg, tvReveal, ConnectHandshake.newReveal(), "tv"))
+        assertFalse(base == sasOf(Leg(ConnectHandshake.newNonce(), leg.cn, leg.host, leg.client, leg.commit), tvReveal, reveal, "tv"))
+        assertFalse(base == sasOf(Leg(leg.sn, ConnectHandshake.newNonce(), leg.host, leg.client, leg.commit), tvReveal, reveal, "tv"))
+        assertFalse(base == sasOf(Leg(leg.sn, leg.cn, leg.host, leg.client, ConnectHandshake.commit(ConnectHandshake.newReveal())), tvReveal, reveal, "tv"))
+    }
+
+    @Test
+    fun theCommitmentBindsThePhoneToItsValue() {
+        val reveal = ConnectHandshake.newReveal()
+        val commit = ConnectHandshake.commit(reveal)
+        assertEquals(64, commit.length)
+        assertTrue(ConnectCrypto.same(commit, ConnectHandshake.commit(reveal)))
+        assertFalse(ConnectCrypto.same(commit, ConnectHandshake.commit(ConnectHandshake.newReveal())))
+    }
+
+    @Test
+    fun theDecisionAndTheTvValueAreProvenWithTheCodesKeyAndBoundToTheString() {
+        val key = ConnectCrypto.randomBytes(32)
+        val th = ConnectCrypto.sha256("t")
+        val yes = ConnectHandshake.decisionMac(key, th, "123 456", true)
+        assertFalse(yes == ConnectHandshake.decisionMac(key, th, "123 456", false))
+        assertFalse(yes == ConnectHandshake.decisionMac(key, th, "123 457", true))
+        assertFalse(yes == ConnectHandshake.decisionMac(ConnectCrypto.randomBytes(32), th, "123 456", true))
+        assertFalse(ConnectHandshake.sasInitMac(key, th, "aa".repeat(16)) == ConnectHandshake.sasInitMac(key, th, "bb".repeat(16)))
+    }
+
+    @Test
+    fun aKeyFingerprintNamesOneKeyAndGarbageNamesNone() {
+        val a = EphemeralKey.generate()
+        val b = EphemeralKey.generate()
+        assertEquals(ConnectHandshake.FINGERPRINT_CHARS, ConnectHandshake.fingerprint(a.publicHex).length)
+        assertEquals(ConnectHandshake.fingerprint(a.publicHex), ConnectHandshake.fingerprint(a.publicHex))
+        assertFalse(ConnectHandshake.fingerprint(a.publicHex) == ConnectHandshake.fingerprint(b.publicHex))
+        assertEquals("", ConnectHandshake.fingerprint("zz"))
+        assertEquals("", ConnectHandshake.fingerprint("ab".repeat(100)))
+    }
+
+    @Test
+    fun theNewHandshakeFramesRoundTripAndGarbageNeverCrashes() {
+        val reveal = "ab".repeat(16)
+        val mac = "cc".repeat(32)
+        listOf(ConnectFrame.SasInit(reveal, mac), ConnectFrame.SasReveal(reveal), ConnectFrame.Confirm(true, mac), ConnectFrame.Confirm(false, mac)).forEach {
+            assertEquals(it, ConnectFrames.parse(ConnectFrames.encode(it)))
+        }
+        val key = EphemeralKey.generate().publicHex
+        val pair = ConnectFrame.Pair(ConnectLimits.VERSION, clientId, "Pixel", "bb".repeat(8), key, ConnectHandshake.Via.Code, mac, commit = "dd".repeat(32))
+        assertEquals(pair, ConnectFrames.parse(ConnectFrames.encode(pair)))
+        listOf(
+            """{"t":"sasi","r":"zz","m":"$mac"}""", """{"t":"sasi","r":"$reveal"}""", """{"t":"sasr","r":"${"ab".repeat(40)}"}""", """{"t":"sasr"}""",
+            """{"t":"sasc","ok":"yes","m":"$mac"}""", """{"t":"sasc","m":"$mac"}""", """{"t":"sasc","ok":1,"m":"short"}""",
+            """{"t":"pair","v":${ConnectLimits.VERSION},"id":"$clientId","cn":"${"bb".repeat(8)}","ek":"$key","via":"c","m":"$mac","rc":"nothex"}""",
+            """{"t":"pair","v":${ConnectLimits.VERSION},"id":"$clientId","cn":"${"bb".repeat(8)}","ek":"$key","via":"c","m":"$mac","rc":5}""",
+            "{\"t\":\"sasc\"", "[]", "null", "\u0000",
+        ).forEach { assertNull(it, ConnectFrames.parse(it)) }
+        // Random text never throws.
+        val random = java.util.Random(7)
+        repeat(300) {
+            val noise = String(CharArray(random.nextInt(200)) { (random.nextInt(95) + 32).toChar() }).replace("\"", "'").replace("\\", "/")
+            ConnectFrames.parse(noise)
+            ConnectFrames.parse("""{"t":"sasc","ok":${random.nextInt()},"m":"$noise"}""")
+        }
+    }
+
+    @Test
+    fun aPairLinkNameIsOnlyTextAndIsCutAndCleaned() {
+        val long = PairLink("192.168.1.20", 41000, hostId, "ab".repeat(16), "cd".repeat(16), "N".repeat(200) + "\u0007")
+        val back = PairLink.parse(long.text())!!
+        assertTrue(back.name.length <= 30)
+        assertTrue(long.text().length < 400)
+        val odd = PairLink("192.168.1.20", 41000, hostId, "ab".repeat(16), "cd".repeat(16), "Tv & co = x é")
+        assertEquals("Tv & co = x é", PairLink.parse(odd.text())!!.name)
+        assertEquals("", PairLink.parse(odd.text().replace("&n=", "&n=%zz"))!!.name)
+        assertEquals("", PairLink.parse(PairLink("192.168.1.20", 41000, hostId, "ab".repeat(16), "cd".repeat(16)).text())!!.name)
     }
 }

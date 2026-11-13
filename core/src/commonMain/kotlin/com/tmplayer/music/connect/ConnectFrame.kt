@@ -24,7 +24,20 @@ sealed interface ConnectFrame {
     data class Ready(val mac: String) : ConnectFrame
 
     /** A new phone proving it saw the code on the TV's screen. */
-    data class Pair(val version: Int, val id: String, val name: String, val nonce: String, val key: String, val via: ConnectHandshake.Via, val mac: String) : ConnectFrame
+    data class Pair(
+        val version: Int, val id: String, val name: String, val nonce: String, val key: String, val via: ConnectHandshake.Via, val mac: String,
+        /** Of a typed code: the phone's [ConnectHandshake.commit] to the value it reveals later; empty for the QR token. */
+        val commit: String = "",
+    ) : ConnectFrame
+
+    /** The TV accepted the typed code and sends its random value for the authentication string, proven with the code's key. */
+    data class SasInit(val reveal: String, val mac: String) : ConnectFrame
+
+    /** The phone's value, the one it committed to in [Pair]. */
+    data class SasReveal(val reveal: String) : ConnectFrame
+
+    /** The phone's answer to "do the two screens show the same string?", proven with the code's key. */
+    data class Confirm(val ok: Boolean, val mac: String) : ConnectFrame
 
     /** The new secret (hidden under a key made from the code) and the host's proof of it. */
     data class Paired(val wrapped: String, val mac: String) : ConnectFrame
@@ -53,6 +66,12 @@ object ConnectErrors {
     /** Too many phones are connected or connecting. */
     const val BUSY = "busy"
     const val MALFORMED = "malformed"
+
+    /** Someone said the two screens did not show the same string (or did not answer in time): the attempt is over. */
+    const val DECLINED = "declined"
+
+    /** What answered is not the TV this pairing or this saved TV is for (another id, or a key the QR code did not name). */
+    const val WRONG_TV = "wrong_tv"
 }
 
 object ConnectFrames {
@@ -63,7 +82,10 @@ object ConnectFrames {
             is ConnectFrame.Hello -> { put("t", "hello"); put("v", frame.version); put("sn", frame.nonce); put("id", frame.id); put("name", frame.name); put("ek", frame.key) }
             is ConnectFrame.Auth -> { put("t", "auth"); put("v", frame.version); put("id", frame.id); put("name", frame.name); put("cn", frame.nonce); put("ek", frame.key); put("m", frame.mac) }
             is ConnectFrame.Ready -> { put("t", "ready"); put("m", frame.mac) }
-            is ConnectFrame.Pair -> { put("t", "pair"); put("v", frame.version); put("id", frame.id); put("name", frame.name); put("cn", frame.nonce); put("ek", frame.key); put("via", frame.via.wire); put("m", frame.mac) }
+            is ConnectFrame.Pair -> { put("t", "pair"); put("v", frame.version); put("id", frame.id); put("name", frame.name); put("cn", frame.nonce); put("ek", frame.key); put("via", frame.via.wire); put("m", frame.mac); if (frame.commit.isNotEmpty()) put("rc", frame.commit) }
+            is ConnectFrame.SasInit -> { put("t", "sasi"); put("r", frame.reveal); put("m", frame.mac) }
+            is ConnectFrame.SasReveal -> { put("t", "sasr"); put("r", frame.reveal) }
+            is ConnectFrame.Confirm -> { put("t", "sasc"); put("ok", if (frame.ok) 1 else 0); put("m", frame.mac) }
             is ConnectFrame.Paired -> { put("t", "paired"); put("w", frame.wrapped); put("m", frame.mac) }
             is ConnectFrame.Err -> { put("t", "err"); put("c", frame.code); put("left", frame.left); put("retry", frame.retrySeconds) }
             is ConnectFrame.Secured -> { put("s", frame.seq); put("p", frame.payload); put("m", frame.mac) }
@@ -109,8 +131,13 @@ object ConnectFrames {
                     o.hexField("cn", NONCE_CHARS) ?: return null, key(o, v) ?: return null,
                     ConnectHandshake.Via.of(o.str("via")) ?: if (v != ConnectLimits.VERSION) ConnectHandshake.Via.Code else return null,
                     o.hexField("m", MAC_CHARS) ?: return null,
+                    // Absent for the QR token; a present one must be a real commitment.
+                    if (o["rc"] == null) "" else o.hexField("rc", MAC_CHARS) ?: return null,
                 )
             }
+            "sasi" -> ConnectFrame.SasInit(o.hexField("r", REVEAL_CHARS) ?: return null, o.hexField("m", MAC_CHARS) ?: return null)
+            "sasr" -> ConnectFrame.SasReveal(o.hexField("r", REVEAL_CHARS) ?: return null)
+            "sasc" -> ConnectFrame.Confirm((o.int("ok") ?: return null) == 1, o.hexField("m", MAC_CHARS) ?: return null)
             "paired" -> ConnectFrame.Paired(o.hexField("w", MAC_CHARS) ?: return null, o.hexField("m", MAC_CHARS) ?: return null)
             "err" -> ConnectFrame.Err(o.text("c", 40), (o.int("left") ?: 0).coerceIn(0, 100), (o.int("retry") ?: 0).coerceIn(0, 3600))
             else -> null
@@ -131,5 +158,6 @@ object ConnectFrames {
     private val NONCE_CHARS = 16..64
     private val ID_CHARS = 16..64
     private val MAC_CHARS = 64..64
+    private val REVEAL_CHARS = ConnectHandshake.REVEAL_BYTES * 2..ConnectHandshake.REVEAL_BYTES * 2
     private const val NAME_MAX = 60
 }

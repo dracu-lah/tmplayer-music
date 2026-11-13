@@ -4,8 +4,11 @@ import com.tmplayer.music.data.KeyValues
 import com.tmplayer.music.platform.Logger
 import java.io.File
 import java.io.IOException
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.FileAttribute
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.Properties
 
 /**
@@ -77,7 +80,17 @@ class DesktopPrefs(private val file: File) : KeyValues {
             val temp = File(file.path + ".part")
             val p = Properties()
             values.forEach { (k, v) -> p.setProperty(k, v) }
-            temp.outputStream().use { p.store(it, null) }
+            // This file holds the pairing secrets of Connect, so it is made readable by its owner only (0600) from the first byte:
+            // the temp file is created with those permissions and the rename keeps them. Where there is no POSIX
+            // (Windows) nothing is set here and the user profile's own ACL, which already limits the folder to the user, applies.
+            Files.deleteIfExists(temp.toPath())
+            val owner: Array<FileAttribute<*>> = if ("posix" in FileSystems.getDefault().supportedFileAttributeViews()) {
+                arrayOf(PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+            } else {
+                emptyArray()
+            }
+            Files.createFile(temp.toPath(), *owner)
+            Files.newOutputStream(temp.toPath()).use { p.store(it, null) }
             try {
                 Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             } catch (e: IOException) {

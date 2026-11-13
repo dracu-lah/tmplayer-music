@@ -583,18 +583,21 @@ class GarbageInputTest {
         )
         val key = com.tmplayer.music.connect.EphemeralKey.generate()
         val handshake = listOf(
-            com.tmplayer.music.connect.ConnectFrame.Hello(2, "aa".repeat(8), "bb".repeat(16), "TV", key.publicHex),
-            com.tmplayer.music.connect.ConnectFrame.Auth(2, "bb".repeat(16), "P", "cc".repeat(8), key.publicHex, "dd".repeat(32)),
-            com.tmplayer.music.connect.ConnectFrame.Pair(2, "bb".repeat(16), "P", "cc".repeat(8), key.publicHex, com.tmplayer.music.connect.ConnectHandshake.Via.Token, "dd".repeat(32)),
+            com.tmplayer.music.connect.ConnectFrame.Hello(3, "aa".repeat(8), "bb".repeat(16), "TV", key.publicHex),
+            com.tmplayer.music.connect.ConnectFrame.Auth(3, "bb".repeat(16), "P", "cc".repeat(8), key.publicHex, "dd".repeat(32)),
+            com.tmplayer.music.connect.ConnectFrame.Pair(3, "bb".repeat(16), "P", "cc".repeat(8), key.publicHex, com.tmplayer.music.connect.ConnectHandshake.Via.Token, "dd".repeat(32)),
             com.tmplayer.music.connect.ConnectFrame.Paired("ee".repeat(32), "dd".repeat(32)),
+            com.tmplayer.music.connect.ConnectFrame.SasInit("ab".repeat(16), "dd".repeat(32)),
+            com.tmplayer.music.connect.ConnectFrame.SasReveal("ab".repeat(16)),
+            com.tmplayer.music.connect.ConnectFrame.Confirm(true, "dd".repeat(32)),
         ).map { com.tmplayer.music.connect.ConnectFrames.encode(it) }
-        val link = com.tmplayer.music.connect.PairLink("192.168.1.2", 4100, "bb".repeat(16), "cc".repeat(16)).text()
+        val link = com.tmplayer.music.connect.PairLink("192.168.1.2", 4100, "bb".repeat(16), "cc".repeat(16), "dd".repeat(16), "TV").text()
         val cases = handshake + handshake.map { it.substring(0, it.length / 2) } + listOf(
             "", " ", "{", "[]", "null", "42", "\"text\"", "{\"t\": 5}", "{\"t\":\"auth\",\"id\":[]}", "{\"s\":\"x\"}",
             "{\"t\":\"hello\",\"v\":2,\"sn\":\"${"aa".repeat(8)}\",\"id\":\"${"bb".repeat(16)}\",\"ek\":[]}",
             "{\"t\":\"pair\",\"v\":\"2\",\"via\":5,\"ek\":null}", "{\"t\":\"pair\",\"v\":2,\"ek\":\"" + "f".repeat(130) + "\"}",
             "{\"t\":\"auth\",\"v\":2,\"ek\":\"" + "0".repeat(100_000) + "\"}", "{\"t\":\"paired\",\"w\":\"zz\",\"m\":1}",
-            "{\"t\":\"hello\",\"v\":1,\"sn\":\"zz\",\"id\":\"a\"}", "{\"t\":\"seek\",\"ms\":1e999}",
+            "{\"t\":\"hello\",\"v\":1,\"sn\":\"zz\",\"id\":\"a\"}", "{\"t\":\"seek\",\"ms\":1e999}", "{\"t\":\"sasc\",\"ok\":{},\"m\":[]}", "{\"t\":\"sasi\",\"r\":1}", "{\"t\":\"sasr\",\"r\":null}", "{\"t\":\"pair\",\"rc\":[]}", "tmplayermusic://pair?h=1.2.3.4&p=1&f=&n=%",
             "{\"t\":\"send\",\"how\":\"add\",\"items\":{}}", "{\"t\":\"send\",\"how\":\"add\",\"items\":[1,null,\"x\",{\"c\":\"1\"}]}",
             "{\"t\":\"queue\",\"items\":[[],5]}", "{\"t\":\"sent\",\"how\":\"play\",\"names\":[1,null]}",
             frame.substring(0, frame.length / 2), body.substring(0, body.length / 2), book.substring(0, book.length / 2),

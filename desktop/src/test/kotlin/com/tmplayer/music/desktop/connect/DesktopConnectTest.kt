@@ -235,7 +235,7 @@ class DesktopConnectTest {
         assertEquals(ConnectHostStatus.Off, host.status.value)
         eventually("advert withdrawn") { advert.unregistered.get() >= 1 }
         assertNull(host.gate.current())
-        assertTrue(ConnectClient.pair("127.0.0.1", listening.port, me, "123456") !is PairResult.Success)
+        assertTrue(ConnectClient.pair("127.0.0.1", listening.port, me, "123456") { _, _ -> true } !is PairResult.Success)
     }
 
     @Test
@@ -259,11 +259,11 @@ class DesktopConnectTest {
         assertTrue(host.openPairing())
         val offer = host.gate.current()!!
         // The QR token of the offer pairs without typing, only the computer the QR code named.
-        val paired = (ConnectClient.pair(PairLink("127.0.0.1", port, tvId, offer.token), me) as PairResult.Success).paired
+        val paired = (ConnectClient.pair(PairLink("127.0.0.1", port, tvId, offer.token, offer.fingerprint, "My computer"), me) as PairResult.Success).paired
         assertEquals(tvId, paired.id)
         assertEquals(1, phones.list.value.size)
         // The offer is spent with either way.
-        assertEquals(ConnectErrors.CLOSED, (ConnectClient.pair("127.0.0.1", port, me, offer.code) as PairResult.Refused).code)
+        assertEquals(ConnectErrors.CLOSED, (ConnectClient.pair("127.0.0.1", port, me, offer.code) { _, _ -> true } as PairResult.Refused).code)
 
         val inbox = CopyOnWriteArrayList<ConnectBody>()
         val connected = ConnectClient.connect("127.0.0.1", port, me, paired, { inbox += it }, { }) as ConnectResult.Connected
@@ -284,13 +284,46 @@ class DesktopConnectTest {
     }
 
     @Test
+    fun `a typed code pairs only when the computer's user and the phone's user both confirm the same number`() = runBlocking {
+        host.start()
+        val port = (host.status.value as ConnectHostStatus.Listening).port
+        host.openPairing()
+        val code = host.gate.current()!!.code
+        val phoneSaw = CopyOnWriteArrayList<String>()
+        // The computer's user says no: nothing is stored, the phone is told, and the attempt counts as a wrong try.
+        val first = Thread {
+            runCatching { runBlocking { eventually("the computer asks") { host.sasRequest.value != null } } }
+            host.sasRequest.value?.decline()
+        }.apply { isDaemon = true; start() }
+        val declined = ConnectClient.pair("127.0.0.1", port, me, code) { sas, _ -> phoneSaw += sas; true }
+        first.join(5_000)
+        assertEquals(ConnectErrors.DECLINED, (declined as PairResult.Refused).code)
+        assertTrue(phones.list.value.isEmpty())
+        eventually("the question is gone") { host.sasRequest.value == null }
+
+        // Both say yes: the same number was on both screens and the phone is stored.
+        host.openPairing()
+        val seen = CopyOnWriteArrayList<String>()
+        val second = Thread {
+            runCatching { runBlocking { eventually("the computer asks") { host.sasRequest.value != null } } }
+            host.sasRequest.value?.let { seen += it.sas; it.accept() }
+        }.apply { isDaemon = true; start() }
+        val result = ConnectClient.pair("127.0.0.1", port, me, host.gate.current()!!.code) { sas, _ -> phoneSaw += sas; true }
+        second.join(5_000)
+        assertTrue(result is PairResult.Success)
+        assertEquals(seen.single(), phoneSaw.last())
+        assertEquals(1, phones.list.value.size)
+        host.stop()
+    }
+
+    @Test
     fun `a wrong code is counted and five lock the pairing`() = runBlocking {
         host.start()
         val port = (host.status.value as ConnectHostStatus.Listening).port
         host.openPairing()
         val wrong = if (host.gate.current()!!.code == "000000") "111111" else "000000"
-        repeat(4) { assertEquals(ConnectErrors.BAD_CODE, (ConnectClient.pair("127.0.0.1", port, me, wrong) as PairResult.Refused).code) }
-        assertEquals(ConnectErrors.LOCKED, (ConnectClient.pair("127.0.0.1", port, me, wrong) as PairResult.Refused).code)
+        repeat(4) { assertEquals(ConnectErrors.BAD_CODE, (ConnectClient.pair("127.0.0.1", port, me, wrong) { _, _ -> true } as PairResult.Refused).code) }
+        assertEquals(ConnectErrors.LOCKED, (ConnectClient.pair("127.0.0.1", port, me, wrong) { _, _ -> true } as PairResult.Refused).code)
         assertTrue(phones.list.value.isEmpty())
         host.stop()
     }

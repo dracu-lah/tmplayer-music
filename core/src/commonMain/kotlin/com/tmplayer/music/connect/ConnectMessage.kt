@@ -15,7 +15,7 @@ import kotlinx.serialization.json.put
 /** Sizes and counts nothing on the wire may exceed; a longer line, name or list is dropped, never trusted. */
 object ConnectLimits {
     /** The newest protocol this build speaks. A peer that sends another version is told so. */
-    const val VERSION = 2
+    const val VERSION = 3
 
     /** One line on the wire, in characters. Roomy enough for a small cover, small enough for a 1 GB stick. */
     const val MAX_LINE = 96 * 1024

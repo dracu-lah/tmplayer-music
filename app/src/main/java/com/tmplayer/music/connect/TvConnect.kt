@@ -105,6 +105,14 @@ object TvConnect : ConnectHandler {
     private var advert: NsdAdvert? = null
     private var pushJob: Job? = null
     private var clientsJob: Job? = null
+    private var sasJob: Job? = null
+    private val _sas = MutableStateFlow<SasRequest?>(null)
+
+    /**
+     * A phone gave the right code and waits for this screen's user to say whether the phone shows the
+     * same string: the pairing screen asks "does the phone show 123 456?". Null when none.
+     */
+    val sasRequest: StateFlow<SasRequest?> = _sas.asStateFlow()
 
     /** The cover last made, with the generated key it belongs to; reused for each new phone. */
     @Volatile
@@ -157,7 +165,11 @@ object TvConnect : ConnectHandler {
         return true
     }
 
-    fun closePairing() = gate.close()
+    /** The pairing screen is gone: no code on show, and a phone waiting to be confirmed is told no. */
+    fun closePairing() {
+        gate.close()
+        _sas.value?.decline()
+    }
 
     /** Forgets [id]: its pairing is removed and its connections end. */
     fun forget(id: String) {
@@ -190,19 +202,32 @@ object TvConnect : ConnectHandler {
             return
         }
         val s = ConnectServer(bind, Connect.deviceId, Connect.deviceName, Connect.phones, gate, this)
+        // Held before the suspend point below: when collectLatest cancels this run while the server starts
+        // on the IO thread, the server is already where shutdown() (or the finally here) can stop it,
+        // never left listening with Connect off.
+        server = s
+        boundTo = bind
+        var listening = false
         val port = try {
-            withContext(Dispatchers.IO) { s.start() }
+            withContext(Dispatchers.IO) { s.start() }.also { listening = true }
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
             Logger.w(TAG, "could not listen", e)
             _status.value = HostStatus.Failed
             return
+        } finally {
+            if (!listening) {
+                s.stop()
+                if (server === s) {
+                    server = null
+                    boundTo = null
+                }
+            }
         }
-        server = s
-        boundTo = bind
         advert = NsdAdvert(app).also { it.register(port, Connect.deviceId, Connect.deviceName) }
         _status.value = HostStatus.Listening(bind.hostAddress.orEmpty(), port)
+        sasJob = scope.launch { s.sasRequest.collect { _sas.value = it } }
         clientsJob = scope.launch { s.clients.collect { clients.value = it } }
         pushJob = scope.launch { pushWhileConnected() }
     }
@@ -216,6 +241,8 @@ object TvConnect : ConnectHandler {
         boundTo = null
         pushJob?.cancel()
         clientsJob?.cancel()
+        sasJob?.cancel()
+        _sas.value = null
         advert?.unregister()
         advert = null
         gate.close()

@@ -153,17 +153,49 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
     val lockedUntil by TvConnect.gate.lockedUntil.collectAsStateWithLifecycle()
     val phones by Connect.phones.list.collectAsStateWithLifecycle()
     val status by TvConnect.status.collectAsStateWithLifecycle()
+    val sas by TvConnect.sasRequest.collectAsStateWithLifecycle()
     val before = remember { phones.map { it.id }.toSet() }
     val newcomer = phones.firstOrNull { it.id !in before }
     var locked by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { TvConnect.openPairing() }
     DisposableEffect(Unit) { onDispose { TvConnect.closePairing() } }
-    // A new code when this one runs out, while the dialog is up; nothing ticks otherwise.
-    LaunchedEffect(offer?.expiresAt) {
+    // A new code when this one runs out, while the dialog is up (and no phone waits to be confirmed); nothing ticks otherwise.
+    LaunchedEffect(offer?.expiresAt, sas == null) {
         val end = offer?.expiresAt ?: return@LaunchedEffect
+        if (sas != null) return@LaunchedEffect
         delay((end - SystemClock.elapsedRealtime()).coerceAtLeast(0))
         TvConnect.openPairing()
+    }
+
+    // After a no (the code was spent), the next phone needs a new code; after a yes the "paired" line shows instead.
+    var asked by remember { mutableStateOf(false) }
+    LaunchedEffect(sas) {
+        if (sas != null) {
+            asked = true
+        } else if (asked) {
+            asked = false
+            delay(400)
+            if (Connect.phones.list.value.none { it.id !in before }) TvConnect.openPairing()
+        }
+    }
+
+    // A phone gave the right code: nothing is stored until this screen's user says the phone shows the same string. Cancel is where the focus starts.
+    sas?.let { request ->
+        AlertDialog(
+            onDismissRequest = { request.decline() },
+            title = { Text(L.connectSasTitle) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(L.connectSasHostBody(request.phoneName.ifBlank { request.phoneId.take(8) }), style = MaterialTheme.typography.bodyLarge)
+                    Text(request.sas, style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace))
+                    Text(L.connectSasNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { request.accept() }) { Text(L.commonOk) } },
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { request.decline() }) { Text(L.commonCancel) } },
+        )
+        return
     }
     LaunchedEffect(lockedUntil) {
         val wait = lockedUntil - SystemClock.elapsedRealtime()
@@ -209,7 +241,7 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
 private fun pairLinkText(status: HostStatus, offer: PairingOffer?): String? {
     val listening = status as? HostStatus.Listening ?: return null
     offer ?: return null
-    return PairLink(listening.address, listening.port, Connect.deviceId, offer.token).text()
+    return PairLink(listening.address, listening.port, Connect.deviceId, offer.token, offer.fingerprint, Connect.deviceName).text()
 }
 
 // ---- The phone: paired TVs, pair, open the remote.
@@ -271,6 +303,26 @@ fun PairTvDialog(onDismiss: () -> Unit, onPaired: () -> Unit) {
     // One TV on the network is the one: no extra tap.
     val target = picked ?: found.singleOrNull()
     val typed = if (target == null) PhoneRemote.parseAddress(address) else null
+    val prompt by PhoneRemote.sasPrompt.collectAsStateWithLifecycle()
+    // Leaving while a question waits is a no, so the TV does not sit waiting for a phone that is gone.
+    DisposableEffect(Unit) { onDispose { PhoneRemote.sasPrompt.value?.answer(false) } }
+
+    // The TV took the code: both screens must show the same string. No is the safe answer and where the focus starts.
+    prompt?.let { question ->
+        AlertDialog(
+            onDismissRequest = { question.answer(false) },
+            title = { Text(L.connectSasTitle) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(L.connectSasPhoneBody(question.tvName), style = MaterialTheme.typography.bodyLarge)
+                    Text(question.sas, style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace))
+                    Text(L.connectSasNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { question.answer(true) }) { Text(L.connectSasYes) } },
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { question.answer(false) }) { Text(L.connectSasNo) } },
+        )
+    }
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -348,13 +400,19 @@ fun PairLinkHost() {
         },
         title = { Text(L.connectPairLinkTitle) },
         text = {
-            Text(
-                when {
-                    done -> L.connectPairLinkDone
-                    error != null -> error.orEmpty()
-                    else -> L.connectPairLinkBody(pending.host)
-                },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    when {
+                        done -> L.connectPairLinkDone
+                        error != null -> error.orEmpty()
+                        // The link names the TV (its name and id come from the link, so they only identify it, never prove it).
+                        else -> L.connectPairLinkBody(pending.name.ifBlank { L.connectPairLinkNoName }, pending.tvId.take(8), "${pending.host}:${pending.port}")
+                    },
+                )
+                if (!done && error == null) {
+                    Text(L.connectPairLinkPath, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         },
         confirmButton = {
             TextButton(
@@ -394,5 +452,8 @@ private fun refusal(r: PairResult.Refused): String = when (r.code) {
     ConnectErrors.LOCKED -> L.connectErrLocked(r.retrySeconds)
     ConnectErrors.CLOSED -> L.connectErrClosed
     ConnectErrors.VERSION -> L.connectErrVersion
+    ConnectErrors.DECLINED -> L.connectErrDeclined
+    ConnectErrors.WRONG_TV -> L.connectErrWrongTv
+    ConnectErrors.BUSY -> L.connectErrBusy
     else -> L.connectErrOther
 }
