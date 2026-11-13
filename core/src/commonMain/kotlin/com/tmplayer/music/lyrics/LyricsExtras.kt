@@ -36,6 +36,30 @@ class LyricsOffsets(private val store: KeyValues) {
         runCatching { store.putString(KEY, "") }
     }
 
+    /**
+     * Forgets the offsets of every track of [chatIds] (keys are `chatId:messageId`), for a chat the
+     * user left. Returns how many were dropped. Never throws.
+     */
+    fun forgetChats(chatIds: Collection<Long>): Int {
+        if (chatIds.isEmpty()) return 0
+        val prefixes = chatIds.mapTo(HashSet()) { "$it:" }
+        var dropped = 0
+        val text = synchronized(lock) {
+            val it = entries.keys.iterator()
+            while (it.hasNext()) {
+                val key = it.next()
+                if (prefixes.any { p -> key.startsWith(p) }) {
+                    it.remove()
+                    dropped++
+                }
+            }
+            if (dropped == 0) return 0
+            encode(entries)
+        }
+        runCatching { store.putString(KEY, text) }
+        return dropped
+    }
+
     companion object {
         private const val KEY = "lyrics_offsets"
         const val STEP_MS = 100L

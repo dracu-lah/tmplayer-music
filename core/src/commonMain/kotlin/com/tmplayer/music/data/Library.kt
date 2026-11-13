@@ -311,6 +311,7 @@ object Library {
         index().setPicked(chats)
         _changes.value++
         OfflineDownloads.purgeChats(dropped)
+        com.tmplayer.music.lyrics.LyricsOnline.forgetChats(dropped)
         scanner.scan(after.toList())
     }
 
@@ -322,6 +323,7 @@ object Library {
         _changes.value++
         // After the index change, so a failed one leaves the kept files alone.
         OfflineDownloads.purgeChat(chatId)
+        com.tmplayer.music.lyrics.LyricsOnline.forgetChats(listOf(chatId))
     }
 
     /** Scans every chosen chat again from where it stopped, and tops up the finished ones. */
@@ -424,6 +426,7 @@ object Library {
         File(dir, "lyrics").deleteRecursively()
         lyricsCache.evictAll()
         com.tmplayer.music.lyrics.LyricsOnline.clear()
+        com.tmplayer.music.lyrics.LyricsOnline.forgetAllOffsets()
         com.tmplayer.music.covers.CoverOnline.clear()
         dropLoaders()
         File(dir, ACCOUNT_FILE).delete()
