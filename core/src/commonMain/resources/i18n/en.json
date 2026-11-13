@@ -14,6 +14,10 @@
     "short_name": "Music",
     "unofficial": "Unofficial, not affiliated with Telegram."
   },
+  "auto": {
+    "empty": "Nothing to play yet. On your phone, open TMPlayer Music and add chats with music.",
+    "signed_out": "Sign in on your phone first. Open TMPlayer Music and sign in with Telegram."
+  },
   "chatfirst": {
     "chat_clean_up": "Remove it from your library",
     "chat_empty": "No audio in this chat.",
@@ -532,5 +536,9 @@
   },
   "welcome": {
     "body": "A player for the audio files already in your own Telegram chats. You choose which chats it reads; nothing else is touched."
+  },
+  "widget": {
+    "empty": "Nothing queued. Tap to open TMPlayer Music.",
+    "name": "Now playing"
   }
 }

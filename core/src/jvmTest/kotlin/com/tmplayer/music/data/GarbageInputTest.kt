@@ -384,4 +384,14 @@ class GarbageInputTest {
         com.tmplayer.music.library.TitleFallback.tidyTitle(null)
         com.tmplayer.music.library.TitleFallback.tidyArtist(null)
     }
+
+    @Test
+    fun `browse ids from a car on garbage never crash`() {
+        val random = Random(29)
+        val odd = listOf("", "tm:", "tm:playlist:", "tm:playlist:99999999999999999999", "tm:chat:x", "tm::", ":::", "tm:album:" + "k".repeat(100_000))
+        repeat(1_500) {
+            val text = if (it < odd.size) odd[it] else "tm:" + String(CharArray(random.nextInt(0, 80)) { random.nextInt(0, 0xFFFF).toChar() })
+            com.tmplayer.music.auto.BrowseIds.parse(text)
+        }
+    }
 }
