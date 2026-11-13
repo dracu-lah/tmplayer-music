@@ -17,11 +17,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
-import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.MoreExecutors
-import com.google.common.util.concurrent.SettableFuture
+import com.tmplayer.music.widget.WidgetSync
 import com.tmplayer.music.MainActivity
 import com.tmplayer.music.R
 import com.tmplayer.music.data.Failures
@@ -61,10 +59,10 @@ import java.io.File
  * skipped with its reason shown ([PlaybackErrors]); three failures in a row stop the skipping.
  */
 @OptIn(UnstableApi::class)
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
     private val scope = JobFailures.scope("PlaybackService", Dispatchers.Main.immediate)
-    private var session: MediaSession? = null
+    private var session: MediaLibrarySession? = null
     private var failuresInARow = 0
     private var saveJob: Job? = null
     private var checkpointJob: Job? = null
@@ -100,15 +98,18 @@ class PlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         // The system sees the cover as bytes, not as the app's own URIs it cannot open (SessionArtwork.kt).
-        session = MediaSession.Builder(this, SessionArtworkPlayer(player, scope))
+        val shown = SessionArtworkPlayer(player, scope)
+        // The home screen widget follows the session: redrawn when the track or the state changes, never on a timer.
+        shown.addListener(WidgetSync(this, shown))
+        // Also the browse tree for cars (Android Auto) and voice search; see BrowseCallback.
+        session = MediaLibrarySession.Builder(this, shown, BrowseCallback(this, scope) { resolve(it) })
             .setSessionActivity(open)
-            .setCallback(Callback())
             .setBitmapLoader(CacheBitmapLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(sources).build()))
             .build()
         restore(player)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = session?.player
@@ -120,6 +121,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         Library.setPlaying(false)
+        com.tmplayer.music.widget.NowPlayingWidget.serviceStopped()
         save()
         checkpointJob?.cancel()
         session?.run {
@@ -310,28 +312,6 @@ class PlaybackService : MediaSessionService() {
                 player.prepare()
                 player.play()
             }
-        }
-    }
-
-    /** Items sent by a controller carry only their id; the track is found in the index here. */
-    private inner class Callback : MediaSession.Callback {
-        override fun onAddMediaItems(
-            mediaSession: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            mediaItems: MutableList<MediaItem>,
-        ): ListenableFuture<MutableList<MediaItem>> {
-            val future = SettableFuture.create<MutableList<MediaItem>>()
-            scope.launch {
-                val resolved = runCatching {
-                    withContext(Dispatchers.IO) {
-                        mediaItems.mapNotNull { item ->
-                            if (item.localConfiguration != null) item else MediaIds.item(item.mediaId)?.let { resolve(it) }
-                        }.toMutableList()
-                    }
-                }
-                resolved.onSuccess { future.set(it) }.onFailure { future.setException(it) }
-            }
-            return future
         }
     }
 
