@@ -32,6 +32,8 @@ class PlayerControllerTest {
             random = Random(3),
             saveDelayMs = 20,
             checkpointMs = 60_000,
+            sleepFadeMs = 40,
+            prefetchLeadMs = 30_000,
         )
     }
 
@@ -329,6 +331,108 @@ class PlayerControllerTest {
         assertNotNull(SavedQueue.decode(r.store.text))
         assertTrue(r.engine.closed)
         assertNull(null)
+        Unit
+    }
+
+    @Test
+    fun `the sound choices reach the engine, with the track's loudness only while normalise is on`() = runBlocking {
+        val r = rig()
+        r.source.gains["a"] = 0.5f
+        r.controller.setSound(SoundSettings(speed = 1.5f, keepPitch = false))
+        r.controller.playEntries(r.entries("a", "b"), 0)
+        eventually("playing") { r.controller.ui.value.playing }
+        eventually("sound given before the open") { r.engine.sounds.any { it.first.speed == 1.5f && !it.first.keepPitch && it.second == 1f } }
+        r.controller.setSound(SoundSettings(speed = 1.5f, normalise = true))
+        eventually("gain follows the switch") { r.engine.sounds.last().first.normalise }
+        r.controller.skipTo(0)
+        eventually("a opened again with its gain") { r.engine.sounds.any { it.first.normalise && it.second == 0.5f } }
+        Unit
+    }
+
+    @Test
+    fun `the sleep timer at the end of the track pauses on the next one and turns itself off`() = runBlocking {
+        val r = rig()
+        r.controller.playEntries(r.entries("a", "b"), 0)
+        eventually("a playing") { r.controller.ui.value.playing }
+        r.controller.sleepAtEndOfTrack()
+        eventually("timer set") { r.controller.sleep.value == SleepSetting.EndOfTrack }
+        r.engine.end()
+        eventually("paused, timer off") { !r.controller.ui.value.playing && r.controller.sleep.value == SleepSetting.Off }
+        // Nothing opened for b: it waits, and Play starts it.
+        assertEquals("b", current(r))
+        assertEquals(listOf("a"), r.source.opens)
+        r.controller.togglePlay()
+        eventually("b opened on play") { r.source.opens == listOf("a", "b") }
+        Unit
+    }
+
+    @Test
+    fun `the sleep timer by minutes fades the volume, pauses and puts the volume back`() = runBlocking {
+        val r = rig()
+        r.controller.playEntries(r.entries("a", "b"), 0)
+        eventually("a playing") { r.controller.ui.value.playing }
+        r.controller.sleepAfterMs(150)
+        eventually("timer set") { r.controller.sleep.value is SleepSetting.At }
+        eventually("paused by the timer") { !r.controller.ui.value.playing && r.controller.sleep.value == SleepSetting.Off }
+        eventually("volume back") { r.engine.state.value.volume == 100 }
+        // Turning it off before it fires keeps playing.
+        r.controller.play()
+        eventually("playing again") { r.controller.ui.value.playing }
+        r.controller.sleepAfterMs(60_000)
+        eventually("set") { r.controller.sleep.value is SleepSetting.At }
+        r.controller.sleepOff()
+        eventually("off") { r.controller.sleep.value == SleepSetting.Off }
+        assertTrue(r.controller.ui.value.playing)
+        Unit
+    }
+
+    @Test
+    fun `near the end the next track is queued in the engine, and the queue follows when the engine moves on`() = runBlocking {
+        val r = rig()
+        r.engine.queueNextResult = true
+        r.controller.playEntries(r.entries("a", "b", "c"), 0)
+        eventually("a playing") { r.controller.ui.value.playing }
+        // Far from the end: nothing is opened ahead.
+        assertTrue(r.engine.queuedNext.isEmpty())
+        r.engine.at(190_000)
+        eventually("b queued") { r.engine.queuedNext == listOf("test://b") }
+        r.engine.advance()
+        eventually("the queue is on b") { current(r) == "b" }
+        eventually("a finished, b played") { r.source.finished == listOf("a") && r.source.plays == listOf("a", "b") }
+        // No second open of b: the engine plays the one it was given.
+        assertEquals(listOf("test://a"), r.engine.opened.map { it.first })
+        assertEquals(listOf("a", "b"), r.source.opens)
+        Unit
+    }
+
+    @Test
+    fun `when the engine cannot queue, the next track is opened ahead and used when its turn comes`() = runBlocking {
+        val r = rig()
+        r.controller.playEntries(r.entries("a", "b"), 0)
+        eventually("a playing") { r.controller.ui.value.playing }
+        r.engine.at(190_000)
+        eventually("b opened ahead") { r.source.opens == listOf("a", "b") }
+        r.engine.end()
+        eventually("b playing") { current(r) == "b" && r.controller.ui.value.playing }
+        // The stream opened ahead was the one used.
+        assertEquals(listOf("a", "b"), r.source.opens)
+        assertEquals(listOf("test://a", "test://b"), r.engine.opened.map { it.first })
+        Unit
+    }
+
+    @Test
+    fun `changing the queue drops what was opened ahead`() = runBlocking {
+        val r = rig()
+        r.engine.queueNextResult = true
+        r.controller.playEntries(r.entries("a", "b", "c"), 0)
+        eventually("a playing") { r.controller.ui.value.playing }
+        r.engine.at(190_000)
+        eventually("b queued") { r.engine.queuedNext == listOf("test://b") }
+        r.controller.move(1, 2)
+        eventually("the queue ahead was cleared") { r.engine.queueCleared >= 1 }
+        // The playing track's clock moves on, as it does four times a second.
+        r.engine.at(190_500)
+        eventually("c queued instead") { r.engine.queuedNext.contains("test://c") }
         Unit
     }
 }

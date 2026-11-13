@@ -88,6 +88,54 @@ class EngineSmokeTest {
         }
         println("SMOKE formats:\n$report")
         assertTrue(played > 0, "no format played:\n$report")
+        // The sound controls: speed with the pitch kept, the equalizer, skip silence and a loudness gain.
+        val caps = engine.capabilities
+        println("SMOKE capabilities: $caps")
+        if (caps.speed || caps.gain || caps.equalizer) {
+            val tone = sample("flac", listOf("-c:a", "flac"))
+            if (tone != null) {
+                val sound = SoundSettings(
+                    speed = 1.5f, keepPitch = true, equalizerOn = true,
+                    eqLevelsMb = listOf(300, 200, 0, 0, 0, 0, -200, -300, 0, 600), skipSilence = true, normalise = true,
+                )
+                engine.setSound(sound, 0.7f)
+                engine.open(TdMediaData(ArrayBytes(tone), "test://tone.flac"), 0, true)
+                assertNull(engine.state.value.error, "open with sound failed: ${engine.state.value.error}")
+                eventually("position advances with the sound on", ms = 15_000) { engine.state.value.positionMs >= 500 }
+                engine.setSound(SoundSettings.NEUTRAL, 1f)
+            }
+        }
+        // Gapless: a second file queued behind the first plays next with no open in between.
+        val a = sample("flac", listOf("-c:a", "flac"))
+        val b = sample("mp3", listOf("-c:a", "libmp3lame"))
+        if (a != null && b != null) {
+            engine.setSound(SoundSettings.NEUTRAL, 1f)
+            engine.open(TdMediaData(ArrayBytes(a), "test://a.flac"), 3_000, true)
+            val queuedOk = engine.queueNext(TdMediaData(ArrayBytes(b), "test://b.mp3"))
+            println("SMOKE gapless queued=$queuedOk")
+            if (queuedOk) {
+                val started = System.currentTimeMillis()
+                var advanced = false
+                while (System.currentTimeMillis() - started < 12_000) {
+                    if (engine.state.value.advanced > 0) {
+                        advanced = true
+                        break
+                    }
+                    kotlinx.coroutines.delay(50)
+                }
+                println("SMOKE gapless advanced=$advanced after ${System.currentTimeMillis() - started} ms, state=${engine.state.value}")
+                if (advanced) {
+                    eventually("the second file plays", ms = 8_000) { engine.state.value.positionMs >= 400 }
+                    engine.seekTo(500)
+                    eventually("a seek in the second file", ms = 6_000) { engine.state.value.positionMs in 400..1_500 }
+                    engine.pause()
+                    eventually("paused in the second file", ms = 4_000) { !engine.state.value.playing }
+                    engine.play()
+                    eventually("the second file ends", ms = 12_000) { engine.state.value.ended }
+                    println("SMOKE gapless second file at ${engine.state.value.positionMs} of ${engine.state.value.durationMs} ms ended=${engine.state.value.ended}")
+                }
+            }
+        }
         // The controls, on the last file that played.
         val last = sample("flac", listOf("-c:a", "flac"))
         if (last != null) {

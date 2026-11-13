@@ -93,6 +93,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.appdirs)
     implementation(libs.zxing.core)
+    implementation(libs.dbus.java.core)
+    implementation(libs.dbus.java.transport.native.unixsocket)
+    implementation(libs.jna)
+    implementation(libs.filekit.dialogs.compose)
     implementation(libs.mediamp.api)
     implementation(libs.mediamp.mpv)
     // libmpv and its FFmpeg for the OS being built on, and only that one.
