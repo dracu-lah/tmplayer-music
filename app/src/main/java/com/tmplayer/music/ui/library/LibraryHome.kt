@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.TvSheet
 import com.tmplayer.music.ui.tv.tvFocusRing
 import android.Manifest
 import android.content.Context
@@ -583,7 +584,7 @@ private fun SongMenu(
             artists = index.songArtists(song)
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    TvSheet(onDismiss) {
         // Scrolls in a window turned sideways, where the lines do not all fit.
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(

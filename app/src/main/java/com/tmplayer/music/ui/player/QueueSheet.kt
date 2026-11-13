@@ -47,8 +47,39 @@ import com.tmplayer.music.i18n.L
 import com.tmplayer.music.library.ArtistDisplay
 import com.tmplayer.music.player.PlayerConnection
 import com.tmplayer.music.ui.common.MusicIcons
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import com.tmplayer.music.ui.tv.LocalTv
+import com.tmplayer.music.ui.tv.requestFocusSoon
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+/** The buttons on a queue row a TV reaches by D-pad: the row itself, move up, move down, remove. */
+internal enum class QueueButton { Row, Up, Down, Remove }
+
+/**
+ * Where the D-pad goes after a queue edit, so it is never left on a row that moved or went. A move
+ * keeps the same button on the row's new place (so holding OK on Up keeps moving it), unless that
+ * button is now useless (Up at the top, Down at the bottom), when it takes the other one. A remove
+ * goes to the row that took the place, on its Remove button.
+ */
+internal object QueueFocus {
+    fun afterMove(from: Int, to: Int, size: Int, up: Boolean): Pair<Int, QueueButton> {
+        val index = to.coerceIn(0, (size - 1).coerceAtLeast(0))
+        val button = when {
+            up && index == 0 -> QueueButton.Down
+            !up && index >= size - 1 -> QueueButton.Up
+            up -> QueueButton.Up
+            else -> QueueButton.Down
+        }
+        return index to button
+    }
+
+    fun afterRemove(removed: Int, newSize: Int): Pair<Int, QueueButton>? =
+        com.tmplayer.music.ui.tv.neighbourAfterRemoval(removed, newSize)?.let { it to QueueButton.Remove }
+}
 
 /** How far across a queue row has to be swiped to remove it, as a share of its width. */
 private const val SWIPE_REMOVE = 0.35f
@@ -83,7 +114,7 @@ fun QueueSheet(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = { confirmClear = true }, enabled = items.isNotEmpty(), modifier = Modifier.height(48.dp)) {
+            TextButton(onClick = { confirmClear = true }, enabled = items.isNotEmpty(), modifier = Modifier.height(48.dp).tvFocusRing()) {
                 Text(L.queueClear)
             }
         }
@@ -103,7 +134,8 @@ fun QueueSheet(onDismiss: () -> Unit) {
                     onDismiss()
                 }) { Text(L.nowplayingClearQueueConfirm) }
             },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(L.commonCancel) } },
+            // The remote starts on Cancel: a stray OK never empties the queue.
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus(), onClick = { confirmClear = false }) { Text(L.commonCancel) } },
         )
     }
 }
@@ -111,7 +143,34 @@ fun QueueSheet(onDismiss: () -> Unit) {
 @Composable
 private fun QueueList(items: List<MediaItem>, playing: Int, onChanged: () -> Unit) {
     val list = rememberLazyListState()
-    LaunchedEffect(Unit) { if (playing in items.indices) list.scrollToItem((playing - 1).coerceAtLeast(0)) }
+    val tv = LocalTv.current
+    // A TV: the D-pad's place in the queue, as (row, button), asked for after every edit and on opening.
+    val requesters = remember { HashMap<Pair<Int, QueueButton>, FocusRequester>() }
+    fun requesterOf(i: Int, button: QueueButton) = requesters.getOrPut(i to button) { FocusRequester() }
+    var want by remember { mutableStateOf<Pair<Int, QueueButton>?>(null) }
+    LaunchedEffect(want, items) {
+        val target = want ?: return@LaunchedEffect
+        if (list.layoutInfo.visibleItemsInfo.none { it.index == target.first }) list.scrollToItem((target.first - 1).coerceAtLeast(0))
+        requestFocusSoon(requesterOf(target.first, target.second))
+        want = null
+    }
+    LaunchedEffect(Unit) {
+        if (playing in items.indices) list.scrollToItem((playing - 1).coerceAtLeast(0))
+        if (tv && playing in items.indices) want = playing to QueueButton.Row
+    }
+    val moveBy = { i: Int, d: Int ->
+        val to = i + d
+        if (to in items.indices) {
+            PlayerConnection.move(i, to)
+            onChanged()
+            want = QueueFocus.afterMove(i, to, items.size, up = d < 0)
+        }
+    }
+    val removeAt = { i: Int ->
+        PlayerConnection.remove(i)
+        onChanged()
+        if (tv) want = QueueFocus.afterRemove(i, items.size - 1)
+    }
     var dragging by remember { mutableIntStateOf(-1) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     // A row and the gap under it: how far a dragged row travels to swap one place.
@@ -155,12 +214,25 @@ private fun QueueList(items: List<MediaItem>, playing: Int, onChanged: () -> Uni
                             else -> MaterialTheme.colorScheme.surfaceContainerLow
                         },
                     )
+                    .then(if (tv) Modifier.focusRequester(requesterOf(i, QueueButton.Row)) else Modifier)
                     .clickable { PlayerConnection.skipTo(i) }
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Icon(
+                if (tv) {
+                    // No dragging with a remote: Up and Down move the row one place, and focus follows it.
+                    IconButton(
+                        onClick = { moveBy(i, -1) },
+                        enabled = i > 0,
+                        modifier = Modifier.size(48.dp).focusRequester(requesterOf(i, QueueButton.Up)).tvFocusRing(),
+                    ) { Icon(MusicIcons.Up, contentDescription = L.queueMoveUp) }
+                    IconButton(
+                        onClick = { moveBy(i, 1) },
+                        enabled = i < items.lastIndex,
+                        modifier = Modifier.size(48.dp).focusRequester(requesterOf(i, QueueButton.Down)).tvFocusRing(),
+                    ) { Icon(MusicIcons.Down, contentDescription = L.queueMoveDown) }
+                } else Icon(
                     MusicIcons.Drag,
                     contentDescription = L.queueMove,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -212,7 +284,10 @@ private fun QueueList(items: List<MediaItem>, playing: Int, onChanged: () -> Uni
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(onClick = { PlayerConnection.remove(i) }) {
+                IconButton(
+                    onClick = { removeAt(i) },
+                    modifier = Modifier.then(if (tv) Modifier.focusRequester(requesterOf(i, QueueButton.Remove)).tvFocusRing() else Modifier),
+                ) {
                     Icon(MusicIcons.Close, contentDescription = L.queueRemove)
                 }
             }

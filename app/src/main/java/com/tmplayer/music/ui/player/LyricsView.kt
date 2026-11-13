@@ -1,5 +1,9 @@
 package com.tmplayer.music.ui.player
 
+import androidx.compose.foundation.focusable
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.tvScrollKeys
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -145,6 +149,7 @@ internal fun LyricsPanel(state: PlayerState, visible: Boolean) {
     }
 
     if (asking && shown) {
+        // The remote starts on Not now: a stray OK never turns the online lookup on.
         AlertDialog(
             onDismissRequest = {
                 asking = false
@@ -159,7 +164,7 @@ internal fun LyricsPanel(state: PlayerState, visible: Boolean) {
                 }) { Text(L.lyricsAskAllow) }
             },
             dismissButton = {
-                TextButton(onClick = {
+                TextButton(modifier = Modifier.tvAutoFocus(), onClick = {
                     asking = false
                     choices.declined()
                 }) { Text(L.lyricsAskNotNow) }
@@ -214,11 +219,17 @@ private fun LyricsText(lyrics: Lyrics, state: PlayerState, shown: Boolean, sourc
             if (lyrics.synced) {
                 SyncedLyrics(lyrics, state, shown)
             } else {
+                val scroll = rememberScrollState()
                 Text(
                     lyrics.plain,
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(8.dp),
+                    // A TV: the page takes the D-pad and Up and Down scroll it; at its ends they leave it.
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .tvReadable(scroll)
+                        .verticalScroll(scroll)
+                        .padding(8.dp),
                 )
             }
         }
@@ -255,7 +266,10 @@ private fun SyncedLyrics(lyrics: Lyrics, state: PlayerState, shown: Boolean) {
     LaunchedEffect(current) {
         if (current >= 0 && !list.isScrollInProgress) runCatching { list.animateScrollToItem((current - 2).coerceAtLeast(0)) }
     }
-    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 24.dp)) {
+    val tv = com.tmplayer.music.ui.tv.LocalTv.current
+    // A TV does not make every line a stop for the D-pad (fifty Downs to get out): the list is one stop
+    // that scrolls with Up and Down, and the seek bar moves the track.
+    LazyColumn(state = list, modifier = Modifier.fillMaxSize().tvReadable(list), contentPadding = PaddingValues(vertical = 24.dp)) {
         itemsIndexed(lyrics.lines) { i, line ->
             val playing = i == current
             Text(
@@ -267,7 +281,7 @@ private fun SyncedLyrics(lyrics: Lyrics, state: PlayerState, shown: Boolean) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics { selected = playing }
-                    .clickable(onClickLabel = L.lyricsSeek) { haptics.tap(); PlayerConnection.seekTo(line.timeMs) }
+                    .then(if (tv) Modifier else Modifier.clickable(onClickLabel = L.lyricsSeek) { haptics.tap(); PlayerConnection.seekTo(line.timeMs) })
                     .padding(vertical = 6.dp, horizontal = 8.dp),
             )
         }
@@ -279,3 +293,13 @@ private const val LATENCY_MS = 150L
 
 /** How often synced lyrics read the position while playing and shown. */
 private const val TICK_MS = 250L
+
+/** The lyrics page on a TV: one stop for the D-pad, with a ring, that Up and Down scroll. Nothing on a phone. */
+@Composable
+private fun Modifier.tvReadable(state: androidx.compose.foundation.gestures.ScrollableState): Modifier {
+    if (!com.tmplayer.music.ui.tv.LocalTv.current) return this
+    return this
+        .tvFocusRing(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+        .tvScrollKeys(state)
+        .focusable()
+}

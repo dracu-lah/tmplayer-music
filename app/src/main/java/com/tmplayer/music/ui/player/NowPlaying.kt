@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -64,6 +65,7 @@ import com.tmplayer.music.ui.theme.MorphButton
 import com.tmplayer.music.ui.theme.MorphIconToggle
 import com.tmplayer.music.ui.theme.MorphToggle
 import com.tmplayer.music.ui.theme.ShapeRadius
+import com.tmplayer.music.ui.tv.tvFocusRing
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /** Where the cover's slot and the content's root are, for the cover's grow-from-the-mini-player motion. */
@@ -88,6 +90,7 @@ internal fun NowPlayingContent(
     open: Boolean,
     onCollapse: () -> Unit,
     onQueue: () -> Unit,
+    playFocus: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     var sleepOpen by rememberSaveable { mutableStateOf(false) }
     var effectsOpen by rememberSaveable { mutableStateOf(false) }
@@ -165,7 +168,7 @@ internal fun NowPlayingContent(
                         verticalArrangement = Arrangement.Center,
                     ) {
                         topBar()
-                        Controls(state, open, fade, compact = true)
+                        Controls(state, open, fade, compact = true, playFocus = playFocus)
                     }
                 }
             }
@@ -177,7 +180,7 @@ internal fun NowPlayingContent(
                 Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                     slotContent(Modifier.widthIn(max = 480.dp).aspectRatio(1f, matchHeightConstraintsFirst = true))
                 }
-                Controls(state, open, fade)
+                Controls(state, open, fade, playFocus = playFocus)
                 Spacer(Modifier.height(16.dp))
             }
         }
@@ -198,7 +201,7 @@ private fun TopBar(
 ) {
     val sleep by SleepTimer.setting.collectAsStateWithLifecycle()
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onCollapse) { Icon(MusicIcons.Down, contentDescription = L.nowplayingCollapse) }
+        IconButton(onClick = onCollapse, modifier = Modifier.tvFocusRing()) { Icon(MusicIcons.Down, contentDescription = L.nowplayingCollapse) }
         Spacer(Modifier.weight(1f))
         MorphIconToggle(checked = showLyrics, onCheckedChange = onLyrics) {
             Icon(MusicIcons.Lyrics, contentDescription = if (showLyrics) L.nowplayingLyricsHide else L.nowplayingLyricsShow)
@@ -215,13 +218,19 @@ private fun TopBar(
             )
         }
         IconButton(onClick = onEffects) { Icon(EffectsIcon, contentDescription = L.effectsTitle) }
-        IconButton(onClick = onQueue) { Icon(MusicIcons.Queue, contentDescription = L.playerQueue) }
+        IconButton(onClick = onQueue, modifier = Modifier.tvFocusRing()) { Icon(MusicIcons.Queue, contentDescription = L.playerQueue) }
     }
 }
 
 /** Title and artist, the seek bar, the transport group and the shuffle and repeat toggles. */
 @Composable
-private fun Controls(state: PlayerState, open: Boolean, fade: Modifier, compact: Boolean = false) {
+private fun Controls(
+    state: PlayerState,
+    open: Boolean,
+    fade: Modifier,
+    compact: Boolean = false,
+    playFocus: androidx.compose.ui.focus.FocusRequester? = null,
+) {
     val error by PlaybackErrors.last.collectAsStateWithLifecycle()
     // Read only by the bar (while drawing) and by [Times]: a tick of the position never recomposes these controls.
     val position = rememberPositionState(state)
@@ -273,7 +282,7 @@ private fun Controls(state: PlayerState, open: Boolean, fade: Modifier, compact:
         // Landscape (compact) has about 360 dp of height: smaller circles and gaps keep everything in view.
         val gap = if (compact) 8.dp else 16.dp
         Spacer(Modifier.height(gap))
-        Transport(state, compact)
+        Transport(state, compact, playFocus)
         Spacer(Modifier.height(gap))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
             ShuffleToggle(state.shuffle)
@@ -303,7 +312,7 @@ private fun Times(position: State<Long>, scrub: State<Float?>, durationMs: Long)
  * or pause the largest one in the middle.
  */
 @Composable
-private fun Transport(state: PlayerState, compact: Boolean) {
+private fun Transport(state: PlayerState, compact: Boolean, playFocus: androidx.compose.ui.focus.FocusRequester? = null) {
     val previous = remember { MutableInteractionSource() }
     val play = remember { MutableInteractionSource() }
     val next = remember { MutableInteractionSource() }
@@ -311,7 +320,7 @@ private fun Transport(state: PlayerState, compact: Boolean) {
     val playSize = if (compact) 72.dp else PlaySize
     ExpressiveButtonGroup(Modifier.fillMaxWidth()) {
         SkipButton(MusicIcons.Previous, L.playerPrevious, state.hasPrevious, PlayerConnection::previous, previous, Modifier.groupItem("previous", previous, skipSize).height(skipSize))
-        PlayPauseButton(state, Modifier.groupItem("play", play, playSize).height(playSize), iconSize = if (compact) 32.dp else 40.dp, interactionSource = play)
+        PlayPauseButton(state, Modifier.groupItem("play", play, playSize).height(playSize).then(if (playFocus != null) Modifier.focusRequester(playFocus) else Modifier), iconSize = if (compact) 32.dp else 40.dp, interactionSource = play)
         SkipButton(MusicIcons.Next, L.playerNext, state.hasNext, PlayerConnection::next, next, Modifier.groupItem("next", next, skipSize).height(skipSize))
     }
 }

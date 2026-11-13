@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.TvSheet
 import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.tvHold
 import androidx.compose.ui.input.key.Key
@@ -431,7 +432,7 @@ fun VersionsSheet(song: Song, chatTitles: Map<Long, String>, onDismiss: () -> Un
             error = Failures.humanise(e)
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    TvSheet(onDismiss) {
         Column(
             // Scrolls in a window turned sideways, or with many versions.
             Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 32.dp),

@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.player
 
+import com.tmplayer.music.ui.tv.TvSheet
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -164,7 +165,7 @@ internal fun SleepSheet(onDismiss: () -> Unit) {
             delay(1_000)
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    TvSheet(onDismiss) {
         Column(Modifier.padding(bottom = 24.dp)) {
             Text(L.sleepTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             if (setting is SleepSetting.At) {
