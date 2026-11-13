@@ -77,6 +77,8 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
         LibrarySection(onManageChats)
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        BackupSection()
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Section(L.settingsStorage)
         Line(L.settingsCacheUsed(if (used < 0) "…" else Format.size(used).ifEmpty { L.settingsNothing }))
         Line(L.settingsFree(Format.size(free)))
