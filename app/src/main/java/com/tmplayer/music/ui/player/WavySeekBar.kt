@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -163,6 +164,8 @@ fun WavySeekBar(
         seeking = null
         currentScrub(null)
     }
+    // Leaving the screen mid-scrub (or mid key hold) must not leave the scrub label up.
+    DisposableEffect(Unit) { onDispose { currentScrub(null) } }
     val seekKeys = if (tv && known) {
         Modifier
             .tvFocusRing(RoundedCornerShape(24.dp))
@@ -200,22 +203,26 @@ fun WavySeekBar(
                     seeking = at(down.position.x)
                     currentScrub(seeking)
                     haptics.gestureStart(); haptics.marks(null); haptics.marks(seeking)
-                    var id = down.id
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == id } ?: event.changes.firstOrNull() ?: break
-                        id = change.id
-                        // Consumed so a parent (the sheet) never reads this as its own drag.
-                        event.changes.forEach { it.consume() }
-                        if (!change.pressed) break
-                        seeking = at(change.position.x)
-                        currentScrub(seeking)
-                        haptics.marks(seeking)
+                    // Cancelled mid-drag (the bar leaves, the gesture restarts): the label and the thumb still reset.
+                    try {
+                        var id = down.id
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == id } ?: event.changes.firstOrNull() ?: break
+                            id = change.id
+                            // Consumed so a parent (the sheet) never reads this as its own drag.
+                            event.changes.forEach { it.consume() }
+                            if (!change.pressed) break
+                            seeking = at(change.position.x)
+                            currentScrub(seeking)
+                            haptics.marks(seeking)
+                        }
+                        seeking?.let { currentSeek((it * duration).toLong()) }
+                    } finally {
+                        seeking = null
+                        currentScrub(null)
+                        haptics.gestureEnd(); haptics.marks(null)
                     }
-                    seeking?.let { currentSeek((it * duration).toLong()) }
-                    seeking = null
-                    currentScrub(null)
-                    haptics.gestureEnd(); haptics.marks(null)
                 }
             }
             .semantics {
