@@ -371,8 +371,8 @@ private fun ChatPageBody(
                         }
                     }
                     KeepChatOfflineButton(chat.chatId)
-                    // The tracks loaded so far (a long chat loads a page at a time).
-                    com.tmplayer.music.ui.connect.SendToTvButtons({ loader.shown().map { it.asSong() } })
+                    // The whole chat (read page by page in the background, up to the cap), not only the rows loaded here.
+                    com.tmplayer.music.ui.connect.SendChatToTvButtons(chat.chatId)
                     val note = when {
                         state.rows.isNotEmpty() && state.end -> L.chatfirstChatEnd(state.rows.size)
                         else -> null

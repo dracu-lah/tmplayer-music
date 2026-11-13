@@ -180,7 +180,7 @@ class ConnectLogicTest {
         // Chunks go last first, so landing each right after the current track gives the original order.
         assertEquals(refs[800], plan.first().items.first())
         assertEquals(refs[0], plan.last().items.first())
-        assertEquals(SendPlan.MAX_TOTAL / ConnectLimits.MAX_SEND_ITEMS, SendPlan.messages(SendHow.Add, List(10_000) { refs[0] }).size)
+        assertEquals((SendPlan.MAX_TOTAL + ConnectLimits.MAX_SEND_ITEMS - 1) / ConnectLimits.MAX_SEND_ITEMS, SendPlan.messages(SendHow.Add, List(10_000) { refs[0] }).size)
     }
 
     @Test
