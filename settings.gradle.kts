@@ -23,3 +23,4 @@ dependencyResolutionManagement {
 rootProject.name = "TMPlayerMusic"
 include(":app")
 include(":core")
+include(":desktop")
