@@ -30,7 +30,9 @@ import com.tmplayer.music.data.AuthState
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.Td
 import com.tmplayer.music.desktop.diagnostics.LogsHost
+import com.tmplayer.music.desktop.os.AppExit
 import com.tmplayer.music.desktop.os.MediaControls
+import com.tmplayer.music.desktop.os.SingleInstance
 import com.tmplayer.music.desktop.os.WindowMemory
 import com.tmplayer.music.desktop.ui.AppRoot
 import com.tmplayer.music.desktop.ui.common.BackKeys
@@ -50,9 +52,21 @@ import java.awt.event.WindowEvent
 /** The smallest the window goes: the layout is made for 900 by 600 and up. */
 private val MIN_WINDOW = Dimension(900, 600)
 
-fun main() {
+/** How long quitting may take before the process is ended anyway. */
+private const val QUIT_GRACE_MS = 8_000L
+
+fun main(args: Array<String>) {
+    // One TMPlayer Music per user: a second launch asks the first to come to the front and leaves.
+    // Two would share one TDLib database and one library index, and TDLib refuses a second.
+    var raise: () -> Unit = {}
+    if (!SingleInstance.acquire(args.toList()) { java.awt.EventQueue.invokeLater { raise() } }) {
+        System.err.println("TMPlayer Music is already running; the open window was asked to come to the front.")
+        return
+    }
     DesktopApp.start()
-    application {
+    // Compose would end the process itself with System.exit, which on Linux can hang for good (see
+    // AppExit) and leave a windowless process holding the TDLib lock. It returns here instead.
+    application(exitProcessOnExit = false) {
         // The size, place and maximised state of the last run, kept sane for the screens attached now.
         val state = remember { WindowMemory.load() }
         LaunchedEffect(state) { WindowMemory.follow(state) }
@@ -63,8 +77,15 @@ fun main() {
         val player = DesktopApp.player
         val playerUi by player.ui.collectAsState()
         val quit = {
-            WindowMemory.save(state)
-            DesktopApp.stop()
+            // Saving is a courtesy; a failure there must never keep the app from closing.
+            runCatching { WindowMemory.save(state) }
+            // Should taking the player down hang (a native library that will not let go), the
+            // process still ends.
+            Thread {
+                Thread.sleep(QUIT_GRACE_MS)
+                AppExit.now()
+            }.apply { isDaemon = true }.start()
+            runCatching { DesktopApp.stop() }
             exitApplication()
         }
         val trayIcon = remember { iconPainter("tray.png") }
@@ -93,6 +114,18 @@ fun main() {
             onPreviewKeyEvent = ::handleKey,
         ) {
             DisposableEffect(window) {
+                raise = {
+                    visible = true
+                    runCatching {
+                        if (window.extendedState and java.awt.Frame.ICONIFIED != 0) {
+                            window.extendedState = window.extendedState and java.awt.Frame.ICONIFIED.inv()
+                        }
+                        window.toFront()
+                    }
+                }
+                onDispose { raise = {} }
+            }
+            DisposableEffect(window) {
                 // The media keys, headset buttons and the desktop's now playing widget.
                 val controls = MediaControls.start(
                     player = player,
@@ -103,6 +136,7 @@ fun main() {
                     },
                     quit = quit,
                 )
+                SingleInstance.markReady()
                 onDispose { controls.close() }
             }
             DisposableEffect(window) {
@@ -129,6 +163,9 @@ fun main() {
             }
         }
     }
+    // TDLib's, libmpv's and D-Bus's threads are not daemons; with the window gone, nothing is left
+    // that should keep the process alive.
+    AppExit.now()
 }
 
 /**

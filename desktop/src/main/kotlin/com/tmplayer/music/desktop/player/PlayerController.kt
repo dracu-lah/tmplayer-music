@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -471,9 +472,10 @@ class PlayerController(
     fun close() {
         closed = true
         runCatching {
-            // Called from the window's close, on the UI thread: the write is small and must finish.
-            keepSpotBlocking()
+            // Called from the window's close, on the UI thread: the queue is a small file and goes
+            // first; the listening spot is a database write and is given a short time (see below).
             writeQueue()
+            keepSpotBlocking()
         }
         watching?.cancel()
         runCatching { engine?.close() }
@@ -607,6 +609,8 @@ class PlayerController(
         val queueNow = _ui.value.queue
         opening = scope.launch(serial) {
             var data: MediaData? = null
+            // Once the engine has the stream it closes it; until then every way out of here does.
+            var handedToEngine = false
             try {
                 val e = ensureEngine()
                 // What was playing goes quiet at once; the new stream replaces it when it is loaded.
@@ -623,11 +627,9 @@ class PlayerController(
                 // From here the engine's state is this track's: its end is a new end.
                 endedHandled = null
                 loaded = entry.uid
-                if (_ui.value.current?.uid != entry.uid) {
-                    runCatching { media.close() }
-                    return@launch
-                }
+                if (_ui.value.current?.uid != entry.uid) return@launch
                 e.open(media, startAtMs, playNow)
+                handedToEngine = true
                 // The queue moved on while it loaded (a newer open, or it was emptied): that has the say now.
                 if (!isActive || _ui.value.current?.uid != entry.uid) {
                     if (_ui.value.queue.isEmpty) e.stop()
@@ -650,7 +652,6 @@ class PlayerController(
                 }
                 saveSoon()
             } catch (e: CancellationException) {
-                runCatching { data?.close() }
                 throw e
             } catch (e: EngineUnavailable) {
                 loaded = null
@@ -658,6 +659,8 @@ class PlayerController(
             } catch (e: Exception) {
                 Logger.w(TAG, "could not open a track", e)
                 onOpenFailed(entry, Failures.humanise(e))
+            } finally {
+                if (!handedToEngine) runCatching { data?.close() }
             }
         }
     }
@@ -793,7 +796,10 @@ class PlayerController(
         val position = _position.value
         val duration = knownDuration()
         val at = clock()
-        kotlinx.coroutines.runBlocking { runCatching { source.keep(entry, position, duration, at) } }
+        // Runs off the UI thread and is waited for a moment only: Library.index() and the SQLite
+        // write behind it must never hold the window's close for long.
+        val job = CoroutineScope(Dispatchers.IO).async { runCatching { source.keep(entry, position, duration, at) } }
+        kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeoutOrNull(KEEP_SPOT_TIMEOUT_MS) { job.await() } }
     }
 
     private fun saveSoon() {
@@ -827,6 +833,7 @@ class PlayerController(
     companion object {
         private const val TAG = "PlayerController"
         const val SAVE_DELAY_MS = 500L
+        const val KEEP_SPOT_TIMEOUT_MS = 1_500L
         const val CHECKPOINT_MS = 30_000L
         const val MAX_SKIPS = 3
         const val UPCOMING = 5
