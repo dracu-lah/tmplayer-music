@@ -148,11 +148,23 @@ private fun QueueList(items: List<MediaItem>, playing: Int, onChanged: () -> Uni
     val requesters = remember { HashMap<Pair<Int, QueueButton>, FocusRequester>() }
     fun requesterOf(i: Int, button: QueueButton) = requesters.getOrPut(i to button) { FocusRequester() }
     var want by remember { mutableStateOf<Pair<Int, QueueButton>?>(null) }
+    // A request that found no row (the list was still changing) is tried once more when the items change.
+    var misses by remember { mutableIntStateOf(0) }
     LaunchedEffect(want, items) {
         val target = want ?: return@LaunchedEffect
-        if (list.layoutInfo.visibleItemsInfo.none { it.index == target.first }) list.scrollToItem((target.first - 1).coerceAtLeast(0))
-        requestFocusSoon(requesterOf(target.first, target.second))
-        want = null
+        if (items.isEmpty()) {
+            want = null
+            return@LaunchedEffect
+        }
+        val row = target.first.coerceIn(0, items.lastIndex)
+        if (list.layoutInfo.visibleItemsInfo.none { it.index == row }) list.scrollToItem((row - 1).coerceAtLeast(0))
+        if (requestFocusSoon(requesterOf(row, target.second))) {
+            want = null
+            misses = 0
+        } else if (++misses >= 2) {
+            want = null
+            misses = 0
+        }
     }
     LaunchedEffect(Unit) {
         if (playing in items.indices) list.scrollToItem((playing - 1).coerceAtLeast(0))

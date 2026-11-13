@@ -203,6 +203,11 @@ class BrowseTreeTest {
         assertEquals(false, BrowserAccess.allows("com.example.snoop", "com.tmplayer.music", false))
         assertEquals(false, BrowserAccess.allows(null, "com.tmplayer.music", true))
         assertEquals(false, BrowserAccess.allows("", "com.tmplayer.music", true))
+        // The system's media controls and a headset's keys connect; an app that only looks like one does not.
+        assertTrue(BrowserAccess.allows("com.android.systemui", "com.tmplayer.music", false))
+        assertTrue(BrowserAccess.allows("com.android.bluetooth", "com.tmplayer.music", false))
+        assertEquals(false, BrowserAccess.allows("com.android.systemui.fake", "com.tmplayer.music", false))
+        assertEquals(false, BrowserAccess.allows("com.tmplayer.music.evil", "com.tmplayer.music", false))
     }
 
     @Test

@@ -1077,6 +1077,24 @@ class LibraryIndex private constructor(
         ).distinctBy { it.groupKey }
     }
 
+    // Paged playlist read (the browse tree)
+
+    /**
+     * [limit] songs of a playlist from [offset], in the order and with the same left-out and folded
+     * entries as [playlistSongs] (up to [MAX_PLAYLIST_ITEMS] of them), but read by the page: only the page
+     * is built, not the whole playlist.
+     */
+    suspend fun playlistSongsPage(id: Long, offset: Int, limit: Int): List<Song> = io {
+        val from = offset.coerceAtLeast(0)
+        val n = minOf(limit, MAX_PLAYLIST_ITEMS - from)
+        if (n <= 0) return@io emptyList()
+        query(
+            "SELECT ${prefixed("s")} FROM playlist_items i JOIN songs s ON s.song_key = ${resolved("i")} " +
+                "WHERE i.playlist_id = ? GROUP BY s.song_key ORDER BY MIN(i.position), MIN(i.item_id) LIMIT ? OFFSET ?",
+            id, n, from, map = ::readSong,
+        )
+    }
+
     /** The playlists that hold [song] now, for the ticks in the Add to playlist sheet. */
     suspend fun playlistsContaining(song: Song): Set<Long> = io {
         if (song.groupKey.isEmpty()) return@io emptySet()

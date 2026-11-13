@@ -103,6 +103,15 @@ open class BrowseCallback(
         return future
     }
 
+    /** Only the app, trusted system callers and the known car and media hosts connect; any other app is refused. */
+    override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
+        if (may(controller)) {
+            MediaSession.ConnectionResult.AcceptedResultBuilder(session).build()
+        } else {
+            Logger.w(TAG, "a controller was refused")
+            MediaSession.ConnectionResult.reject()
+        }
+
     override fun onGetLibraryRoot(
         session: MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
@@ -156,7 +165,11 @@ open class BrowseCallback(
             val offset = (page.coerceAtLeast(0).toLong() * pageSize.coerceAtLeast(1)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             val rows = tree().children(folder, offset, pageSize)
             synchronized(shown) { shown[browser.packageName] = Shown(folder, offset, rows.map { it.id }) }
-            LibraryResult.ofItemList(items(rows), params)
+            // The covers past the first rows arrive after the page; the browser is told when they are in.
+            LibraryResult.ofItemList(
+                items(rows) { runCatching { session.notifyChildrenChanged(browser, parentId, rows.size, params) } },
+                params,
+            )
         }
     }
 
@@ -210,6 +223,7 @@ open class BrowseCallback(
         controller: MediaSession.ControllerInfo,
         mediaItems: MutableList<MediaItem>,
     ): ListenableFuture<MutableList<MediaItem>> {
+        if (!may(controller)) return Futures.immediateFailedFuture(SecurityException("controller not allowed"))
         val future = SettableFuture.create<MutableList<MediaItem>>()
         scope.launch {
             runCatching { withContext(Dispatchers.IO) { expand(controller, mediaItems) }.toMutableList() }
@@ -226,6 +240,7 @@ open class BrowseCallback(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        if (!may(controller)) return Futures.immediateFailedFuture(SecurityException("controller not allowed"))
         val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
         scope.launch {
             runCatching {
@@ -256,7 +271,10 @@ open class BrowseCallback(
     private suspend fun queueAfter(controller: MediaSession.ControllerInfo, item: MediaItem): List<MediaItem>? {
         val last = synchronized(shown) { shown[controller.packageName] } ?: return null
         val at = last.ids.indexOf(item.mediaId).takeIf { it >= 0 } ?: return null
-        val rows = tree().children(last.folder, last.offset + at, QUEUE_AFTER).filter { it.kind == EntryKind.Song }
+        val page = tree().children(last.folder, last.offset + at, QUEUE_AFTER)
+        // The list may have changed since it was shown: the row at that spot must still be the tapped song.
+        if (page.firstOrNull()?.id != item.mediaId) return null
+        val rows = page.filter { it.kind == EntryKind.Song }
         if (rows.isEmpty()) return null
         return rows.mapNotNull { row -> MediaIds.item(row.id)?.let { resolve(it) } }.takeIf { it.isNotEmpty() }
     }
@@ -306,11 +324,27 @@ open class BrowseCallback(
 
     // Rows as media items.
 
-    private suspend fun items(rows: List<BrowseEntry>): List<MediaItem> = withContext(Dispatchers.IO) {
-        rows.map { row -> async { item(row, withArt = true) } }.awaitAll()
+    /**
+     * The rows as items. Only the first [ART_ROWS] wait for their cover; the others carry the kept or
+     * generated one at once, and their real covers are fetched in the background, then [onCoversLoaded]
+     * runs (when any arrived) so the browser asks again.
+     */
+    private suspend fun items(rows: List<BrowseEntry>, onCoversLoaded: (() -> Unit)? = null): List<MediaItem> {
+        val out = withContext(Dispatchers.IO) {
+            rows.mapIndexed { i, row -> async { item(row, withArt = true, wait = i < ART_ROWS) } }.awaitAll()
+        }
+        if (rows.size > ART_ROWS) {
+            val later = rows.drop(ART_ROWS)
+            scope.launch {
+                var fresh = false
+                for (row in later) if (runCatching { BrowseArtwork.warm(row.art) }.getOrDefault(false)) fresh = true
+                if (fresh) onCoversLoaded?.invoke()
+            }
+        }
+        return out
     }
 
-    private suspend fun item(row: BrowseEntry, withArt: Boolean): MediaItem {
+    private suspend fun item(row: BrowseEntry, withArt: Boolean, wait: Boolean = true): MediaItem {
         val song = row.kind == EntryKind.Song
         val folder = row.kind == EntryKind.Folder
         val metadata = MediaMetadata.Builder()
@@ -334,13 +368,16 @@ open class BrowseCallback(
         if (song) {
             metadata.setExtras(Bundle().apply { putString(MediaIds.COVER_ART, row.art?.generatedKey) })
         }
-        if (withArt) BrowseArtwork.of(row.art)?.let { metadata.setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
+        if (withArt) (if (wait) BrowseArtwork.of(row.art) else BrowseArtwork.quick(row.art))?.let { metadata.setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
         return MediaItem.Builder().setMediaId(row.id).setMediaMetadata(metadata.build()).build()
     }
 
     companion object {
         private const val TAG = "BrowseCallback"
         private const val MAX_BROWSERS = 8
+
+        /** Rows of a page that wait for their cover; the rest get a quick one and the real one later. */
+        private const val ART_ROWS = 30
 
         /** Songs queued after a tapped one, and from a tapped folder or a search. */
         private const val QUEUE_AFTER = 100

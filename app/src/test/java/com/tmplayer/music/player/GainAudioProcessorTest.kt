@@ -105,4 +105,41 @@ class GainAudioProcessorTest {
         p.queueInput(b)
         assertTrue(p.output.remaining() in 2..3)
     }
+
+    @Test
+    fun bothChannelsOfAFrameShareTheRampStep() {
+        val p = processor(C.ENCODING_PCM_16BIT)
+        p.setFactor(0.25f)
+        val out = p.run(shorts(*IntArray(256) { 10_000 })).shorts()
+        for (frame in 0 until 128) {
+            assertEquals("frame $frame: left and right differ", out[frame * 2], out[frame * 2 + 1])
+        }
+        assertTrue(out[0] > out[254])
+    }
+
+    @Test
+    fun stereoFloatKeepsBothChannelsAtTheSameGain() {
+        val p = processor(C.ENCODING_PCM_FLOAT)
+        p.setFactor(0.5f)
+        val input = ByteBuffer.allocateDirect(4 * 64).order(ByteOrder.nativeOrder())
+        repeat(64) { input.putFloat(0.8f) }
+        input.flip()
+        val out = p.run(input)
+        for (frame in 0 until 32) {
+            assertEquals(out.getFloat(out.position() + frame * 8), out.getFloat(out.position() + frame * 8 + 4), 0f)
+        }
+    }
+
+    @Test
+    fun theNextFactorTakesHoldAtTheStreamBoundaryWithoutARamp() {
+        val p = processor(C.ENCODING_PCM_16BIT)
+        p.setFactor(1f)
+        p.setNext(0.5f)
+        // The rest of the first track is untouched until its stream ends.
+        assertEquals(listOf(1000, 1000), p.run(shorts(1000, 1000)).shorts())
+        p.queueEndOfStream()
+        p.output
+        // The very first frame of the next track is already at its own gain.
+        assertEquals(listOf(500, 500), p.run(shorts(1000, 1000)).shorts())
+    }
 }
