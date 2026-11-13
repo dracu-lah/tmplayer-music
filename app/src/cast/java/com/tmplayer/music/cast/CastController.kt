@@ -15,9 +15,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.platform.Logger
+import com.tmplayer.music.player.AudioEffectsSetting
+import com.tmplayer.music.player.PlaybackSpeed
 
 /** Why a cast ended, for the sentence the user is told. */
-internal enum class EndReason { Normal, Wifi }
+internal enum class EndReason { Normal, Wifi, Sleep }
 
 /**
  * The queue as it was when the cast began (or was last set while casting), kept on the phone. The
@@ -30,10 +32,13 @@ internal class CastRecord(
     val original: List<MediaItem>,
     val sent: MutableSet<String>,
     val upcoming: ArrayDeque<MediaItem>,
-    val shuffle: Boolean,
-    val params: PlaybackParameters,
+    /** Shuffle as the user has it. The receiver has none, so the guard re-orders its queue ([CastReorder]) when this changes. */
+    @Volatile var shuffle: Boolean,
 ) {
     val originalIds: List<String> = original.map { it.mediaId }
+
+    /** Fixed by the queue, so the same queue shuffles the same way every time. */
+    val seed: Long = CastReorder.seedOf(originalIds)
 }
 
 /**
@@ -107,7 +112,7 @@ internal class CastController(
         val state = PlayerTransferState.fromPlayer(source)
         val items = state.mediaItems
         // The whole local queue is kept first, so whatever happens next the phone can get it back.
-        val kept = CastRecord(items, HashSet(), ArrayDeque(), state.shuffleModeEnabled, state.playbackParameters)
+        val kept = CastRecord(items, HashSet(), ArrayDeque(), state.shuffleModeEnabled)
         record = kept
         lastKnown = null
         val receiver = runCatching { androidx.media3.cast.Cast.getSingletonInstance(context).currentCastSession?.castDevice?.inetAddress }.getOrNull()
@@ -177,7 +182,9 @@ internal class CastController(
         // With nothing left of the receiver's queue (it vanished with the connection), the queue the phone had comes back whole.
         val merged = if (remote.isEmpty() && kept.sent.isNotEmpty()) kept.originalIds
         else CastQueue.mergeBack(kept.originalIds, kept.sent, remote.map { it.mediaId })
-        val items = merged.mapNotNull { byId[it] }
+        // With shuffle on, the receiver's queue is in its shuffled order: back here the queue is the one the user built and this phone shuffles it itself.
+        val ordered = if (kept.shuffle && merged.toSet().size == merged.size) CastReorder.inQueueOrder(merged, kept.originalIds) else merged
+        val items = ordered.mapNotNull { byId[it] }
         if (items.isEmpty()) {
             finish()
             return
@@ -191,10 +198,17 @@ internal class CastController(
             .setPlayWhenReady(false)
             .setRepeatMode(if (source.mediaItemCount > 0) source.repeatMode else Player.REPEAT_MODE_OFF)
             .setShuffleModeEnabled(kept.shuffle)
-            .setPlaybackParameters(kept.params)
+            .setPlaybackParameters(localParameters())
             .build()
             .setToPlayer(destination)
         finish()
+    }
+
+    /** The speed the user has now (it may have changed while casting), as the local player takes it. */
+    private fun localParameters(): PlaybackParameters {
+        val choices = AudioEffectsSetting.choices
+        val speed = choices.speed.value
+        return PlaybackParameters(speed, PlaybackSpeed.pitch(speed, choices.keepPitch.value))
     }
 
     private fun restoreOriginal(kept: CastRecord, destination: Player) {
@@ -211,7 +225,7 @@ internal class CastController(
         stopWatching?.invoke()
         stopWatching = null
         server.stop()
-        if (!quiet) CastNotices.post(context, if (reason == EndReason.Wifi) L.castStoppedWifi else L.castStopped)
+        if (!quiet) CastNotices.post(context, when (reason) { EndReason.Wifi -> L.castStoppedWifi; EndReason.Sleep -> L.castStoppedSleep; else -> L.castStopped })
         quiet = false
     }
 

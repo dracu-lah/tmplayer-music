@@ -64,6 +64,8 @@ internal object CastBuild {
             .setTransferCallback(controller)
             .build()
         val guard = CastGuardPlayer(parts.context, castPlayer, controller)
+        // The speed the user picks goes on to the receiver while casting (the other effects work on this phone only).
+        parts.scope.launch { com.tmplayer.music.player.AudioEffectsSetting.choices.speed.collect { guard.syncSpeed() } }
         CastSetup(guard, GoogleCastHost(parts, controller, castPlayer, cast))
     } catch (e: Exception) {
         Logger.w(TAG, "casting is not available: the player works without it", e)
