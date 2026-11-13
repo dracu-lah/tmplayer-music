@@ -2,6 +2,7 @@ package com.tmplayer.music.tags
 
 import com.tmplayer.music.library.AudioFormat
 import com.tmplayer.music.library.Picture
+import com.tmplayer.music.library.ReplayGain
 import com.tmplayer.music.library.Tags
 import com.tmplayer.music.library.TitleFallback
 
@@ -26,6 +27,11 @@ internal class TagBuilder {
     var channels = 0
     var format = AudioFormat.OTHER
     var lyrics = ""
+
+    private var trackGain: Float? = null
+    private var albumGain: Float? = null
+    private var trackPeak: Float? = null
+    private var albumPeak: Float? = null
 
     /** ID3's TLEN, used only when the audio itself gave no duration. */
     var fallbackDurationMs = 0L
@@ -58,6 +64,19 @@ internal class TagBuilder {
 
     fun lyrics(s: String) {
         if (lyrics.isEmpty()) lyrics = TextDecoding.clean(s)
+    }
+
+    /**
+     * Offers one ReplayGain tag by its name (REPLAYGAIN_TRACK_GAIN and the like, any case). The first
+     * sane value of each kind stays; a value that is not a number, or an absurd one, is ignored.
+     */
+    fun replayGain(name: String, value: String) {
+        when (name.trim().uppercase()) {
+            "REPLAYGAIN_TRACK_GAIN" -> if (trackGain == null) trackGain = ReplayGain.parseGain(value)
+            "REPLAYGAIN_ALBUM_GAIN" -> if (albumGain == null) albumGain = ReplayGain.parseGain(value)
+            "REPLAYGAIN_TRACK_PEAK" -> if (trackPeak == null) trackPeak = ReplayGain.parsePeak(value)
+            "REPLAYGAIN_ALBUM_PEAK" -> if (albumPeak == null) albumPeak = ReplayGain.parsePeak(value)
+        }
     }
 
     fun year(s: String) {
@@ -117,6 +136,7 @@ internal class TagBuilder {
             format = format,
             lyrics = lyrics,
             cover = cover,
+            replayGain = ReplayGain(trackGain, albumGain, trackPeak, albumPeak).let { if (it.isEmpty) ReplayGain.NONE else it },
         )
 
     companion object {

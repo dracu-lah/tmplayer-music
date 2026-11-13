@@ -12,7 +12,7 @@ import androidx.sqlite.execSQL
 internal object IndexSchema {
 
     /** Raised whenever a table or an index changes; [MIGRATIONS] carries an older file forward. */
-    const val VERSION = 4
+    const val VERSION = 5
 
     /**
      * Steps from one version to the next, keyed by the version they start from. Each step commits
@@ -32,6 +32,7 @@ internal object IndexSchema {
         1 to ::splitArtistsV2,
         2 to ::clipsV3,
         3 to ::resumeV4,
+        4 to ::replayGainV5,
     )
 
     /** Tracks the version 2 step reads per transaction, so 100,000 tracks are 50 short commits. */
@@ -417,6 +418,18 @@ internal object IndexSchema {
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS resume_points_at ON resume_points(at_ms)")
             setVersion(db, 4)
+        }
+    }
+
+    /**
+     * Version 5: `tracks.replay_gain`, the ReplayGain the file's tags carry, as the text of
+     * [ReplayGain.encode] (blank for none). Adding a column with a default touches no row; tracks
+     * whose tags were read before this step get theirs when their tags are read again. Safe to run twice.
+     */
+    private fun replayGainV5(db: SQLiteConnection) {
+        inTransaction(db) {
+            if (!hasColumn(db, "tracks", "replay_gain")) db.execSQL("ALTER TABLE tracks ADD COLUMN replay_gain TEXT NOT NULL DEFAULT ''")
+            setVersion(db, 5)
         }
     }
 

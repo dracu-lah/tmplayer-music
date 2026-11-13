@@ -15,6 +15,9 @@ internal object Flac {
     /** Comments beyond this many in one header are not read. */
     private const val MAX_COMMENTS = 10_000
 
+    /** A ReplayGain value is a short number; a longer one is not read. */
+    private const val MAX_GAIN_VALUE = 48
+
     /**
      * Reads the FLAC stream starting with "fLaC" at [start]. A block cut short by the end of [b]
      * is read as far as it goes, then the walk stops.
@@ -123,6 +126,8 @@ internal object Flac {
             "TRACKNUMBER" -> out.track(value())
             "DISCNUMBER" -> out.disc(value())
             "LYRICS", "UNSYNCEDLYRICS" -> out.lyrics(value())
+            "REPLAYGAIN_TRACK_GAIN", "REPLAYGAIN_ALBUM_GAIN", "REPLAYGAIN_TRACK_PEAK", "REPLAYGAIN_ALBUM_PEAK" ->
+                if (vlen <= MAX_GAIN_VALUE) out.replayGain(key, value())
         }
     }
 

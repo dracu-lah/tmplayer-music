@@ -31,6 +31,7 @@ class MusicApp : Application() {
         Diagnostics.install(this)
         stopContentCapture()
         com.tmplayer.music.platform.HapticSetting.start(Prefs(this))
+        com.tmplayer.music.player.AudioEffectsSetting.start(Prefs(this))
         // A debug build's demo library starts in place of the app (app/src/debug); never in a release.
         if (BuildHooks.startInstead(this)) return
         Td.start(this)

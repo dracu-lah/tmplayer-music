@@ -15,6 +15,7 @@ import com.tmplayer.music.lyrics.GatewayAnswer
 import com.tmplayer.music.lyrics.HttpAnswer
 import com.tmplayer.music.lyrics.LyricsParser
 import com.tmplayer.music.player.SavedQueue
+import com.tmplayer.music.tags.GainSamples
 import com.tmplayer.music.tags.Samples
 import com.tmplayer.music.tags.TagReader
 import org.junit.Assert.assertEquals
@@ -383,5 +384,65 @@ class GarbageInputTest {
         }
         com.tmplayer.music.library.TitleFallback.tidyTitle(null)
         com.tmplayer.music.library.TitleFallback.tidyArtist(null)
+    }
+
+    @Test
+    fun `replay gain tags cut short, with absurd sizes or flipped bytes never throw`() {
+        val random = Random(20261113)
+        val patterns = listOf(byteArrayOf(0x7F, -1, -1, -1), byteArrayOf(-1, -1, -1, -1), byteArrayOf(-128, 0, 0, 0), byteArrayOf(0, 0, 0, 0))
+        for ((name, sample) in GainSamples.all) {
+            for (n in 0..sample.size step 3) tagReader("$name cut at $n", sample.copyOf(n), sizeBytes = sample.size.toLong(), tail = sample.copyOfRange(n, sample.size))
+            var at = 0
+            while (at + 4 <= sample.size) {
+                for (p in patterns) {
+                    val copy = sample.copyOf()
+                    p.copyInto(copy, at)
+                    tagReader("$name size ${p.toList()} at $at", copy, tail = copy)
+                }
+                at += 2
+            }
+            repeat(300) { i ->
+                val copy = sample.copyOf()
+                repeat(random.nextInt(1, 6)) { copy[random.nextInt(copy.size)] = random.nextInt(256).toByte() }
+                tagReader("$name flipped $i", copy, tail = copy)
+            }
+        }
+    }
+
+    @Test
+    fun `replay gain values that are garbage are dropped, never thrown on`() {
+        val random = Random(77)
+        val odd = listOf(
+            "", " ", "dB", "-", "+", ".", ",", "e", "1e", "NaN", "-Infinity", "0x1p3", "1d", "1f", "\u0000", "9".repeat(5_000),
+            "-" + "9".repeat(30), "1,2,3 dB", "\uD800", "\u202E-6 dB",
+        )
+        repeat(2_000) {
+            val text = if (it < odd.size) odd[it] else String(CharArray(random.nextInt(0, 40)) { random.nextInt(0, 0xFFFF).toChar() })
+            com.tmplayer.music.library.ReplayGain.parseGain(text)?.let { gain -> assertTrue(gain.isFinite() && kotlin.math.abs(gain) <= 60f) }
+            com.tmplayer.music.library.ReplayGain.parsePeak(text)?.let { peak -> assertTrue(peak.isFinite() && peak > 0f && peak <= 16f) }
+            val decoded = com.tmplayer.music.library.ReplayGain.decode(text)
+            val factor = decoded.factor()
+            assertTrue("factor $factor", factor in 0.06f..4f)
+        }
+        com.tmplayer.music.library.ReplayGain.parseGain(null)
+        com.tmplayer.music.library.ReplayGain.parsePeak(null)
+        com.tmplayer.music.library.ReplayGain.decode(null)
+    }
+
+    @Test
+    fun `saved sound choices that are garbage read as neutral`() {
+        val random = Random(5)
+        repeat(500) {
+            val junk = String(CharArray(random.nextInt(0, 700)) { random.nextInt(32, 0xFFFF).toChar() })
+            val store = MemoryKeyValues().apply {
+                putString("fx.eq.preset", junk)
+                putString("fx.eq.levels", junk)
+                putLong("fx.speed", random.nextLong())
+            }
+            val choices = com.tmplayer.music.player.AudioEffectsChoices(store)
+            assertTrue(choices.speed.value in 0.5f..2f)
+            assertTrue(choices.levels.value.size <= 32)
+            com.tmplayer.music.player.EqPresets.effective(choices.levels.value, choices.preset.value, emptyList(), 5, -1500, 1500)
+        }
     }
 }

@@ -107,6 +107,7 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
         message?.let { Line(it) }
 
         HapticSettingsSection()
+        EffectsSettingsRow()
         LyricsSettingsSection()
         com.tmplayer.music.ui.update.UpdateSettingsSection()
         HorizontalDivider(Modifier.padding(vertical = 8.dp))

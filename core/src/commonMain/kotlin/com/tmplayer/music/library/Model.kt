@@ -63,6 +63,8 @@ data class Tags(
     /** Unsynced or LRC text from the tag (USLT, LYRICS, ©lyr), blank when none. */
     val lyrics: String = "",
     val cover: Picture? = null,
+    /** ReplayGain from the tags; [ReplayGain.NONE] when the file has none. */
+    val replayGain: ReplayGain = ReplayGain.NONE,
 ) {
     companion object {
         val EMPTY = Tags()
@@ -119,6 +121,8 @@ data class Track(
     val variant: String = "",
     /** Audio channels from the tags (1 mono, 2 stereo), 0 when not known; for the voice file rule. */
     val channels: Int = 0,
+    /** ReplayGain from the tags, [ReplayGain.NONE] when the file has none or its tags are not read yet. */
+    val replayGain: ReplayGain = ReplayGain.NONE,
 ) {
     /** The row's identity in the index. */
     val id: TrackId get() = TrackId(chatId, messageId)
