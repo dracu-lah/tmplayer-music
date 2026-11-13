@@ -69,6 +69,7 @@ object PhoneRemote {
     private const val FIND_MS = 8_000L
     private const val REPLY_MS = 15_000L
     private const val MAX_WAIT_MS = 30_000L
+    private const val SAS_ANSWER_MS = 55_000L
 
     private val scope = JobFailures.scope("PhoneRemote", Dispatchers.Default)
     private val _ui = MutableStateFlow(RemoteUi())
@@ -153,8 +154,15 @@ object PhoneRemote {
         var last: ConnectResult = ConnectResult.Unreachable("not found")
         if (tv.host.isNotBlank() && tv.port > 0) {
             _ui.update { it.copy(link = Link.Connecting) }
-            last = ConnectClient.connect(tv.host, tv.port, me(), tv, onBody, onClosed)
-            if (last !is ConnectResult.Unreachable) return last
+            val saved = ConnectClient.connect(tv.host, tv.port, me(), tv, onBody, onClosed)
+            // Another device of this app may hold the old address now: that is not "this TV forgot the phone",
+            // so look for the TV on the network instead of giving up for good.
+            if (saved is ConnectResult.Refused && saved.code == ConnectErrors.WRONG_TV) {
+                last = ConnectResult.Unreachable("another device at the saved address")
+            } else {
+                last = saved
+                if (saved !is ConnectResult.Unreachable) return saved
+            }
         }
         _ui.update { it.copy(link = Link.Searching) }
         val found = withTimeoutOrNull(FIND_MS) {
@@ -163,6 +171,8 @@ object PhoneRemote {
         _ui.update { it.copy(link = Link.Connecting) }
         val result = ConnectClient.connect(found.host, found.port, me(), tv, onBody, onClosed)
         if (result is ConnectResult.Connected) Connect.tvs.seen(tv.id, found.host, found.port)
+        // An advert that names this TV's id but answers with another is not a refusal of this phone either.
+        if (result is ConnectResult.Refused && result.code == ConnectErrors.WRONG_TV) return ConnectResult.Unreachable("another device answered")
         return result
     }
 
@@ -300,7 +310,7 @@ object PhoneRemote {
 
     /** Pairs with a TV found by [FoundTv] or typed ("host:port"), with [code]; stores the pairing when it works. */
     suspend fun pair(host: String, port: Int, code: String): PairResult {
-        val result = withContext(Dispatchers.IO) { ConnectClient.pair(host, port, me(), code) }
+        val result = withContext(Dispatchers.IO) { ConnectClient.pair(host, port, me(), code, ::askUserToCompare) }
         if (result is PairResult.Success) {
             Connect.tvs.add(result.paired)
             Connect.setActiveTv(result.paired.id)
@@ -321,6 +331,36 @@ object PhoneRemote {
         return result
     }
 
+    /** A question for this phone's user while pairing with a typed code: "does the TV show [sas]?". Answer it with [SasPrompt.answer]. */
+    class SasPrompt internal constructor(val sas: String, val tvName: String) {
+        internal val result = java.util.concurrent.CompletableFuture<Boolean>()
+
+        fun answer(ok: Boolean) {
+            result.complete(ok)
+        }
+    }
+
+    private val _sasPrompt = MutableStateFlow<SasPrompt?>(null)
+
+    /** The question on show, null when none. The pairing dialog draws it; no answer within a minute is a no. */
+    val sasPrompt: StateFlow<SasPrompt?> = _sasPrompt.asStateFlow()
+
+    /** Blocks (on the IO thread pairing runs on) until the user answers; a missing answer or a dialog that went away is a no. */
+    private fun askUserToCompare(sas: String, tvName: String): Boolean {
+        val prompt = SasPrompt(sas, tvName)
+        _sasPrompt.value = prompt
+        return try {
+            prompt.result.get(SAS_ANSWER_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (_: java.util.concurrent.TimeoutException) {
+            false
+        } catch (_: InterruptedException) {
+            false
+        } finally {
+            prompt.result.complete(false)
+            _sasPrompt.compareAndSet(prompt, null)
+        }
+    }
+
     private val _pendingLink = MutableStateFlow<PairLink?>(null)
 
     /** A TV's pairing link that was just opened (from the phone's camera app), waiting for the user to confirm. */
@@ -329,7 +369,9 @@ object PhoneRemote {
     /** Takes the text a camera app opened us with; ignored unless it is a well formed link. */
     fun offerLink(text: String?) {
         if (!Connect.available) return
-        _pendingLink.value = PairLink.parse(text) ?: return
+        val link = PairLink.parse(text) ?: return
+        // A second link while a question is on screen is ignored: it cannot swap the TV under the user's finger.
+        _pendingLink.compareAndSet(null, link)
     }
 
     fun dismissLink() {
