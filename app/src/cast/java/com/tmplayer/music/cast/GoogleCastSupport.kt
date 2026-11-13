@@ -51,6 +51,9 @@ internal class GoogleCastSupport(private val context: Context, private val castC
 
     private var discovering = 0
     private var connectingId: String? = null
+
+    /** The device the user picked last, for Try again. */
+    private var lastId: String? = null
     private var session: CastSession? = null
 
     /** Until when an unselect of the device's route is our own letting go of a stale selection. */
@@ -223,6 +226,7 @@ internal class GoogleCastSupport(private val context: Context, private val castC
         }
         CastNotices.clear()
         connectingId = id
+        lastId = id
         _state.value = CastState.Connecting(route.name)
         refresh()
         reselectsLeft = 1
@@ -251,6 +255,18 @@ internal class GoogleCastSupport(private val context: Context, private val castC
         }, CONNECT_TIMEOUT_MS)
     }
 
+    override fun retry() {
+        val id = lastId ?: return
+        CastNotices.clear()
+        if (castContext.sessionManager.currentCastSession != null) {
+            // Let go of what is there first (the queue comes back here), then connect afresh once the route is free.
+            runCatching { castContext.sessionManager.endCurrentSession(true) }
+            main.postDelayed({ if (_state.value !is CastState.Connecting && _state.value !is CastState.Connected) connect(id) }, RETRY_DELAY_MS)
+        } else {
+            connect(id)
+        }
+    }
+
     override fun endSession() {
         castContext.sessionManager.endCurrentSession(true)
     }
@@ -267,6 +283,7 @@ internal class GoogleCastSupport(private val context: Context, private val castC
     private companion object {
         const val TAG = "GoogleCastSupport"
         const val RESELECT_DELAY_MS = 300L
+        const val RETRY_DELAY_MS = 1_000L
         const val CONNECT_TIMEOUT_MS = 30_000L
     }
 }

@@ -1,6 +1,8 @@
 package com.tmplayer.music.cast
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.cast.CastParams
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.RemoteCastPlayer
@@ -14,7 +16,9 @@ import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.OptionsProvider
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.SessionProvider
+import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.media.CastMediaOptions
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.tmplayer.music.platform.Logger
 import com.tmplayer.music.player.SleepSetting
 import com.tmplayer.music.player.SleepTimer
@@ -107,17 +111,80 @@ internal class GoogleCastHost(
     private val cast: androidx.media3.cast.Cast,
 ) : CastHost {
 
-    /** Notes where the receiver was just before its session ends, while it can still be asked. */
+    private val main = Handler(Looper.getMainLooper())
+    private var client: RemoteMediaClient? = null
+
+    /** Notes where the receiver was just before its session ends, while it can still be asked, and watches it from the start. */
     private val listener = object : SessionManagerListener<CastSession> {
-        override fun onSessionEnding(session: CastSession) = controller.capture(castPlayer)
+        override fun onSessionEnding(session: CastSession) {
+            controller.capture(castPlayer)
+            stopWatching()
+        }
+
         override fun onSessionSuspended(session: CastSession, reason: Int) = controller.capture(castPlayer)
         override fun onSessionStarting(session: CastSession) = Unit
-        override fun onSessionStarted(session: CastSession, sessionId: String) = Unit
+        override fun onSessionStarted(session: CastSession, sessionId: String) = startWatching(session)
         override fun onSessionStartFailed(session: CastSession, error: Int) = Unit
-        override fun onSessionEnded(session: CastSession, error: Int) = Unit
+        override fun onSessionEnded(session: CastSession, error: Int) = stopWatching()
         override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
-        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) = Unit
+        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) = startWatching(session)
         override fun onSessionResumeFailed(session: CastSession, error: Int) = Unit
+    }
+
+    private val clientCallback = object : RemoteMediaClient.Callback() {
+        override fun onStatusUpdated() = onReceiverStatus()
+    }
+
+    /**
+     * Until the receiver has asked this phone for anything, looks every [TICK_MS] whether it ever will
+     * (client isolation on the Wi-Fi leaves it waiting on an address it cannot open). It stops itself once the
+     * receiver has been heard from, when the cast ends, and does not count while the music is paused.
+     */
+    private val tick = object : Runnable {
+        override fun run() {
+            if (controller.checkReachable(castPlayer.playWhenReady)) main.postDelayed(this, TICK_MS)
+        }
+    }
+
+    private fun startWatching(session: CastSession) {
+        stopWatching()
+        client = session.remoteMediaClient?.also { runCatching { it.registerCallback(clientCallback) } }
+        main.postDelayed(tick, TICK_MS)
+    }
+
+    private fun stopWatching() {
+        main.removeCallbacks(tick)
+        client?.let { runCatching { it.unregisterCallback(clientCallback) } }
+        client = null
+    }
+
+    /**
+     * The receiver's own word on what it is doing. A track it could not load or play (the status is idle with an error)
+     * is skipped, a little later so a receiver that moves on by itself is not skipped twice, and counted for the sentence at the end.
+     */
+    private fun onReceiverStatus() {
+        val status = client?.mediaStatus ?: return
+        if (controller.record == null) return
+        when (status.playerState) {
+            MediaStatus.PLAYER_STATE_IDLE -> if (status.idleReason == MediaStatus.IDLE_REASON_ERROR) receiverFailed(status.currentItemId, status)
+            MediaStatus.PLAYER_STATE_PLAYING -> controller.receiverActive(true)
+            MediaStatus.PLAYER_STATE_BUFFERING, MediaStatus.PLAYER_STATE_LOADING, MediaStatus.PLAYER_STATE_PAUSED -> controller.receiverActive(false)
+        }
+    }
+
+    private fun receiverFailed(itemId: Int, status: MediaStatus) {
+        val queueItem = status.getQueueItemById(itemId)
+        val id = CastItemConverter.idOf(queueItem).ifEmpty { "item:$itemId" }
+        val title = CastItemConverter.titleOf(queueItem)
+        if (controller.receiverFailed(id, title) != CastController.Skip.Next) return
+        main.postDelayed({
+            val now = client?.mediaStatus
+            val stuck = now != null && now.playerState == MediaStatus.PLAYER_STATE_IDLE && now.idleReason == MediaStatus.IDLE_REASON_ERROR && now.currentItemId == itemId
+            if (stuck && castPlayer.isCastSessionAvailable && castPlayer.hasNextMediaItem()) {
+                castPlayer.seekToNextMediaItem()
+                castPlayer.play()
+            }
+        }, SKIP_DELAY_MS)
     }
 
     /** The sleep timer's end of track while casting: the receiver has no "pause at the end of the item", so it is seen here. */
@@ -165,6 +232,7 @@ internal class GoogleCastHost(
     }
 
     override fun release() {
+        stopWatching()
         runCatching { cast.removeSessionManagerListener(listener) }
         runCatching { castPlayer.removeListener(sleepWatch) }
         controller.release()
@@ -172,6 +240,8 @@ internal class GoogleCastHost(
 
     private companion object {
         const val SETTLE_MS = 3_000
+        const val TICK_MS = 2_000L
+        const val SKIP_DELAY_MS = 1_500L
         const val STEP_MS = 150L
     }
 }

@@ -59,6 +59,9 @@ interface CastSupport {
     /** The user picked [id]: connect, and move the queue over. */
     fun connect(id: String)
 
+    /** Try again: the cast (if any) ends and the device last picked is connected to afresh. Nothing when none was picked. */
+    fun retry()
+
     /** The user ended the cast: playback comes back to this phone, paused where it was. */
     fun endSession()
 
@@ -79,6 +82,7 @@ object NoCastSupport : CastSupport {
     override fun startDiscovery() = Unit
     override fun stopDiscovery() = Unit
     override fun connect(id: String) = Unit
+    override fun retry() = Unit
     override fun endSession() = Unit
     override fun setVolume(level: Double) = Unit
 }
@@ -147,17 +151,36 @@ const val CAST_FORMAT_KEY = "tmplayer.castFormat"
 /** The extras key a queue item carries its file size under (bytes), so the cast server knows the length without asking. */
 const val CAST_SIZE_KEY = "tmplayer.castSize"
 
-/** The short notices casting leaves (a track left out, casting stopped), for the Cast sheet and a toast. */
+/**
+ * The notices casting leaves. [last] is a short sentence (a track left out, casting stopped) for the Cast
+ * sheet and a toast. [problem] is a failure the user has to act on (the receiver cannot reach this phone,
+ * tracks keep failing): the Cast sheet shows it with Try again and Send logs, and the Cast button turns to
+ * the error colour, until the next connect or until it is dismissed.
+ */
 object CastNotices {
     private val _last = MutableStateFlow<String?>(null)
     val last: StateFlow<String?> = _last.asStateFlow()
+    private val _problem = MutableStateFlow<String?>(null)
+    val problem: StateFlow<String?> = _problem.asStateFlow()
 
     fun post(context: Context, text: String) {
         _last.value = text
         android.widget.Toast.makeText(context.applicationContext, text, android.widget.Toast.LENGTH_LONG).show()
     }
 
+    /** A failure the user has to act on: kept until [clear], with a toast now. */
+    fun problem(context: Context, text: String) {
+        _problem.value = text
+        post(context, text)
+    }
+
     fun clear() {
         _last.value = null
+        _problem.value = null
+    }
+
+    /** The user has seen the problem: the Cast button stops showing it. */
+    fun dismissProblem() {
+        _problem.value = null
     }
 }

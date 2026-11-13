@@ -107,15 +107,21 @@ internal class CastItemConverter(private val server: () -> CastAudioServer?) : M
             .build()
     }
 
-    private companion object {
-        const val TAG = "CastItemConverter"
-        const val PRELOAD_SECONDS = 15.0
-        const val ID = "id"
-        const val URI = "uri"
-        const val ART = "art"
-        const val COVER = "cover"
-        const val GAIN = "gain"
-        const val FORMAT = "fmt"
-        const val SIZE = "size"
+    companion object {
+        /** The queue item's media id as this app sent it, or empty for an item it did not send. */
+        fun idOf(item: MediaQueueItem?): String = item?.media?.customData?.optString(ID).orEmpty()
+
+        /** The title the receiver was sent for [item], or empty. */
+        fun titleOf(item: MediaQueueItem?): String = item?.media?.metadata?.getString(CastMetadata.KEY_TITLE).orEmpty()
+
+        private const val TAG = "CastItemConverter"
+        private const val PRELOAD_SECONDS = 15.0
+        private const val ID = "id"
+        private const val URI = "uri"
+        private const val ART = "art"
+        private const val COVER = "cover"
+        private const val GAIN = "gain"
+        private const val FORMAT = "fmt"
+        private const val SIZE = "size"
     }
 }

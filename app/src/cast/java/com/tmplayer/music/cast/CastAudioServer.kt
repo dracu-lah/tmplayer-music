@@ -90,6 +90,9 @@ internal class CastAudioServer(private val context: Context, private val sources
 
     val running: Boolean get() = server?.running == true
 
+    /** How many requests the receiver (or anyone on the Wi-Fi allowed in) has made since the server started; 0 means it was never reached. */
+    val requests: Int get() = server?.served?.get() ?: 0
+
     /** Starts on the Wi-Fi address that reaches [receiver]. False when the phone has no usable Wi-Fi address or the bind fails. */
     fun start(receiver: InetAddress?): Boolean {
         if (running) return true
