@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.onboarding
 
+import com.tmplayer.music.ui.tv.LocalTv
 import com.tmplayer.music.ui.tv.tvAutoFocus
 import com.tmplayer.music.ui.tv.tvFocusRing
 import androidx.compose.foundation.clickable
@@ -167,6 +168,29 @@ fun ChatPicker(
         }
     }
 
+    // The Continue row: below the list on a phone; above it on a TV, where thousands of rows would
+    // stand between the D-pad and the button.
+    val tv = LocalTv.current
+    @Composable
+    fun Footer() {
+        val all = chats
+    val picked = all.orEmpty().filter { ticked[it.chatId] == true }
+        val known = picked.sumOf { totalOf(counts[it.chatId]) }
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (picked.isNotEmpty()) {
+                Text(L.pickerTotal(picked.size, known), style = MaterialTheme.typography.bodyMedium)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) TextButton(onClick = onBack) { Text(L.commonBack) }
+                Button(
+                    onClick = { onDone(picked.map { PickedChat(it.chatId, name(it)) }) },
+                    enabled = all != null,
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (picked.isEmpty()) L.pickerLater else L.commonContinue) }
+            }
+        }
+    }
+
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -182,6 +206,7 @@ fun ChatPicker(
             }
             val now = listing
             val all = chats
+            if (tv) Footer()
             if (now != null && all != null && all.isNotEmpty()) {
                 ListTabs(now, tab, onTab = { tab = it })
             }
@@ -250,7 +275,7 @@ fun ChatPicker(
                         if (shown.isNotEmpty()) {
                             item(key = "selectAll") {
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
-                                    TextButton(onClick = {
+                                    TextButton(modifier = Modifier.tvFocusRing(), onClick = {
                                         val untick = shown.all { ticked[it.chatId] == true }
                                         if (untick) {
                                             shown.forEach { ticked.remove(it.chatId) }
@@ -283,21 +308,7 @@ fun ChatPicker(
                     }
                 }
             }
-            val picked = all.orEmpty().filter { ticked[it.chatId] == true }
-            val known = picked.sumOf { totalOf(counts[it.chatId]) }
-            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (picked.isNotEmpty()) {
-                    Text(L.pickerTotal(picked.size, known), style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (onBack != null) TextButton(onClick = onBack) { Text(L.commonBack) }
-                    Button(
-                        onClick = { onDone(picked.map { PickedChat(it.chatId, name(it)) }) },
-                        enabled = all != null,
-                        modifier = Modifier.weight(1f),
-                    ) { Text(if (picked.isEmpty()) L.pickerLater else L.commonContinue) }
-                }
-            }
+            if (!tv) Footer()
         }
     }
 
@@ -327,7 +338,7 @@ private fun StartCard(starting: Boolean, none: Boolean, onStart: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
         Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onStart, enabled = !starting, shape = Pill, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onStart, enabled = !starting, shape = Pill, modifier = Modifier.fillMaxWidth().tvAutoFocus().tvFocusRing(Pill)) {
                     if (starting) {
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(10.dp))
@@ -412,7 +423,7 @@ private fun ListTabs(listing: ChatListing, tab: String, onTab: (String) -> Unit)
         modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
     ) {
         items(tabs, key = { it.first }) { (key, label) ->
-            FilterChip(selected = tab == key, onClick = { onTab(key) }, label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+            FilterChip(selected = tab == key, onClick = { onTab(key) }, label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }, modifier = Modifier.tvFocusRing(RoundedCornerShape(8.dp)))
         }
     }
 }

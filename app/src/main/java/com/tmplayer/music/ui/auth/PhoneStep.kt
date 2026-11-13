@@ -3,6 +3,10 @@
 // app/src/main/java/com/tmplayer/data/DeviceCountry.kt.
 package com.tmplayer.music.ui.auth
 
+import androidx.compose.ui.focus.onFocusChanged
+import com.tmplayer.music.ui.tv.TvKeypad
+import com.tmplayer.music.ui.tv.PadEntry
+import com.tmplayer.music.ui.tv.LocalTv
 import android.content.Context
 import android.telephony.TelephonyManager
 import androidx.activity.compose.BackHandler
@@ -108,6 +112,9 @@ fun PhoneStep(
     val pattern = rememberPhonePattern(entry.dial, entry.national)
     val dialField = remember { FocusRequester() }
     val numberField = remember { FocusRequester() }
+    // A TV: the digits come from the pad, into the field the D-pad was on last; the fields only show them.
+    val tv = LocalTv.current
+    var padOnDial by remember { mutableStateOf(false) }
 
     // The number being changed, taken apart once.
     LaunchedEffect(initial, countries) {
@@ -194,6 +201,7 @@ fun PhoneStep(
                     prefix = { Text("+") },
                     singleLine = true,
                     enabled = !guessing && !busy,
+                    readOnly = tv,
                     isError = shownProblem == PhoneProblem.NoCountry || shownProblem == PhoneProblem.UnknownCode,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Phone,
@@ -204,7 +212,8 @@ fun PhoneStep(
                     modifier = Modifier
                         .weight(DIAL_SHARE)
                         .widthIn(min = 96.dp)
-                        .focusRequester(dialField),
+                        .focusRequester(dialField)
+                        .onFocusChanged { if (it.isFocused) padOnDial = true },
                 )
                 OutlinedTextField(
                     value = entry.national,
@@ -217,6 +226,7 @@ fun PhoneStep(
                     label = { Text(L.signinPhoneNumber, maxLines = 1) },
                     singleLine = true,
                     enabled = !guessing && !busy,
+                    readOnly = tv,
                     isError = shownProblem == PhoneProblem.Empty || shownProblem == PhoneProblem.TooShort ||
                         (phoneFailure != null && state is AuthState.Phone && state.wrong),
                     visualTransformation = PhoneGrouping(pattern),
@@ -229,6 +239,7 @@ fun PhoneStep(
                     modifier = Modifier
                         .weight(1f - DIAL_SHARE)
                         .focusRequester(numberField)
+                        .onFocusChanged { if (it.isFocused) padOnDial = false }
                         // Backspace in an empty number goes back into the code, as in Telegram.
                         .onPreviewKeyEvent { event ->
                             val back = event.type == KeyEventType.KeyDown && event.key == Key.Backspace && entry.national.isEmpty()
@@ -238,6 +249,26 @@ fun PhoneStep(
                         .semantics { contentType = ContentType.PhoneNumberNational },
                 )
             }
+        }
+
+        if (tv) {
+            TvKeypad(
+                onDigit = { digit ->
+                    SignInRunner.clearFailure()
+                    entry = if (padOnDial) {
+                        entry.typeDial(PadEntry.add(entry.dial, digit, PAD_MAX), countries)
+                    } else {
+                        entry.typeNational(PadEntry.add(entry.national, digit, PAD_MAX), countries)
+                    }
+                },
+                onDelete = {
+                    SignInRunner.clearFailure()
+                    entry = if (padOnDial) entry.typeDial(PadEntry.delete(entry.dial), countries) else entry.typeNational(PadEntry.delete(entry.national), countries)
+                },
+                onDone = send,
+                doneLabel = L.signinSendCode,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
         }
 
         StepError(phoneFailure?.message ?: shownProblem?.let(SignInWords::problem))
@@ -394,6 +425,9 @@ private const val AREA_DIGITS = 4
 
 /** Enough of the number to tell its layout apart; past this the layout no longer changes. */
 private const val PATTERN_PREFIX = 4
+
+/** The most digits the pad adds to a field; the entry cuts each field to its own limit. */
+private const val PAD_MAX = 16
 
 /** The dial code's share of the number row. */
 private const val DIAL_SHARE = 0.34f

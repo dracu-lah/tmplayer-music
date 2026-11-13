@@ -2,6 +2,8 @@
 // and ui/src/shared/kotlin/com/tmplayer/ui/auth/QrScanned.kt (the veils, the life cue, the hold).
 package com.tmplayer.music.ui.auth
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.LocalTv
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
@@ -185,6 +187,35 @@ internal fun QrStep(auth: AuthState.Qr, renewing: Boolean = false) {
     val life = rememberQrLife(auth.link, running = idle) { QrCodes.refresh(it, manual = false) }
     val refresh = { QrCodes.refresh(auth.link, manual = true) }
     val stuck = idle && life.phase == QrPhase.Expired && QrCodes.policy.exhausted
+    val tv = LocalTv.current
+    val usePhone = {
+        QrCodes.reset()
+        SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Phone) }
+    }
+    if (tv) {
+        // A TV: the code on the left, big enough to scan from the sofa, the words on the right.
+        SignInFrame(onBack = null, wide = true) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(40.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    QrPlate(auth.link, scanned = scanned, renewing = renewing, life = life, onRefresh = refresh)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    StepTitle(L.signinQrTvTitle)
+                    QrStepLine(1, L.signinQrStepOpen)
+                    QrStepLine(2, L.signinQrStepDevices)
+                    QrStepLine(3, L.signinQrStepLink)
+                    if (stuck) {
+                        StepError(L.signinQrStuck)
+                        SendLogsButton(Modifier.fillMaxWidth())
+                    }
+                    StepBody(L.signinQrNote)
+                    Button(onClick = usePhone, enabled = idle, modifier = Modifier.fillMaxWidth().tvFocusRing()) { Text(L.signinUsePhone) }
+                    QrRefreshButton(onRefresh = refresh, enabled = idle, busy = renewing)
+                }
+            }
+        }
+        return
+    }
     SignInFrame(onBack = if (idle) back else null) {
         StepTitle(L.loginQrTitle)
         QrStepLine(1, L.signinQrStepOpen)
@@ -198,10 +229,7 @@ internal fun QrStep(auth: AuthState.Qr, renewing: Boolean = false) {
         StepBody(L.signinQrNote)
         QrRefreshButton(onRefresh = refresh, enabled = idle, busy = renewing)
         Button(
-            onClick = {
-                QrCodes.reset()
-                SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Phone) }
-            },
+            onClick = usePhone,
             enabled = idle,
             modifier = Modifier.fillMaxWidth(),
         ) { Text(L.signinUsePhone) }
