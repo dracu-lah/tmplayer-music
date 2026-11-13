@@ -1,5 +1,8 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.TvSheet
 import com.tmplayer.music.ui.tv.tvFocusRing
 import android.Manifest
 import android.content.Context
@@ -476,7 +479,7 @@ fun LibraryHome(onLogOut: () -> Unit, startOnChats: Boolean = false, startTab: M
                     onLogOut()
                 }) { Text(L.shellLogOut) }
             },
-            dismissButton = { TextButton(onClick = { askLogOut = false }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { askLogOut = false }) { Text(L.commonCancel) } },
         )
     }
     versionsOf?.let { song -> VersionsSheet(song, chatTitles, onDismiss = { versionsOf = null }) }
@@ -522,7 +525,7 @@ private fun MobileDataQuestion() {
         title = { Text(L.chatfirstMobileTitle) },
         text = { Text(L.chatfirstMobileBody) },
         confirmButton = { TextButton(onClick = { Library.setMobileAllowed(true) }) { Text(L.chatfirstMobileYes) } },
-        dismissButton = { TextButton(onClick = { Library.setMobileAllowed(false) }) { Text(L.chatfirstMobileNo) } },
+        dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { Library.setMobileAllowed(false) }) { Text(L.chatfirstMobileNo) } },
     )
 }
 
@@ -583,7 +586,7 @@ private fun SongMenu(
             artists = index.songArtists(song)
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    TvSheet(onDismiss) {
         // Scrolls in a window turned sideways, where the lines do not all fit.
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(

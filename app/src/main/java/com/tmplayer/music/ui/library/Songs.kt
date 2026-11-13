@@ -1,6 +1,8 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.TvSheet
 import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.tvHold
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -14,6 +16,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -90,9 +94,68 @@ fun SongsTab(sort: SongSort, actions: SongActions, header: @Composable () -> Uni
     }
     // The bar has its own column, so it never covers a row's title or format badge.
     Row(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { SongList(pager, state, actions, header) }
+        Box(Modifier.weight(1f)) {
+            SongList(pager, state, actions, header = {
+                header()
+                // A TV has no letter bar to touch: one button opens the letters as a grid of buttons.
+                if (sort != SongSort.Added && com.tmplayer.music.ui.tv.LocalTv.current) LetterJump(sort, pager, state)
+            })
+        }
         // The A to Z bar is touch only; a TV moves through the list with the D-pad.
         if (sort != SongSort.Added && !com.tmplayer.music.ui.tv.LocalTv.current) LetterBar(sort, pager, state, Modifier.fillMaxHeight())
+    }
+}
+
+/**
+ * The TV's way to the letter bar's jump: a button above the list that opens every first letter as a
+ * button, and OK on one goes there ([Pager.jumpTo], however far down it is). Hidden when the list
+ * is short, as the bar is. The D-pad comes back to the button when the dialog closes.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun LetterJump(sort: SongSort, pager: Pager<SongCursor, Song>, state: LazyListState) {
+    val changes by Library.changes.collectAsStateWithLifecycle()
+    var letters by remember { mutableStateOf<List<Pair<Char, Int>>>(emptyList()) }
+    LaunchedEffect(sort, changes) {
+        letters = runCatching { Library.index().letterIndex(sort) }.getOrDefault(letters)
+    }
+    val total = letters.lastOrNull()?.second ?: 0
+    if (letters.size < 2 || total < LETTER_BAR_MIN) return
+    var open by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    TextButton(onClick = { open = true }, modifier = Modifier.padding(start = 8.dp).tvFocusRing()) { Text(L.libraryJumpToLetter) }
+    if (open) {
+        val first = remember { androidx.compose.ui.focus.FocusRequester() }
+        LaunchedEffect(Unit) { com.tmplayer.music.ui.tv.requestFocusSoon(first) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text(L.libraryJumpToLetter) },
+            text = {
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                ) {
+                    letters.forEachIndexed { i, (letter, position) ->
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = {
+                                open = false
+                                scope.launch {
+                                    runCatching {
+                                        val index = pager.jumpTo(position)
+                                        // +1 for the header row above the songs.
+                                        state.scrollToItem((index + 1).coerceAtMost(pager.items.size))
+                                    }
+                                }
+                            },
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.size(width = 52.dp, height = 44.dp).then(if (i == 0) Modifier.focusRequester(first) else Modifier).tvFocusRing(),
+                        ) { Text(letter.toString()) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { open = false }, modifier = Modifier.tvFocusRing()) { Text(L.commonCancel) } },
+        )
     }
 }
 
@@ -239,15 +302,8 @@ fun SongRow(
         Modifier
             .fillMaxWidth()
             .rememberedFocus(song.groupKey)
-            // A TV remote's Menu key opens the song's menu, as a long press of OK does.
-            .onPreviewKeyEvent { e ->
-                if (e.key == Key.Menu && e.type == KeyEventType.KeyUp) {
-                    onLongClick()
-                    true
-                } else {
-                    false
-                }
-            }
+            // A TV: hold OK, or the Menu or Info key, opens the song's menu, as a long press does.
+            .tvHold(onLongClick)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -376,7 +432,7 @@ fun VersionsSheet(song: Song, chatTitles: Map<Long, String>, onDismiss: () -> Un
             error = Failures.humanise(e)
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    TvSheet(onDismiss) {
         Column(
             // Scrolls in a window turned sideways, or with many versions.
             Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 32.dp),

@@ -2,6 +2,8 @@
 // ui/src/shared/kotlin/com/tmplayer/ui/auth/SignInWords.kt (the countdown).
 package com.tmplayer.music.ui.auth
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.LocalTv
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,7 +61,8 @@ import kotlinx.coroutines.delay
  * small phone in landscape at a large font the whole step is still reachable.
  */
 @Composable
-fun SignInFrame(onBack: (() -> Unit)?, content: @Composable ColumnScope.() -> Unit) {
+fun SignInFrame(onBack: (() -> Unit)?, wide: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+    val tv = LocalTv.current
     Box(
         Modifier
             .fillMaxSize()
@@ -74,10 +77,12 @@ fun SignInFrame(onBack: (() -> Unit)?, content: @Composable ColumnScope.() -> Un
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(
-                Modifier.widthIn(max = 480.dp).fillMaxWidth(),
+                // A TV reads from further away: a wider column, and two panes for the QR step ([wide]).
+                Modifier.widthIn(max = if (wide && tv) 900.dp else if (tv) 560.dp else 480.dp).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                if (onBack != null) {
+                // The back arrow is for a finger: a remote has Back.
+                if (onBack != null && !tv) {
                     IconButton(onClick = onBack) {
                         Icon(MusicIcons.Back, contentDescription = L.commonBack)
                     }
@@ -145,7 +150,7 @@ fun MainAction(
         Button(
             onClick = onClick,
             enabled = enabled && !busy,
-            modifier = Modifier.fillMaxWidth().bringIntoViewRequester(requester),
+            modifier = Modifier.fillMaxWidth().bringIntoViewRequester(requester).tvFocusRing(),
         ) {
             if (busy) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

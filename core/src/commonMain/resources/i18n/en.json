@@ -130,6 +130,7 @@
     "empty": "No songs yet. Add chats with music in Manage chats, or wait for the scan to find them.",
     "favourites_capped": "{count, plural, one {Showing the latest # favourite.} other {Showing the latest # favourites.}}",
     "favourites_empty": "No favourites yet. Hold a song, then Add to favourites.",
+    "jump_to_letter": "Jump to a letter",
     "menu": "More",
     "show_grid": "Show as a grid",
     "show_list": "Show as a list",
@@ -365,6 +366,8 @@
   "queue": {
     "clear": "Clear",
     "move": "Hold and drag to move",
+    "move_down": "Move down",
+    "move_up": "Move up",
     "remove": "Remove from the queue"
   },
   "scan": {
@@ -484,6 +487,7 @@
     "qr_step_link": "Tap Link Desktop Device and point the camera here",
     "qr_step_open": "Open Telegram on your phone",
     "qr_stuck": "New codes are not coming through. Check your connection, then try again.",
+    "qr_tv_title": "Scan with Telegram on your phone",
     "resend_again": "Send the code again",
     "resend_app": "Send to the Telegram app instead",
     "resend_call": "Call me instead",

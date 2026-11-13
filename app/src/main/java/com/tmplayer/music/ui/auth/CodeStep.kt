@@ -2,6 +2,9 @@
 // CodeBoxes).
 package com.tmplayer.music.ui.auth
 
+import com.tmplayer.music.ui.tv.TvKeypad
+import com.tmplayer.music.ui.tv.PadEntry
+import com.tmplayer.music.ui.tv.LocalTv
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -93,7 +96,25 @@ fun CodeStep(state: AuthState.Code, onChangeNumber: () -> Unit, onStartOver: () 
         StepTitle(L.loginCodeTitle)
         StepBody(SignInWords.codeBlurb(state))
 
-        if (boxed) {
+        if (boxed && LocalTv.current) {
+            // A TV: the digits come from the pad, whatever keyboard the box has, and the last digit sends.
+            val wrong = state.wrong && code == submitted
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { CodeCells(code, length, wrong) }
+            TvKeypad(
+                onDigit = {
+                    code = CodeInput.clean(PadEntry.add(code, it, length), true, length)
+                    SignInRunner.clearFailure()
+                },
+                onDelete = {
+                    code = PadEntry.delete(code)
+                    SignInRunner.clearFailure()
+                },
+                onDone = submit,
+                doneLabel = L.signinSignIn,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                firstFocus = field,
+            )
+        } else if (boxed) {
             CodeBoxes(
                 code = code,
                 length = length,
@@ -209,36 +230,44 @@ private fun CodeBoxes(
                 .semantics { contentType = ContentType.SmsOtpCode },
             decorationBox = { inner ->
                 Box {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (index in 0 until length) {
-                            val active = index == code.length
-                            val edge = when {
-                                wrong -> colors.error
-                                active -> colors.primary
-                                else -> colors.outline
-                            }
-                            Box(
-                                Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 56.dp)
-                                    .clip(shape)
-                                    .background(colors.surfaceContainerHigh)
-                                    .border(if (active || wrong) 2.dp else 1.dp, edge, shape)
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    code.getOrNull(index)?.toString().orEmpty(),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = colors.onSurface,
-                                    textAlign = TextAlign.Center,
-                                )
-                            }
-                        }
-                    }
+                    CodeCells(code, length, wrong)
                     Box(Modifier.matchParentSize()) { inner() }
                 }
             },
         )
+    }
+}
+
+/** The digits of the code, one box each, the next to fill outlined: the readout of [CodeBoxes] and of the TV's pad. */
+@Composable
+private fun CodeCells(code: String, length: Int, wrong: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val shape = MaterialTheme.shapes.medium
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (index in 0 until length) {
+            val active = index == code.length
+            val edge = when {
+                wrong -> colors.error
+                active -> colors.primary
+                else -> colors.outline
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 56.dp)
+                    .clip(shape)
+                    .background(colors.surfaceContainerHigh)
+                    .border(if (active || wrong) 2.dp else 1.dp, edge, shape)
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    code.getOrNull(index)?.toString().orEmpty(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = colors.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
     }
 }

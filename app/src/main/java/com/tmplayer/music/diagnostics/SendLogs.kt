@@ -1,6 +1,8 @@
 // From TMPlayer (GPL-3.0), app/src/main/java/com/tmplayer/ui/settings/LogActions.kt.
 package com.tmplayer.music.diagnostics
 
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -178,6 +180,6 @@ fun CrashOffer() {
                 send()
             }) { Text(L.logsSend) }
         },
-        dismissButton = { TextButton(onClick = { show = false }) { Text(L.logsNotNow) } },
+        dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { show = false }) { Text(L.logsNotNow) } },
     )
 }

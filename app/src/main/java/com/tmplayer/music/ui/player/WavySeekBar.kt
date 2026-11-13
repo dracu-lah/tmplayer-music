@@ -50,6 +50,16 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import com.tmplayer.music.i18n.L
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import com.tmplayer.music.ui.tv.LocalTv
+import com.tmplayer.music.ui.tv.SeekKeys
+import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.common.Format
 import com.tmplayer.music.ui.theme.LocalReducedMotion
 import com.tmplayer.music.ui.theme.MusicMotion
@@ -65,6 +75,9 @@ private val StrokeWidth = 4.dp
 private val Gap = 6.dp
 private val ThumbWidth = 6.dp
 private val ThumbHeight = 28.dp
+
+/** How long the thumb stays on a key seek's target while the position catches up. */
+private const val KEY_HOLD_AFTER_MS = 700L
 
 /**
  * The seek bar, in the Material 3 Expressive style: the played part is a wavy line, the rest a flat
@@ -82,6 +95,9 @@ private val ThumbHeight = 28.dp
  * recomposes and nothing is drawn again; the played length clips it and changes only with the
  * position (twice a second). The bar is its own layer too, so its redraws never repaint the sheet.
  * [fraction] is read only while drawing.
+ *
+ * Remote: the bar takes the D-pad; Left and Right (or Rewind and Fast forward) move it, a tap 10 s and
+ * a hold faster and faster, and the seek is made when the keys have been quiet for a moment.
  *
  * Touch: press anywhere to jump the thumb there, drag to scrub, lift to seek. Every pointer change
  * is consumed, so holding or dragging the bar never moves the player sheet. TalkBack reads it as a
@@ -134,6 +150,36 @@ fun WavySeekBar(
     val duration by rememberUpdatedState(durationMs)
     val currentFraction by rememberUpdatedState(fraction)
     val shown = { seeking ?: currentFraction() }
+    // A TV: Left and Right move the bar (a tap 10 s, a hold faster the longer it is held), and the
+    // seek is made once the keys have been quiet for a moment, so a run of taps is one seek.
+    val tv = LocalTv.current
+    var keyTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(keyTick) {
+        if (keyTick == 0) return@LaunchedEffect
+        delay(SeekKeys.SETTLE_MS)
+        seeking?.let { currentSeek((it * duration).toLong()) }
+        // The thumb stays on the target while the player's position catches up with it.
+        delay(KEY_HOLD_AFTER_MS)
+        seeking = null
+        currentScrub(null)
+    }
+    val seekKeys = if (tv && known) {
+        Modifier
+            .tvFocusRing(RoundedCornerShape(24.dp))
+            .onKeyEvent { e ->
+                val forward = SeekKeys.direction(e.key) ?: return@onKeyEvent false
+                if (e.type == KeyEventType.KeyDown) {
+                    val next = SeekKeys.next(seeking ?: currentFraction(), forward, e.nativeKeyEvent.repeatCount, duration)
+                    seeking = next
+                    currentScrub(next)
+                    keyTick++
+                }
+                true
+            }
+            .focusable()
+    } else {
+        Modifier
+    }
     val active = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.secondaryContainer
     val path = remember { Path() }
@@ -144,6 +190,7 @@ fun WavySeekBar(
             .height(48.dp)
             // Its own layer: a redraw of the bar (position, thumb) never repaints the rest of the sheet.
             .graphicsLayer()
+            .then(seekKeys)
             .pointerInput(known) {
                 if (!known) return@pointerInput
                 fun at(x: Float) = (x / size.width).coerceIn(0f, 1f)

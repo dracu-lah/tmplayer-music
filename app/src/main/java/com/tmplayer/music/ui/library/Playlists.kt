@@ -1,5 +1,8 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.TvSheet
 import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.clickable
@@ -180,7 +183,7 @@ fun PlaylistScreen(playlist: Playlist, actions: SongActions, onDeleted: () -> Un
                     scope.launch { guarded({ error = it }) { Library.index().deletePlaylist(playlist.id); onDeleted() } }
                 }) { Text(L.playlistDelete) }
             },
-            dismissButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { deleting = false }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { deleting = false }) { Text(L.commonCancel) } },
         )
     }
 }
@@ -202,7 +205,7 @@ fun AddToPlaylistSheet(song: Song, onDismiss: () -> Unit) {
             containing = index.playlistsContaining(song)
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    TvSheet(onDismiss) {
         // Scrolls: many playlists, or a window turned sideways.
         Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 24.dp)) {
             Text(L.menuAddToPlaylist, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))

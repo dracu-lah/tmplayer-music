@@ -310,7 +310,8 @@ private fun PlayerSheet(
         // once it has closed. No focus modifier sits inside Now Playing: one there stopped the open
         // animation part way (2026-10-31), so the first move goes by the focus search instead.
         val miniFocus = remember { FocusRequester() }
-        if (tv) TvSheetFocus(fullyOpen, showMini, expandedOrGoing, miniFocus)
+        val playFocus = remember { FocusRequester() }
+        if (tv) TvSheetFocus(fullyOpen, showMini, expandedOrGoing, miniFocus, playFocus)
         // A request from outside (the Continue card); the count only moves on a tap, so this is idle.
         var handledExpand by remember { mutableIntStateOf(controller.expandRequests) }
         LaunchedEffect(controller.expandRequests) {
@@ -427,6 +428,7 @@ private fun PlayerSheet(
                     open = fullyOpen,
                     onCollapse = { scope.launch { sheet.animateTo(SheetValue.Collapsed, spatial) } },
                     onQueue = onQueue,
+                    playFocus = playFocus.takeIf { tv },
                 )
             }
             if (showMini) {
@@ -453,14 +455,18 @@ private fun TvSheetFocus(
     showMini: Boolean,
     expandedOrGoing: Boolean,
     miniFocus: FocusRequester,
+    playFocus: FocusRequester,
 ) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     var wasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(fullyOpen, showMini) {
         if (fullyOpen) {
             wasOpen = true
-            // The library is out while Now Playing covers it, so a search from nothing lands in
-            // Now Playing. A few tries while the mini-player leaves; then it stops.
+            // The play button takes the D-pad once the sheet has stopped moving (a request while it
+            // moved stopped the open animation); failing that, the first control by a search from
+            // nothing. A few tries while the mini-player leaves; then it stops.
+            delay(FOCUS_MOVE_WAIT_MS)
+            if (com.tmplayer.music.ui.tv.requestFocusSoon(playFocus)) return@LaunchedEffect
             repeat(FOCUS_MOVE_TRIES) {
                 delay(FOCUS_MOVE_WAIT_MS)
                 if (runCatching { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }.getOrDefault(false)) return@LaunchedEffect

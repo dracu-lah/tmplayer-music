@@ -1,5 +1,7 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.tvFocusRing
 import android.content.Intent
 import androidx.core.net.toUri
@@ -131,7 +133,7 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
                     }
                 }) { Text(L.settingsFreeUp) }
             },
-            dismissButton = { TextButton(modifier = Modifier.tvFocusRing(), onClick = { confirm = false }) { Text(L.commonCancel) } },
+            dismissButton = { TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = { confirm = false }) { Text(L.commonCancel) } },
         )
     }
 }

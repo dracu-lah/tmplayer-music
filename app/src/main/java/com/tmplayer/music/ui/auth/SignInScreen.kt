@@ -1,6 +1,9 @@
 // Adapted from TMPlayer (GPL-3.0), app/src/main/java/com/tmplayer/ui/auth/LoginScreen.kt.
 package com.tmplayer.music.ui.auth
 
+import com.tmplayer.music.ui.tv.tvFocusRing
+import com.tmplayer.music.ui.tv.tvAutoFocus
+import com.tmplayer.music.ui.tv.LocalTv
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -123,7 +126,7 @@ private fun ConnectingStep() {
         }
         if (stalled) {
             StepBody(L.loginStalled)
-            Button(onClick = { SignInRunner.fire { Td.retryConnecting() } }, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { SignInRunner.fire { Td.retryConnecting() } }, modifier = Modifier.fillMaxWidth().tvAutoFocus().tvFocusRing()) {
                 Text(L.commonRetry)
             }
             SendLogsButton(Modifier.fillMaxWidth())
@@ -141,14 +144,18 @@ private fun ChooseStep() {
         Text(L.appName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
         StepTitle(L.loginChooseTitle)
         StepBody(L.loginChooseBody)
-        Button(
-            onClick = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Phone) } },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(L.loginChoosePhone) }
-        OutlinedButton(
-            onClick = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Qr) } },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(L.loginChooseQr) }
+        val phone = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Phone) } }
+        val qr = { SignInRunner.fire { Td.chooseSignInMethod(SignInMethod.Qr) } }
+        if (LocalTv.current) {
+            // A TV has no touch keyboard and the phone with Telegram is in the room: the QR code is
+            // the way in, first and focused; the number is the other way.
+            StepBody(L.signinQrTvTitle)
+            Button(onClick = qr, modifier = Modifier.fillMaxWidth().tvAutoFocus().tvFocusRing()) { Text(L.loginChooseQr) }
+            OutlinedButton(onClick = phone, modifier = Modifier.fillMaxWidth().tvFocusRing()) { Text(L.loginChoosePhone) }
+        } else {
+            Button(onClick = phone, modifier = Modifier.fillMaxWidth()) { Text(L.loginChoosePhone) }
+            OutlinedButton(onClick = qr, modifier = Modifier.fillMaxWidth()) { Text(L.loginChooseQr) }
+        }
     }
 }
 
@@ -317,7 +324,7 @@ private fun FailedStep(auth: AuthState.Failed, onStartOver: () -> Unit) {
                 ) { Text(L.loginChooseQr) }
                 TextButton(onClick = onStartOver, modifier = Modifier.fillMaxWidth()) { Text(L.commonStartOver) }
             }
-            else -> Button(onClick = onStartOver, modifier = Modifier.fillMaxWidth()) { Text(L.commonRetry) }
+            else -> Button(onClick = onStartOver, modifier = Modifier.fillMaxWidth().tvAutoFocus().tvFocusRing()) { Text(L.commonRetry) }
         }
         SendLogsButton(Modifier.fillMaxWidth())
     }

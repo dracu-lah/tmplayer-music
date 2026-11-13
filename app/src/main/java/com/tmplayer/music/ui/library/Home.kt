@@ -1,5 +1,6 @@
 package com.tmplayer.music.ui.library
 
+import com.tmplayer.music.ui.tv.tvHold
 import com.tmplayer.music.ui.tv.tvFocusRing
 import com.tmplayer.music.ui.tv.rememberedFocus
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -105,7 +106,7 @@ private fun SongShelf(title: String, songs: List<Song>, actions: SongActions) {
         LazyRow(state = row, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(songs, key = { it.groupKey }) { song ->
                 Column(
-                    Modifier.width(128.dp).rememberedFocus("$title:${song.groupKey}").combinedClickable(
+                    Modifier.width(128.dp).rememberedFocus("$title:${song.groupKey}").tvHold { actions.menu(song) }.combinedClickable(
                         onClick = { actions.play(songs, songs.indexOf(song)) },
                         onLongClick = { actions.menu(song) },
                     ),
