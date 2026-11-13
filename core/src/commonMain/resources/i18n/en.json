@@ -56,8 +56,27 @@
     "back": "Back",
     "cancel": "Cancel",
     "continue": "Continue",
+    "ok": "OK",
     "retry": "Try again",
     "start_over": "Start over"
+  },
+  "desktop": {
+    "engine_missing": "The audio engine (libmpv) could not start on this computer. Try again, or send the logs.",
+    "loading": "Loading…",
+    "mute": "Mute",
+    "nothing_playing": "Nothing is playing",
+    "play_failed": "Couldn't start that track. {reason}",
+    "play_selected": "Play selected",
+    "queue_empty": "The queue is empty. Play a song to fill it.",
+    "queue_next": "Next up",
+    "queue_now": "Now playing",
+    "queue_restored": "Your last queue is back, paused.",
+    "selected": "{count, plural, one {# selected} other {# selected}}",
+    "selection_clear": "Clear selection",
+    "shortcuts": "Space plays and pauses, the arrow keys seek, Ctrl and the arrow keys skip, Ctrl+F searches.",
+    "track_gone": "That track is no longer in its chat, or its chat cannot be reached.",
+    "unmute": "Unmute",
+    "volume": "Volume"
   },
   "errors": {
     "code_expired": "That code has expired. Start over to have a new one sent.",
@@ -147,11 +166,13 @@
     "stalled": "This is taking longer than usual. Check the connection, then try again."
   },
   "logs": {
+    "copy_path": "Copy path",
     "crash_body": "Send the logs, so the problem can be fixed? You pick the app they go to. Chat names, numbers and file names are taken out first, and nothing is sent unless you choose to.",
     "crash_title": "{app} closed unexpectedly",
     "failed": "The logs could not be prepared. Try again in a moment.",
     "no_app": "No app on this phone can take the logs.",
     "not_now": "Not now",
+    "saved_to": "The logs are saved at {path}. Attach the file to a message or an email; nothing was sent.",
     "send": "Send logs",
     "send_detail": "Recent app logs in a text file, for a bug report. Chat names, numbers, file names and secrets are taken out first. You pick the app they go to; nothing is sent by itself.",
     "send_title": "Send {app} logs"
@@ -248,9 +269,16 @@
   },
   "player": {
     "close": "Close",
+    "mpv_audio_failed": "No sound output could be opened. Check this computer's sound device, then try again.",
+    "mpv_loading_failed": "This track could not be read. Check the connection and try again.",
+    "mpv_no_memory": "This computer ran out of memory for this track. Close other apps, then try again.",
+    "mpv_nothing_to_play": "This file has no sound the player can play. It may not be audio.",
+    "mpv_unknown_format": "The player could not recognise this file's format. It may not be audio, or its start may not have arrived yet.",
+    "mpv_unsupported": "This track uses a format the player on this computer does not support.",
     "next": "Next",
     "pause": "Pause",
     "play": "Play",
+    "playback_failed": "Playback failed ({code})",
     "previous": "Previous",
     "queue": "Queue",
     "repeat_all": "Repeat all, on",
