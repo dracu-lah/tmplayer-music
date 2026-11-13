@@ -6,6 +6,8 @@ import com.tmplayer.music.data.AndroidLogSink
 import com.tmplayer.music.data.AndroidPaths
 import com.tmplayer.music.data.Library
 import com.tmplayer.music.data.NetworkWatch
+import com.tmplayer.music.data.OfflineDownloads
+import com.tmplayer.music.data.OfflineHost
 import com.tmplayer.music.data.Prefs
 import com.tmplayer.music.data.Storage
 import com.tmplayer.music.data.SupportChecks
@@ -36,6 +38,10 @@ class MusicApp : Application() {
         Td.start(this)
         // The user's choices (a Pause stays on after a restart) live in Prefs; a weak device reads tags in smaller batches.
         Library.start(File(filesDir, "library"), Prefs(this), lowRam = weakDevice())
+        // Keep offline: its own folder (outside TDLib's cache), and the queue an earlier run was in the middle of.
+        // A foreground service holds the process only while a fetch runs (OfflineService).
+        OfflineDownloads.onForeground = { on -> if (on) OfflineHost.start(this) }
+        OfflineDownloads.start(File(filesDir, "offline"), Prefs(this), lowRam = weakDevice())
         NetworkWatch.start(this)
         // Covers found online (opt in, the lyrics switch); never started in the demo, which returned above.
         com.tmplayer.music.covers.CoverOnline.start(File(cacheDir, "covers-online"))

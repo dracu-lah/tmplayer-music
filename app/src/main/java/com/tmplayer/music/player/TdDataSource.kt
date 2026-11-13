@@ -48,6 +48,12 @@ fun tdTrackOf(uri: Uri): TrackId? {
     return TrackId(chat, message)
 }
 
+/** The file kept offline for the audio a `tdfile` URI names, or null (not kept, a cover, another scheme). */
+fun keptFileOf(uri: Uri): java.io.File? {
+    if (uri.scheme != TD_SCHEME || tdIsThumb(uri)) return null
+    return tdTrackOf(uri)?.let { com.tmplayer.music.data.OfflineDownloads.pathOf(it) }
+}
+
 /** True when a `tdfile` URI asks for the message's cover thumbnail rather than its audio. */
 fun tdIsThumb(uri: Uri): Boolean = uri.getQueryParameter(THUMB_PARAM) == "1"
 
@@ -197,8 +203,10 @@ class TdDataSource : BaseDataSource(true) {
         }
 
         override fun open(dataSpec: DataSpec): Long {
-            active = if (dataSpec.uri.scheme == TD_SCHEME) td else other
-            return active.open(dataSpec)
+            // A track kept offline plays from its own file, with no TDLib and no network at all.
+            val kept = keptFileOf(dataSpec.uri)
+            active = if (kept == null && dataSpec.uri.scheme == TD_SCHEME) td else other
+            return active.open(if (kept == null) dataSpec else dataSpec.buildUpon().setUri(Uri.fromFile(kept)).build())
         }
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int = active.read(buffer, offset, length)
