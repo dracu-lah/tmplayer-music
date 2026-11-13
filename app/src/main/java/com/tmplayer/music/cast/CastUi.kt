@@ -64,9 +64,22 @@ val CastIcon: ImageVector = ImageVector.Builder(
     )
     .build()
 
+/** How the Cast button looks: the same on Now Playing and in the mini-player, from one place. */
+internal enum class CastLook { Idle, Connecting, Connected, Problem }
+
+/** The look for [state], with [problem] true while the cast has told the user about a failure ([CastNotices.problem]). */
+internal fun castLook(state: CastState, problem: Boolean): CastLook = when {
+    state is CastState.Connected -> if (problem) CastLook.Problem else CastLook.Connected
+    state is CastState.Connecting -> CastLook.Connecting
+    state is CastState.Failed || problem -> CastLook.Problem
+    else -> CastLook.Idle
+}
+
 /**
- * The Cast button of Now Playing: opens the Cast sheet. Nothing is drawn where casting is not offered (a
- * store build, a television, a phone without Google Play services), so no screen has a dead button.
+ * The Cast button, on Now Playing and in the mini-player: opens the Cast sheet. Nothing is drawn where
+ * casting is not offered (a store build, a television, a phone without Google Play services), so no
+ * screen has a dead button. Connected is the primary colour, connecting the same colour dimmed (and
+ * named so for a screen reader), a problem the error colour.
  */
 @Composable
 fun CastButton(modifier: Modifier = Modifier) {
@@ -74,16 +87,57 @@ fun CastButton(modifier: Modifier = Modifier) {
     val support = remember { Cast.support(context) }
     if (!support.available) return
     val state by support.state.collectAsStateWithLifecycle()
+    val problem by CastNotices.problem.collectAsStateWithLifecycle()
     var open by rememberSaveable { mutableStateOf(false) }
-    val casting = state is CastState.Connected
+    val look = castLook(state, problem != null)
     IconButton(onClick = { open = true }, modifier = modifier) {
         Icon(
             CastIcon,
-            contentDescription = if (state is CastState.Connected) L.castCastingTo((state as CastState.Connected).name) else L.castTitle,
-            tint = if (casting) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+            contentDescription = when (val now = state) {
+                is CastState.Connected -> L.castCastingTo(now.name)
+                is CastState.Connecting -> L.castConnecting(now.name)
+                else -> L.castTitle
+            },
+            tint = when (look) {
+                CastLook.Connected -> MaterialTheme.colorScheme.primary
+                CastLook.Connecting -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                CastLook.Problem -> MaterialTheme.colorScheme.error
+                CastLook.Idle -> LocalContentColor.current
+            },
         )
     }
     if (open) CastSheet(support) { open = false }
+}
+
+/** Whether the mini-player has room for the Cast button: a phone wide enough, or any width while a cast is on or being made. */
+internal fun castFitsMini(widthDp: Int, state: CastState): Boolean =
+    widthDp >= MINI_CAST_MIN_WIDTH_DP || state is CastState.Connected || state is CastState.Connecting
+
+/** The mini-player's row has the cover, the title, three transport buttons and this one: below this width the title would be squeezed out. */
+internal const val MINI_CAST_MIN_WIDTH_DP = 400
+
+/**
+ * The Cast button as the mini-player has it: phones only (a television has no Cast and is left out), and
+ * only where there is room ([castFitsMini]).
+ */
+@Composable
+fun MiniCastButton(modifier: Modifier = Modifier) {
+    if (com.tmplayer.music.ui.tv.LocalTv.current) return
+    val context = LocalContext.current
+    val support = remember { Cast.support(context) }
+    if (!support.available) return
+    val state by support.state.collectAsStateWithLifecycle()
+    if (!castFitsMini(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp, state)) return
+    CastButton(modifier)
+}
+
+/** True while a cast is on (connected), for screens that change what they offer then. Always false in a store build and on a television. */
+@Composable
+fun rememberCasting(): Boolean {
+    val context = LocalContext.current
+    val support = remember { Cast.support(context) }
+    val state by support.state.collectAsStateWithLifecycle()
+    return state is CastState.Connected
 }
 
 /**
@@ -102,6 +156,10 @@ internal fun CastSheet(support: CastSupport, onDismiss: () -> Unit) {
     val volume by support.volume.collectAsStateWithLifecycle()
     val onWifi by support.onWifi.collectAsStateWithLifecycle()
     val notice by CastNotices.last.collectAsStateWithLifecycle()
+    val problem by CastNotices.problem.collectAsStateWithLifecycle()
+    val sendLogs = com.tmplayer.music.diagnostics.rememberSendLogs()
+    // Seen once, then let go: the button stops being red when the sheet is closed.
+    DisposableEffect(Unit) { onDispose { CastNotices.dismissProblem() } }
     TvSheet(onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(L.castTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
@@ -138,7 +196,15 @@ internal fun CastSheet(support: CastSupport, onDismiss: () -> Unit) {
                 (state as? CastState.Failed)?.let { Note(L.castConnectFailed(it.name), error = true) }
                 (state as? CastState.Connecting)?.let { if (devices.isNotEmpty()) Note(L.castConnecting(it.name)) }
             }
-            notice?.let { Note(it) }
+            problem?.let { Note(it, error = true) }
+            if (problem != null || state is CastState.Failed) {
+                Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { support.retry() }, enabled = state !is CastState.Connecting, modifier = Modifier.tvFocusRing()) { Text(L.commonRetry) }
+                    TextButton(onClick = sendLogs, modifier = Modifier.tvFocusRing()) { Text(L.logsSend) }
+                }
+            }
+            // The failure above is the news; the notice repeats it otherwise.
+            if (problem == null) notice?.let { Note(it) }
             Text(
                 L.castSentNote,
                 style = MaterialTheme.typography.bodySmall,

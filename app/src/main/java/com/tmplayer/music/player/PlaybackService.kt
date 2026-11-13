@@ -105,7 +105,7 @@ class PlaybackService : MediaLibraryService() {
         val cast = CastBuild.host(CastHostParts(this, player, sources, scope))
         castHost = cast.host
         player.addListener(Watcher(cast.player))
-        SleepTimer.attach(player, scope)
+        SleepTimer.attach(player, scope, cast.host)
         effects = AudioEffectsEngine(player, gain, scope).also { it.start() }
         val open = PendingIntent.getActivity(
             this,

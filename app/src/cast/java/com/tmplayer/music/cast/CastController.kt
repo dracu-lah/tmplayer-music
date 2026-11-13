@@ -3,6 +3,7 @@ package com.tmplayer.music.cast
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.DefaultCastPlayerTransferCallback
 import androidx.media3.cast.RemoteCastPlayer
@@ -15,9 +16,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import com.tmplayer.music.i18n.L
 import com.tmplayer.music.platform.Logger
+import com.tmplayer.music.player.AudioEffectsSetting
+import com.tmplayer.music.player.PlaybackSpeed
 
 /** Why a cast ended, for the sentence the user is told. */
-internal enum class EndReason { Normal, Wifi }
+internal enum class EndReason { Normal, Wifi, Sleep }
 
 /**
  * The queue as it was when the cast began (or was last set while casting), kept on the phone. The
@@ -30,10 +33,13 @@ internal class CastRecord(
     val original: List<MediaItem>,
     val sent: MutableSet<String>,
     val upcoming: ArrayDeque<MediaItem>,
-    val shuffle: Boolean,
-    val params: PlaybackParameters,
+    /** Shuffle as the user has it. The receiver has none, so the guard re-orders its queue ([CastReorder]) when this changes. */
+    @Volatile var shuffle: Boolean,
 ) {
     val originalIds: List<String> = original.map { it.mediaId }
+
+    /** Fixed by the queue, so the same queue shuffles the same way every time. */
+    val seed: Long = CastReorder.seedOf(originalIds)
 }
 
 /**
@@ -64,6 +70,15 @@ internal class CastController(
 
     private var stopWatching: (() -> Unit)? = null
 
+    /** How the receiver is doing with what it was sent: reaches this phone or not, and the tracks it could not play. A new one for each cast. */
+    @Volatile
+    var health = CastHealth()
+        private set
+
+    /** The device's name, for the sentences about it. */
+    @Volatile
+    private var deviceName = ""
+
     /** The cast could not start and the user has been told why: ending it adds no second sentence. */
     private var quiet = false
     private val main = Handler(Looper.getMainLooper())
@@ -73,6 +88,53 @@ internal class CastController(
         if (reason != EndReason.Normal) endReason = reason
         main.post { runCatching { androidx.media3.cast.Cast.getSingletonInstance(context).endCurrentSession(true) } }
     }
+
+    /**
+     * Looks whether the receiver reaches this phone, while [wantsPlay] (the user wants music). True to go on
+     * looking; false when it is settled: reached, or not reachable (the user is told and the cast ends) or no cast.
+     */
+    fun checkReachable(wantsPlay: Boolean): Boolean {
+        if (record == null) return true
+        if (health.isReached) return false
+        if (health.reachable(SystemClock.elapsedRealtime(), server.requests, wantsPlay)) return !health.isReached
+        unreachable()
+        return false
+    }
+
+    /** The receiver asked for nothing: it cannot open this phone's address. Say so plainly, with the way out, and end the cast so nothing spins. */
+    private fun unreachable() {
+        if (quiet) return
+        Logger.w(TAG, "the receiver never reached the cast server")
+        CastNotices.problem(context, L.castUnreachable(deviceName.ifBlank { L.castTitle }))
+        quiet = true
+        endSessionSoon()
+    }
+
+    /** What the host does about a track the receiver could not play. */
+    enum class Skip { Next, Stop, None }
+
+    /** The receiver could not play [id]. Skip it, or stop when it is the receiver itself that cannot be reached or too many fail in a row. */
+    fun receiverFailed(id: String, title: String): Skip {
+        if (record == null) return Skip.None
+        return when (health.failed(id, title, server.requests)) {
+            CastFailAction.Ignore -> Skip.None
+            CastFailAction.Skip -> Skip.Next
+            CastFailAction.Unreachable -> {
+                unreachable()
+                Skip.Stop
+            }
+            CastFailAction.GiveUp -> {
+                Logger.w(TAG, "several tracks in a row failed on the receiver")
+                CastNotices.problem(context, listOfNotNull(L.castFailedStop, health.summary()).joinToString(" "))
+                quiet = true
+                endSessionSoon()
+                Skip.Stop
+            }
+        }
+    }
+
+    /** The receiver is loading or playing something. */
+    fun receiverActive(playing: Boolean) = health.active(playing)
 
     /** Notes where the cast player is, while it can still be asked. */
     fun capture(player: Player) {
@@ -104,10 +166,12 @@ internal class CastController(
     private fun toRemote(source: Player, destination: Player) {
         endReason = EndReason.Normal
         CastNotices.clear()
+        health = CastHealth()
+        deviceName = runCatching { androidx.media3.cast.Cast.getSingletonInstance(context).currentCastSession?.castDevice?.friendlyName }.getOrNull().orEmpty()
         val state = PlayerTransferState.fromPlayer(source)
         val items = state.mediaItems
         // The whole local queue is kept first, so whatever happens next the phone can get it back.
-        val kept = CastRecord(items, HashSet(), ArrayDeque(), state.shuffleModeEnabled, state.playbackParameters)
+        val kept = CastRecord(items, HashSet(), ArrayDeque(), state.shuffleModeEnabled)
         record = kept
         lastKnown = null
         val receiver = runCatching { androidx.media3.cast.Cast.getSingletonInstance(context).currentCastSession?.castDevice?.inetAddress }.getOrNull()
@@ -177,7 +241,9 @@ internal class CastController(
         // With nothing left of the receiver's queue (it vanished with the connection), the queue the phone had comes back whole.
         val merged = if (remote.isEmpty() && kept.sent.isNotEmpty()) kept.originalIds
         else CastQueue.mergeBack(kept.originalIds, kept.sent, remote.map { it.mediaId })
-        val items = merged.mapNotNull { byId[it] }
+        // With shuffle on, the receiver's queue is in its shuffled order: back here the queue is the one the user built and this phone shuffles it itself.
+        val ordered = if (kept.shuffle && merged.toSet().size == merged.size) CastReorder.inQueueOrder(merged, kept.originalIds) else merged
+        val items = ordered.mapNotNull { byId[it] }
         if (items.isEmpty()) {
             finish()
             return
@@ -191,10 +257,17 @@ internal class CastController(
             .setPlayWhenReady(false)
             .setRepeatMode(if (source.mediaItemCount > 0) source.repeatMode else Player.REPEAT_MODE_OFF)
             .setShuffleModeEnabled(kept.shuffle)
-            .setPlaybackParameters(kept.params)
+            .setPlaybackParameters(localParameters())
             .build()
             .setToPlayer(destination)
         finish()
+    }
+
+    /** The speed the user has now (it may have changed while casting), as the local player takes it. */
+    private fun localParameters(): PlaybackParameters {
+        val choices = AudioEffectsSetting.choices
+        val speed = choices.speed.value
+        return PlaybackParameters(speed, PlaybackSpeed.pitch(speed, choices.keepPitch.value))
     }
 
     private fun restoreOriginal(kept: CastRecord, destination: Player) {
@@ -211,7 +284,11 @@ internal class CastController(
         stopWatching?.invoke()
         stopWatching = null
         server.stop()
-        if (!quiet) CastNotices.post(context, if (reason == EndReason.Wifi) L.castStoppedWifi else L.castStopped)
+        // The tracks the receiver could not play are told once, at the end, with why the cast stopped.
+        if (!quiet) {
+            val stopped = when (reason) { EndReason.Wifi -> L.castStoppedWifi; EndReason.Sleep -> L.castStoppedSleep; else -> L.castStopped }
+            CastNotices.post(context, listOfNotNull(stopped, health.summary()).joinToString(" "))
+        }
         quiet = false
     }
 

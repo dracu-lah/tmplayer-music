@@ -66,6 +66,8 @@ fun EffectsSheet(onDismiss: () -> Unit) {
     val skipSilence by choices.skipSilence.collectAsStateWithLifecycle()
     val normalise by choices.normalise.collectAsStateWithLifecycle()
     val equalizer by AudioEffectsState.equalizer.collectAsStateWithLifecycle()
+    // These act on this phone's player; the Cast receiver only takes the speed (see CastGuardPlayer).
+    val phoneEffects = !com.tmplayer.music.cast.rememberCasting()
     val first = remember { FocusRequester() }
     val tv = LocalTv.current
     LaunchedEffect(Unit) {
@@ -75,6 +77,14 @@ fun EffectsSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(L.effectsTitle, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            if (!phoneEffects) {
+                Text(
+                    L.castEffectsNote,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+            }
 
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(L.effectsSpeed, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -98,11 +108,11 @@ fun EffectsSheet(onDismiss: () -> Unit) {
                     )
                 }
             }
-            SwitchRow(L.effectsKeepPitch, L.effectsKeepPitchDetail, keepPitch) { choices.setKeepPitch(it) }
-            SwitchRow(L.effectsSkipSilence, L.effectsSkipSilenceDetail, skipSilence) { choices.setSkipSilence(it) }
-            SwitchRow(L.effectsNormalise, L.effectsNormaliseDetail, normalise) { choices.setNormalise(it) }
+            SwitchRow(L.effectsKeepPitch, L.effectsKeepPitchDetail, keepPitch, enabled = phoneEffects) { choices.setKeepPitch(it) }
+            SwitchRow(L.effectsSkipSilence, L.effectsSkipSilenceDetail, skipSilence, enabled = phoneEffects) { choices.setSkipSilence(it) }
+            SwitchRow(L.effectsNormalise, L.effectsNormaliseDetail, normalise, enabled = phoneEffects) { choices.setNormalise(it) }
 
-            equalizer?.let { EqualizerPanel(it, choices) }
+            equalizer?.let { EqualizerPanel(it, choices, phoneEffects) }
         }
     }
 }
@@ -110,7 +120,7 @@ fun EffectsSheet(onDismiss: () -> Unit) {
 /** The equalizer: the on switch, the presets and one slider per band the device has. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EqualizerPanel(info: EqualizerInfo, choices: AudioEffectsChoices) {
+private fun EqualizerPanel(info: EqualizerInfo, choices: AudioEffectsChoices, enabled: Boolean) {
     val on by choices.equalizerOn.collectAsStateWithLifecycle()
     val preset by choices.preset.collectAsStateWithLifecycle()
     val saved by choices.levels.collectAsStateWithLifecycle()
@@ -123,13 +133,14 @@ private fun EqualizerPanel(info: EqualizerInfo, choices: AudioEffectsChoices) {
         if (!choices.equalizerOn.value) choices.setEqualizerOn(true)
     }
 
-    SwitchRow(L.effectsEqualizer, null, on) { choices.setEqualizerOn(it) }
+    SwitchRow(L.effectsEqualizer, null, on, enabled = enabled) { choices.setEqualizerOn(it) }
     Text(L.effectsPresets, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 4.dp))
     FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for (item in info.presets) {
             FilterChip(
                 selected = preset == item.id,
                 onClick = { choose(item.id, item.levels) },
+                enabled = enabled,
                 label = { Text(presetName(item)) },
                 modifier = Modifier.tvFocusRing(RoundedCornerShape(8.dp)),
             )
@@ -154,6 +165,7 @@ private fun EqualizerPanel(info: EqualizerInfo, choices: AudioEffectsChoices) {
                     choose(EqPresets.match(next, info.presets), next)
                 },
                 valueRange = info.minMb.toFloat()..info.maxMb.toFloat(),
+                enabled = enabled,
                 steps = steps,
                 modifier = Modifier.tvFocusRing(RoundedCornerShape(12.dp)).semantics { contentDescription = label },
             )
@@ -161,6 +173,7 @@ private fun EqualizerPanel(info: EqualizerInfo, choices: AudioEffectsChoices) {
     }
     TextButton(
         onClick = { info.presets.firstOrNull { it.id == EqPresets.FLAT }?.let { choose(it.id, it.levels) } },
+        enabled = enabled,
         modifier = Modifier.padding(horizontal = 12.dp).tvFocusRing(RoundedCornerShape(20.dp)),
     ) { Text(L.effectsReset) }
 }
@@ -176,11 +189,11 @@ private fun presetName(preset: EqPreset): String = when (preset.id) {
 
 /** A setting that is on or off with a line saying what it does; the whole row toggles it and takes the D-pad focus. */
 @Composable
-private fun SwitchRow(title: String, detail: String?, on: Boolean, onChange: (Boolean) -> Unit) {
+private fun SwitchRow(title: String, detail: String?, on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .toggleable(value = on, role = Role.Switch, onValueChange = onChange)
+            .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = onChange)
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -189,7 +202,7 @@ private fun SwitchRow(title: String, detail: String?, on: Boolean, onChange: (Bo
             Text(title, style = MaterialTheme.typography.bodyLarge)
             detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        Switch(checked = on, onCheckedChange = null)
+        Switch(checked = on, onCheckedChange = null, enabled = enabled)
     }
 }
 
