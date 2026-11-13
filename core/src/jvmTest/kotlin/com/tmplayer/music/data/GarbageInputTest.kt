@@ -566,4 +566,30 @@ class GarbageInputTest {
             com.tmplayer.music.library.Backup.decode(String(flipped))
         }
     }
+
+    @Test
+    fun `cast server requests and range headers from the network never throw anything but an io error`() {
+        val random = Random(41)
+        val cases = listOf(
+            "", "\r\n", "GET", "GET / HTTP/1.1", "GET / HTTP/1.1\r\nRange", "\u0000".repeat(100), "G".repeat(100_000),
+            "GET / HTTP/1.1\r\n" + "H: v\r\n".repeat(10_000), "GET /\r\n\r\n", "GET /a b c d HTTP/1.1\r\n\r\n",
+        )
+        for (case in cases) {
+            try {
+                com.tmplayer.music.cast.HttpRequest.read(case.toByteArray(Charsets.ISO_8859_1).inputStream())
+            } catch (e: java.io.IOException) {
+                // A refused request: the expected failure.
+            }
+        }
+        repeat(2_000) {
+            val bytes = ByteArray(random.nextInt(0, 400)) { random.nextInt(0, 256).toByte() }
+            try {
+                com.tmplayer.music.cast.HttpRequest.read(bytes.inputStream())
+            } catch (e: java.io.IOException) {
+            }
+            com.tmplayer.music.cast.ByteRange.parse(String(bytes, Charsets.ISO_8859_1), random.nextLong(-3, 100_000))
+            com.tmplayer.music.cast.CastUrls.nameIn(String(bytes, Charsets.ISO_8859_1), "token")
+            com.tmplayer.music.cast.CastFormats.check(com.tmplayer.music.library.AudioFormat.OTHER, String(bytes, Charsets.ISO_8859_1), String(bytes, Charsets.UTF_8))
+        }
+    }
 }

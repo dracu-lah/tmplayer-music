@@ -55,6 +55,9 @@ tdl-coroutines = { group = "dev.g000sha256", name = "tdl-coroutines", version.re
 androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 androidx-media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
+# Casting (regular APK only, see app/build.gradle.kts storeBuild): Media3's CastPlayer, which brings Google's
+# Cast framework and MediaRouter with it. Same version as the other Media3 modules.
+androidx-media3-cast = { group = "androidx.media3", name = "media3-cast", version.ref = "media3" }
 nextlib-media3ext = { group = "io.github.anilbeesetti", name = "nextlib-media3ext", version.ref = "nextlib" }
 kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 cmp-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "cmpMaterial3" }
