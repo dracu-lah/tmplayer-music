@@ -137,7 +137,7 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
             title = { Text(L.manageRemoveTitle(chat.title)) },
             text = {
                 val kept = com.tmplayer.music.data.OfflineDownloads.keptIn(setOf(chat.chatId))
-                Text(L.manageRemoveBody(chat.trackCount) + if (kept > 0) "\n\n" + L.offlineUnpickBody(kept) else "")
+                Text(L.manageRemoveBody(chat.indexedCount) + if (kept > 0) "\n\n" + L.offlineUnpickBody(kept) else "")
             },
             confirmButton = {
                 TextButton(modifier = Modifier.tvFocusRing(), onClick = {

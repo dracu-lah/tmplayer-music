@@ -34,7 +34,13 @@ data class ScanState(
     val lastScanAt: Long = 0,
 )
 
-/** One chosen chat with its scan progress and how many audio files it holds in the index. */
+/**
+ * One chosen chat with its scan progress and how many audio files it holds in the index.
+ * [trackCount] is what the lists and the chat page show: the files left after [LibraryIndex.hiddenMask]
+ * (short clips and voice files hidden by the Settings switches) is applied, read at query time, so
+ * it changes with a switch and never differs from the chat page. [indexedCount] is every indexed
+ * file whatever the switches say, for what a removal deletes.
+ */
 data class ChatRow(
     val chatId: Long,
     val title: String,
@@ -43,6 +49,7 @@ data class ChatRow(
     val addedAt: Long,
     val scan: ScanState,
     val trackCount: Int,
+    val indexedCount: Int = trackCount,
 )
 
 /** A `.lrc` or `.txt` file beside the audio in a chat, kept by its name for the lyrics view. */
@@ -113,6 +120,9 @@ class LibraryIndex private constructor(
         val mask = hiddenMask and (ClipRules.SHORT or ClipRules.VOICE)
         return if (mask == 0) "" else " AND (${alias}hide & $mask) = 0"
     }
+
+    private fun chatColumns(): String = chatColumns(hiddenMask)
+
     private var closed = false
 
     /** Moves on with every write, so a cached read knows it may be stale. Guarded by [lock]. */
@@ -152,7 +162,7 @@ class LibraryIndex private constructor(
 
     /** The chosen chats with their scan state and track counts, oldest added first. */
     suspend fun pickedChats(): List<ChatRow> = io {
-        query("SELECT $CHAT_COLUMNS FROM chats WHERE picked = 1 ORDER BY added_at, chat_id LIMIT $MAX_ROWS", map = ::readChat)
+        query("SELECT ${chatColumns()} FROM chats WHERE picked = 1 ORDER BY added_at, chat_id LIMIT $MAX_ROWS", map = ::readChat)
     }
 
     /**
@@ -166,12 +176,12 @@ class LibraryIndex private constructor(
 
     /** One chosen chat with its scan state and track count, or null when it is not chosen. */
     suspend fun pickedChat(chatId: Long): ChatRow? = io {
-        query("SELECT $CHAT_COLUMNS FROM chats WHERE chat_id = ? AND picked = 1 LIMIT 1", chatId, map = ::readChat).firstOrNull()
+        query("SELECT ${chatColumns()} FROM chats WHERE chat_id = ? AND picked = 1 LIMIT 1", chatId, map = ::readChat).firstOrNull()
     }
 
     /** How far the scan of [chatId] got, or null for a chat the index does not know. */
     suspend fun scanState(chatId: Long): ScanState? = io {
-        query("SELECT $CHAT_COLUMNS FROM chats WHERE chat_id = ? LIMIT 1", chatId, map = ::readChat)
+        query("SELECT ${chatColumns()} FROM chats WHERE chat_id = ? LIMIT 1", chatId, map = ::readChat)
             .firstOrNull()?.scan
     }
 
@@ -219,9 +229,9 @@ class LibraryIndex private constructor(
                 val album = indexAlbumKey(track)
                 val artists = ArtistCredits.split(track.artist)
                 exec(
-                    "INSERT OR REPLACE INTO tracks($TRACK_COLUMNS, album_key, artist_key) " +
-                        "VALUES(${List(TRACK_COLUMN_COUNT + 2) { "?" }.joinToString()})",
-                    *trackValues(track, base), album, artists.firstOrNull()?.key.orEmpty(),
+                    "INSERT OR REPLACE INTO tracks($TRACK_COLUMNS, album_key, artist_key, hide) " +
+                        "VALUES(${List(TRACK_COLUMN_COUNT + 3) { "?" }.joinToString()})",
+                    *trackValues(track, base), album, artists.firstOrNull()?.key.orEmpty(), ClipRules.bits(track),
                 )
                 // A file seen for the first time has no artist rows yet, so a first scan skips this.
                 if (existed) exec("DELETE FROM track_artists WHERE chat_id = ? AND message_id = ?", track.chatId, track.messageId)
@@ -1847,9 +1857,27 @@ class LibraryIndex private constructor(
         private const val SONG_COLUMN_COUNT = 15
         private const val ALBUM_COLUMNS = "album_key, title, artist, year, song_count, thumb_file_id, cover_key"
         private const val ARTIST_COLUMNS = "artist_key, name, song_count, album_count"
-        private const val CHAT_COLUMNS =
+        /**
+         * The chat columns for a read of `chats`, with the files the chat page shows in the
+         * `track_count` place: the stored count less the hidden files under [mask], counted from the
+         * `tracks_chat_hide` covering index (only rows with a bit set are read, so a chat of 20,000
+         * files with a few clips costs a few entries). The stored count goes last, for
+         * [ChatRow.indexedCount]. With nothing hidden the stored count is read as it is.
+         */
+        internal fun chatColumns(mask: Int): String {
+            val bits = mask and (ClipRules.SHORT or ClipRules.VOICE)
+            val shown = if (bits == 0) {
+                "track_count"
+            } else {
+                "MAX(0, track_count - (SELECT COUNT(*) FROM tracks WHERE tracks.chat_id = chats.chat_id " +
+                    "AND hide > 0 AND (hide & $bits) <> 0))"
+            }
+            return "$CHAT_COLUMNS_BEFORE_COUNT, $shown, track_count"
+        }
+
+        private const val CHAT_COLUMNS_BEFORE_COUNT =
             "chat_id, title, picked, added_at, audio_from, audio_newest, audio_done, documents_from, " +
-                "documents_newest, documents_done, last_scan_at, track_count"
+                "documents_newest, documents_done, last_scan_at"
 
         /**
          * Opens the index at [path] (":memory:" for a throwaway one), creating or migrating it.
@@ -2062,6 +2090,7 @@ class LibraryIndex private constructor(
                 lastScanAt = s.getLong(10),
             ),
             trackCount = s.getLong(11).toInt(),
+            indexedCount = s.getLong(12).toInt(),
         )
     }
 }
