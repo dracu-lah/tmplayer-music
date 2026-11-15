@@ -7,6 +7,7 @@ import JsonLd from '../components/JsonLd.astro';
 import SponsorOffer from '../components/SponsorOffer.astro';
 import { breadcrumbLd, type Crumb } from '../lib/breadcrumb';
 import { t } from '../i18n/t';
+import { l } from '../i18n/links';
 import T from '../components/T.astro';
 
 interface Props {
@@ -43,8 +44,8 @@ const { path, title, description, h1, eyebrow, lede, crumbs, ld = [], updated, o
   <main id="main" class:list={['doc', { 'doc-wide': wide }]}>
     <nav class="crumbs" aria-label={t('common.breadcrumb')}>
       <ol>
-        <li><a href="/">{t('common.app_name')}</a></li>
-        {crumbs.map((c, i) => <li>{i === crumbs.length - 1 ? <span aria-current="page">{c.name}</span> : <a href={c.path}>{c.name}</a>}</li>)}
+        <li><a href={l('/')}>{t('common.app_name')}</a></li>
+        {crumbs.map((c, i) => <li>{i === crumbs.length - 1 ? <span aria-current="page">{c.name}</span> : <a href={l(c.path)}>{c.name}</a>}</li>)}
       </ol>
     </nav>
     <header class="doc-head">

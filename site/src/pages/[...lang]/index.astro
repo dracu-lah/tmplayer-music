@@ -7,18 +7,21 @@
 // The screenshots come from scripts/prepare-screenshots.py (demo data, invented names), in the app's
 // one pure black look. The gallery scrolls sideways with snap points and has Previous and Next
 // buttons; nothing moves by itself.
-import Base from '../layouts/Base.astro';
-import JsonLd from '../components/JsonLd.astro';
-import { INDEXABLE } from '../../site.config.mjs';
-import { ORGANIZATION, SOFTWARE_APP, WEBSITE } from '../lib/app-ld';
-import SponsorOffer from '../components/SponsorOffer.astro';
-import release from '../data/release.json';
-import PhoneFrame from '../components/PhoneFrame.astro';
-import Icon from '../components/Icon.astro';
-import Sibling from '../components/Sibling.astro';
-import { REPO_URL as REPO } from '../lib/support';
-import { t } from '../i18n/t';
-import T from '../components/T.astro';
+import { langPaths } from '../../i18n/paths';
+import { l } from '../../i18n/links';
+import Base from '../../layouts/Base.astro';
+import JsonLd from '../../components/JsonLd.astro';
+import { INDEXABLE } from '../../../site.config.mjs';
+import { ORGANIZATION, SOFTWARE_APP, WEBSITE } from '../../lib/app-ld';
+import SponsorOffer from '../../components/SponsorOffer.astro';
+import release from '../../data/release.json';
+import PhoneFrame from '../../components/PhoneFrame.astro';
+import Icon from '../../components/Icon.astro';
+import Sibling from '../../components/Sibling.astro';
+import { REPO_URL as REPO } from '../../lib/support';
+import { t } from '../../i18n/t';
+import { abs } from '../../components/content/meta';
+import T from '../../components/T.astro';
 
 const SCREENS = ['home', 'chats', 'songs', 'albums', 'nowplaying', 'lyrics', 'queue', 'account'];
 // i18n-keys: home.shot_home_h, home.shot_home, home.shot_home_alt, home.shot_chats_h, home.shot_chats, home.shot_chats_alt, home.shot_songs_h, home.shot_songs, home.shot_songs_alt, home.shot_albums_h, home.shot_albums, home.shot_albums_alt, home.shot_nowplaying_h, home.shot_nowplaying, home.shot_nowplaying_alt, home.shot_lyrics_h, home.shot_lyrics, home.shot_lyrics_alt, home.shot_queue_h, home.shot_queue, home.shot_queue_alt, home.shot_account_h, home.shot_account, home.shot_account_alt
@@ -36,6 +39,8 @@ const QUICK = [1, 2, 3].map((n) => ({ q: t(`home.q${n}`), a: t(`home.a${n}`) }))
 // i18n-keys: home.q1, home.a1, home.q2, home.a2, home.q3, home.a3
 const GALLERY_SIZES = '(max-width: 480px) 62vw, 250px';
 const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
+
+export const getStaticPaths = langPaths;
 ---
 <Base
   path="/"
@@ -43,7 +48,7 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
   description={t('home.description')}
 >
   <Fragment slot="head">
-    <JsonLd data={WEBSITE} />
+    <JsonLd data={{ ...WEBSITE, url: abs('/'), inLanguage: Astro.locals.lang.hreflang }} />
     <JsonLd data={ORGANIZATION} />
     {INDEXABLE && <JsonLd data={SOFTWARE_APP} />}
   </Fragment>
@@ -57,8 +62,8 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
         <p class="lede">{t('home.lede')}</p>
         <p class="notice">{t('common.unofficial')}</p>
         <nav class="links" aria-label={t('home.links')}>
-          <a class="link-primary" href="/download/"><Icon name="download" />{t('home.cta_download')}</a>
-          <a href="/features/"><Icon name="music" />{t('home.cta_features')}</a>
+          <a class="link-primary" href={l('/download/')}><Icon name="download" />{t('home.cta_download')}</a>
+          <a href={l('/features/')}><Icon name="music" />{t('home.cta_features')}</a>
           <a href={REPO}><Icon name="github" />{t('home.cta_source')}</a>
         </nav>
       </div>
@@ -104,13 +109,13 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
           </li>
         ))}
       </ul>
-      <p><a class="btn-quiet" href="/features/">{t('home.all_features')}</a></p>
+      <p><a class="btn-quiet" href={l('/features/')}>{t('home.all_features')}</a></p>
     </section>
 
     <section class="band" aria-labelledby="start">
       <h2 id="start">{t('home.start_h')}</h2>
       <ol class="steps">
-        <li><h3>{t('home.step1_h')}</h3><p><T k="home.step1"><a slot="a1" href="/install/"><T k="home.step1__a1" /></a></T></p></li>
+        <li><h3>{t('home.step1_h')}</h3><p><T k="home.step1"><a slot="a1" href={l('/install/')}><T k="home.step1__a1" /></a></T></p></li>
         <li><h3>{t('home.step2_h')}</h3><p>{t('home.step2')}</p></li>
         <li><h3>{t('home.step3_h')}</h3><p>{t('home.step3')}</p></li>
         <li><h3>{t('home.step4_h')}</h3><p>{t('home.step4')}</p></li>
@@ -146,7 +151,7 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
           <details><summary>{q.q}</summary><div><p>{q.a}</p></div></details>
         ))}
       </div>
-      <p><a class="btn-quiet" href="/faq/">{t('home.faq_more')}</a></p>
+      <p><a class="btn-quiet" href={l('/faq/')}>{t('home.faq_more')}</a></p>
     </section>
 
     <section class="band" aria-labelledby="get">
@@ -156,8 +161,8 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
           <p>{t('home.get_p', { android: release.minAndroid, size: (release.apk.size / 1048576).toFixed(0) })}</p>
         </div>
         <div class="btn-row">
-          <a class="btn" href="/download/"><Icon name="download" />{t('home.get_download')}</a>
-          <a class="btn-quiet" href="/install/">{t('home.get_install')}</a>
+          <a class="btn" href={l('/download/')}><Icon name="download" />{t('home.get_download')}</a>
+          <a class="btn-quiet" href={l('/install/')}>{t('home.get_install')}</a>
         </div>
       </div>
     </section>
@@ -178,8 +183,9 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
     nav.querySelectorAll<HTMLButtonElement>('button[data-step]').forEach((b) => {
       b.addEventListener('click', () => {
         const item = gallery.querySelector('li');
+        const dir = getComputedStyle(gallery).direction === 'rtl' ? -1 : 1;
         const step = item ? item.getBoundingClientRect().width : gallery.clientWidth / 2;
-        gallery.scrollBy({ left: Number(b.dataset.step) * step, behavior: reduce.matches ? 'auto' : 'smooth' });
+        gallery.scrollBy({ left: Number(b.dataset.step) * step * dir, behavior: reduce.matches ? 'auto' : 'smooth' });
       });
     });
     nav.hidden = false;

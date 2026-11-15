@@ -3,13 +3,15 @@
 // src/data/release.json, which scripts/refresh-release.mjs rewrites from the latest GitHub release.
 // Obtainium's link form obtainium://add/<url> is the one its wiki documents (Deep Links); the plain
 // instructions stay beside the badge for a computer or a phone without it.
-import Page from '../../layouts/Page.astro';
-import T from '../../components/T.astro';
-import ApkCard from '../../components/download/ApkCard.astro';
-import { t } from '../../i18n/t';
-import { SOFTWARE_APP } from '../../lib/app-ld';
-import { REPO_URL, RELEASES_URL } from '../../lib/support';
-import { earlier, latest, longDate, megabytes, pathOf } from '../../lib/releases';
+import { langPaths } from '../../../i18n/paths';
+import { l } from '../../../i18n/links';
+import Page from '../../../layouts/Page.astro';
+import T from '../../../components/T.astro';
+import ApkCard from '../../../components/download/ApkCard.astro';
+import { t } from '../../../i18n/t';
+import { SOFTWARE_APP } from '../../../lib/app-ld';
+import { REPO_URL, RELEASES_URL } from '../../../lib/support';
+import { earlier, latest, longDate, megabytes, pathOf } from '../../../lib/releases';
 
 const OBTAINIUM_REPO = 'https://github.com/ImranR98/Obtainium';
 const OBTAINIUM_ADD = `obtainium://add/${REPO_URL}`;
@@ -27,6 +29,8 @@ const ld = {
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', availability: 'https://schema.org/InStock' },
   license: 'https://www.gnu.org/licenses/gpl-3.0.html',
 };
+
+export const getStaticPaths = langPaths;
 ---
 <Page
   path="/download/"
@@ -65,7 +69,7 @@ const ld = {
   <h2>{t('download.updates_h')}</h2>
   <p>{t('download.updates_text1')}</p>
   <p>{t('download.updates_text2')}</p>
-  <p><T k="download.updates_more"><a slot="a1" href="/install/">{t('download.updates_more__a1')}</a></T></p>
+  <p><T k="download.updates_more"><a slot="a1" href={l('/install/')}>{t('download.updates_more__a1')}</a></T></p>
 
   <h2>{t('download.releases_h')}</h2>
   <p>{t('download.releases_text')}</p>
@@ -100,5 +104,5 @@ const ld = {
   .prev { padding: 0; list-style: none; display: grid; gap: .5rem; }
   .prev li { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .875rem; min-height: 2.75rem; padding: .5rem 1rem; border-radius: 1rem; background: var(--surface); }
   .prev time { color: var(--muted); font-size: .9375rem; }
-  .prev-apk { margin-left: auto; }
+  .prev-apk { margin-inline-start: auto; }
 </style>

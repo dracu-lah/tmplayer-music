@@ -1,0 +1,28 @@
+---
+// The language menu in the header: a native <details> (it works without scripting), one link per
+// published language, each to this page in that language and named in its own language. A localized
+// page links to its own translations; an English-only page (privacy, legal, ...) has none, so its
+// entries go to the home page of each language. Hidden while only English is published.
+import Icon from './Icon.astro';
+import { ENGLISH } from '../i18n/langs';
+import { isLocalized, pathIn } from '../i18n/links';
+import { published, t } from '../i18n/t';
+
+interface Props { path: string }
+const { path } = Astro.props;
+const lang = Astro.locals.lang ?? ENGLISH;
+const target = isLocalized(path) ? path : '/';
+const code = (l: { path: string }) => (l.path || 'en').toUpperCase();
+// The visible code is part of the spoken name, so what is said contains what is shown.
+const label = t('header.language_current', { name: `${lang.name} (${code(lang)})` });
+---
+{published.length > 1 && (
+<details class="lang-picker" data-lang-picker>
+  <summary class="lang-btn" aria-label={label} title={t('header.language')}><Icon name="globe" size={16} /><span aria-hidden="true">{code(lang)}</span></summary>
+  <ul class="lang-menu">
+    {published.map((o) => (
+      <li><a href={pathIn(o, target)} lang={o.tag} hreflang={o.hreflang} dir={o.dir} aria-current={o === lang ? 'true' : undefined}>{o.name}{o === lang && <Icon name="check" size={16} />}</a></li>
+    ))}
+  </ul>
+</details>
+)}

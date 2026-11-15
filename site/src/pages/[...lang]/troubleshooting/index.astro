@@ -1,13 +1,15 @@
 ---
 // Troubleshooting: the five guides as cards, a pointer to the install page and to the issue tracker.
 // The JSON-LD is an ItemList of the guides.
-import Page from '../../layouts/Page.astro';
-import Icon from '../../components/Icon.astro';
-import T from '../../components/T.astro';
-import GuideCard from '../../components/content/GuideCard.astro';
-import { abs, updatedOf, BUG_REPORT_URL } from '../../components/content/meta';
-import { GUIDES } from '../../data/troubleshooting';
-import { t } from '../../i18n/t';
+import { langPaths } from '../../../i18n/paths';
+import { l } from '../../../i18n/links';
+import Page from '../../../layouts/Page.astro';
+import Icon from '../../../components/Icon.astro';
+import T from '../../../components/T.astro';
+import GuideCard from '../../../components/content/GuideCard.astro';
+import { abs, updatedOf, BUG_REPORT_URL } from '../../../components/content/meta';
+import { GUIDES } from '../../../data/troubleshooting';
+import { t } from '../../../i18n/t';
 
 const PATH = '/troubleshooting/';
 const itemList = {
@@ -21,6 +23,8 @@ const itemList = {
     url: abs(`${PATH}${g.slug}/`),
   })),
 };
+
+export const getStaticPaths = langPaths;
 ---
 <Page
   path={PATH}
@@ -40,7 +44,7 @@ const itemList = {
 
   <p>
     <T k="trouble.index_install">
-      <a slot="a1" href="/install/">{t('trouble.index_install__a1')}</a>
+      <a slot="a1" href={l('/install/')}>{t('trouble.index_install__a1')}</a>
     </T>
   </p>
 

@@ -3,15 +3,18 @@
 // so the foot offer and the floating card are both left out (`offer={false}`, `noCard`; Page passes
 // noCard on to Base once it exposes it). The copy button uses the site's data-copy pattern (site.ts);
 // the Share button is the Web Share API, shown only where the browser has it. No third-party widget.
-import Page from '../../layouts/Page.astro';
-import Icon from '../../components/Icon.astro';
-import CoffeeButton from '../../components/CoffeeButton.astro';
-import UpiButton from '../../components/UpiButton.astro';
-import { ORIGIN } from '../../../site.config.mjs';
-import { REPO_URL, SPONSORS_URL } from '../../lib/support';
-import { t } from '../../i18n/t';
+import Page from '../../../layouts/Page.astro';
+import Icon from '../../../components/Icon.astro';
+import CoffeeButton from '../../../components/CoffeeButton.astro';
+import UpiButton from '../../../components/UpiButton.astro';
+import { REPO_URL, SPONSORS_URL } from '../../../lib/support';
+import { t } from '../../../i18n/t';
+import { langPaths } from '../../../i18n/paths';
+import { abs } from '../../../components/content/meta';
 
-const SHARE_URL = `${ORIGIN}/`;
+export const getStaticPaths = langPaths;
+
+const SHARE_URL = abs('/');
 const mailto = `mailto:?subject=${encodeURIComponent(t('supportpage.share_mail_subject'))}&body=${encodeURIComponent(t('supportpage.share_mail_body', { url: SHARE_URL }))}`;
 const shareData = JSON.stringify({ title: t('supportpage.share_native_title'), text: t('supportpage.share_native_text'), url: SHARE_URL });
 ---

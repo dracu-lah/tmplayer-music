@@ -3,13 +3,14 @@
 // The whole card is the link (a.card in the shared stylesheet), so the tap target is the card.
 import Icon from '../Icon.astro';
 import { t } from '../../i18n/t';
+import { l } from '../../i18n/links';
 import type { Guide } from '../../data/troubleshooting';
 
 interface Props { guide: Guide }
 const { guide } = Astro.props;
 ---
 <li>
-  <a class="card guide-card" href={`/troubleshooting/${guide.slug}/`}>
+  <a class="card guide-card" href={l(`/troubleshooting/${guide.slug}/`)}>
     <Icon name={guide.icon} size={24} />
     <h3>{t(`${guide.prefix}_h1`)}</h3>
     <p>{t(`${guide.prefix}_card`)}</p>

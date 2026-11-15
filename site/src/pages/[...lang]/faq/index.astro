@@ -1,15 +1,19 @@
 ---
 // Questions: the questions people ask first, grouped, each answer in a <details>. The FAQPage JSON-LD is
 // built from the same strings (src/lib/faq.ts), as plain text.
-import Page from '../../layouts/Page.astro';
-import Icon from '../../components/Icon.astro';
-import T from '../../components/T.astro';
-import FaqList from '../../components/content/FaqList.astro';
-import { updatedOf, BUG_REPORT_URL } from '../../components/content/meta';
-import { faqLd } from '../../lib/faq';
-import { t } from '../../i18n/t';
+import { langPaths } from '../../../i18n/paths';
+import { l } from '../../../i18n/links';
+import Page from '../../../layouts/Page.astro';
+import Icon from '../../../components/Icon.astro';
+import T from '../../../components/T.astro';
+import FaqList from '../../../components/content/FaqList.astro';
+import { updatedOf, BUG_REPORT_URL } from '../../../components/content/meta';
+import { faqLd } from '../../../lib/faq';
+import { t } from '../../../i18n/t';
 
 const PATH = '/faq/';
+
+export const getStaticPaths = langPaths;
 ---
 <Page
   path={PATH}
@@ -28,8 +32,8 @@ const PATH = '/faq/';
     <h2 id="more-h">{t('faq.more_h')}</h2>
     <p>
       <T k="faq.more_p">
-        <a slot="a1" href="/troubleshooting/">{t('faq.more_p__a1')}</a>
-        <a slot="a2" href="/features/">{t('faq.more_p__a2')}</a>
+        <a slot="a1" href={l('/troubleshooting/')}>{t('faq.more_p__a1')}</a>
+        <a slot="a2" href={l('/features/')}>{t('faq.more_p__a2')}</a>
       </T>
     </p>
     <div class="btn-row">

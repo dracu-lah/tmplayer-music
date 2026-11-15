@@ -5,6 +5,8 @@ import Icon from './Icon.astro';
 import { HEADER } from '../lib/nav';
 import { REPO_URL } from '../lib/support';
 import { t } from '../i18n/t';
+import { l } from '../i18n/links';
+import LangPicker from './LangPicker.astro';
 
 interface Props { path: string }
 const { path } = Astro.props;
@@ -12,12 +14,13 @@ const on = (href: string) => (path === href || path.startsWith(href) && href !==
 ---
 <header class="site-header" data-header>
   <div class="site-header-in">
-    <a class="brand" href="/" aria-label={t('header.home')}><Icon name="brand" size={28} /><span>{t('common.app_name')}</span></a>
+    <a class="brand" href={l('/')} aria-label={t('header.home')}><Icon name="brand" size={28} /><span>{t('common.app_name')}</span></a>
     <button type="button" class="menu-btn" data-menu aria-expanded="false" aria-controls="site-nav" aria-label={t('header.menu')} hidden><Icon name="menu" /></button>
     <nav class="site-nav" id="site-nav" aria-label={t('header.main')}>
-      {HEADER.map((i) => <a href={i.href} aria-current={on(i.href)}>{t(i.label)}</a>)}
+      {HEADER.map((i) => <a href={l(i.href)} aria-current={on(i.href)}>{t(i.label)}</a>)}
       <a class="nav-gh" href={REPO_URL} rel="noopener"><Icon name="github" size={16} />{t('header.github')}</a>
-      <a class="nav-cta" href="/download/" aria-current={on('/download/')}><Icon name="download" size={16} />{t('header.download')}</a>
+      <a class="nav-cta" href={l('/download/')} aria-current={on('/download/')}><Icon name="download" size={16} />{t('header.download')}</a>
+      <LangPicker path={path} />
     </nav>
   </div>
 </header>
