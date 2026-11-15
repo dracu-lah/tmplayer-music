@@ -55,7 +55,7 @@ function apkOf(release) {
   return { name: asset.name, size: Number(asset.size), sha256, url: asset.browser_download_url };
 }
 
-const clean = (s) => String(s ?? '').replace(/\r/g, '').replace(/[‒-―]/g, '-');
+const clean = (s) => String(s ?? '').replace(/\r/g, '').replace(/[\u2012-\u2015]/g, '-');
 
 function notesOf(release) {
   const body = clean(release.body);
