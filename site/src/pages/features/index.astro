@@ -1,0 +1,81 @@
+---
+// Features: the app's features by area, each group a grid of cards with a phone screenshot beside it,
+// then what the app does not do on purpose. Every claim here was checked against the app's own strings
+// and README.md. The JSON-LD is an ItemList of the groups.
+import Page from '../../layouts/Page.astro';
+import Icon from '../../components/Icon.astro';
+import FeatureGroup from '../../components/content/FeatureGroup.astro';
+import { GROUPS, NOT_DO } from '../../components/content/features';
+import { abs, updatedOf } from '../../components/content/meta';
+import { LATEST_URL } from '../../lib/support';
+import { t } from '../../i18n/t';
+
+// i18n-keys: features.library_h, features.library_intro, features.lib_chats_h, features.lib_chats_p, features.lib_lists_h, features.lib_lists_p, features.lib_search_h, features.lib_search_p, features.lib_versions_h, features.lib_versions_p, features.lib_albums_h, features.lib_albums_p, features.playback_h, features.playback_intro, features.play_stream_h, features.play_stream_p, features.play_background_h, features.play_background_p, features.play_queue_h, features.play_queue_p, features.play_nothing_h, features.play_nothing_p, features.play_sound_h, features.play_sound_p, features.lyrics_h, features.lyrics_intro, features.lyr_synced_h, features.lyr_synced_p, features.lyr_timing_h, features.lyr_timing_p, features.lyr_lookup_h, features.lyr_lookup_p, features.data_h, features.data_intro, features.data_cache_h, features.data_cache_p, features.data_free_h, features.data_free_p, features.data_offline_h, features.data_offline_p, features.data_backup_h, features.data_backup_p, features.data_remove_h, features.data_remove_p, features.playlists_h, features.playlists_intro, features.pl_fav_h, features.pl_fav_p, features.pl_lists_h, features.pl_lists_p, features.pl_home_h, features.pl_home_p, features.sleep_h, features.sleep_intro, features.sleep_minutes_h, features.sleep_minutes_p, features.sleep_end_h, features.sleep_end_p, features.shot_songs_alt, features.shot_nowplaying_alt, features.shot_lyrics_alt, features.shot_account_alt, features.shot_playlists_alt, features.not1, features.not2, features.not3, features.not4, features.not5, features.not6
+
+const PATH = '/features/';
+const itemList = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: t('features.h1'),
+  itemListElement: GROUPS.map((g, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: t(g.h),
+    description: t(g.intro),
+    url: `${abs(PATH)}#${g.id}`,
+  })),
+};
+---
+<Page
+  path={PATH}
+  title={t('features.title')}
+  description={t('features.description')}
+  eyebrow={t('features.eyebrow')}
+  h1={t('features.h1')}
+  lede={t('features.lede')}
+  crumbs={[{ name: t('nav.features'), path: PATH }]}
+  ld={[itemList]}
+  updated={updatedOf(PATH)}
+  wide
+>
+  <nav class="fg-toc" aria-label={t('features.toc_label')}>
+    <ul>
+      {GROUPS.map((g) => <li><a href={`#${g.id}`}>{t(g.h)}</a></li>)}
+      <li><a href="#not-do">{t('features.notdo_h')}</a></li>
+    </ul>
+  </nav>
+
+  {GROUPS.map((g) => <FeatureGroup group={g} />)}
+
+  <section class="fg" id="not-do" aria-labelledby="not-do-h">
+    <h2 id="not-do-h">{t('features.notdo_h')}</h2>
+    <div class="callout not-do">
+      <p>{t('features.notdo_p')}</p>
+      <ul>
+        {NOT_DO.map((k) => <li>{t(k)}</li>)}
+      </ul>
+    </div>
+  </section>
+
+  <section class="fg-cta" aria-labelledby="try-h">
+    <h2 id="try-h">{t('features.cta_h')}</h2>
+    <p>{t('features.cta_p')}</p>
+    <div class="btn-row">
+      <a class="btn" href={LATEST_URL}><Icon name="download" />{t('features.cta_download')}</a>
+      <a class="btn-quiet" href="/faq/"><Icon name="help" size={16} />{t('features.cta_faq')}</a>
+    </div>
+  </section>
+</Page>
+
+<style>
+  .fg-toc ul { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 2.5rem; padding: 0; list-style: none; }
+  .fg-toc li { margin: 0; }
+  .fg-toc a { display: inline-flex; align-items: center; min-height: 2.75rem; padding: .25rem 1rem; border-radius: 999px; background: var(--surface); color: var(--fg); text-decoration: none; font-size: .9375rem; }
+  .fg-toc a:hover { background: var(--surface-hover); }
+  .fg { margin: 0 0 3.5rem; scroll-margin-top: 5rem; }
+  .fg > h2 { margin-top: 0; }
+  .not-do { max-width: var(--prose); margin-top: 0; }
+  .not-do ul { margin: .75rem 0 0; }
+  .fg-cta { max-width: var(--prose); margin-bottom: 2rem; }
+  .fg-cta h2 { margin-top: 0; }
+</style>
