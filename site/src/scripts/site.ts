@@ -18,6 +18,20 @@ const $$ = <T extends HTMLElement>(sel: string, root: ParentNode = document) => 
   $$('a', header).forEach((a) => a.addEventListener('click', () => set(false)));
 })();
 
+// Language picker: a <details> that works without this. Esc and a click outside close it, and Esc puts
+// the focus back on its button.
+(() => {
+  const pickers = $$<HTMLDetailsElement>('[data-lang-picker]');
+  if (!pickers.length) return;
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    for (const d of pickers) if (d.open) { d.open = false; $<HTMLElement>('summary', d)?.focus(); }
+  });
+  document.addEventListener('click', (e) => {
+    for (const d of pickers) if (d.open && !d.contains(e.target as Node)) d.open = false;
+  });
+})();
+
 // Copy buttons: data-copy holds the text. The label says Copied for two seconds.
 (() => {
   $$<HTMLButtonElement>('[data-copy]').forEach((b) => {
