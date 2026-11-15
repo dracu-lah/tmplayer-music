@@ -289,7 +289,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 html { scroll-padding-top: 5rem; }
 html, body { height: auto; min-height: 100%; }
 body { display: flex; flex-direction: column; }
-body > main { flex: 1 0 auto; }
+body > main { flex: 1 0 auto; width: 100%; min-width: 0; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .skip { position: absolute; left: .75rem; top: -4rem; z-index: 60; padding: .5rem 1rem; border-radius: 999px; background: var(--accent); color: var(--bg); font-weight: 600; text-decoration: none; }
 .skip:focus { top: .75rem; }
@@ -321,8 +321,10 @@ pre code { padding: 0; background: none; }
   .site-nav { width: 100%; justify-content: flex-start; }
 }
 
-.doc { width: 100%; max-width: var(--prose); margin: 0 auto; padding: 1.5rem 1.5rem 3rem; }
-.doc-wide { max-width: var(--wrap); }
+.doc { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 1.5rem 1.5rem 3rem; }
+/* Every content page starts at the same left edge as the header and the home page; a page of running
+   text keeps its lines to a readable width inside that frame instead of centring a narrower column. */
+.doc:not(.doc-wide) .doc-head, .doc:not(.doc-wide) .doc-body, .doc:not(.doc-wide) .updated, .doc:not(.doc-wide) .offer { max-width: var(--prose); }
 .doc-wide .doc-head, .doc-wide .doc-body > p, .doc-wide .doc-body > ul, .doc-wide .doc-body > ol { max-width: var(--prose); }
 .crumbs ol { display: flex; flex-wrap: wrap; gap: .25rem .5rem; margin: 0 0 1.75rem; padding: 0; list-style: none; color: var(--muted); font-size: .875rem; }
 .crumbs li + li::before { content: "/"; margin-right: .5rem; color: var(--line); }
@@ -433,7 +435,7 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
 .footer-cols a:hover, .footer-base a:hover { color: var(--fg); text-decoration: underline; text-underline-offset: .2em; }
 .footer-bmc, .footer-icon { display: inline-flex; align-items: center; gap: .375rem; }
 .footer-bmc img { box-sizing: content-box; padding: 2px 3px; border-radius: 3px; background: var(--bmc-yellow); }
-.footer-icon img { border-radius: 3px; }
+.footer-icon img { flex: none; border-radius: 3px; }
 .footer-base { max-width: var(--wrap); margin: 2rem auto 0; padding-top: 1.25rem; border-top: 1px solid var(--line); font-size: .875rem; }
 .footer-mark { color: var(--fg); }
 
@@ -446,3 +448,7 @@ dialog::backdrop { background: rgba(0,0,0,.72); }
 .download-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.25rem; padding: 1.75rem; border-radius: var(--radius); background: var(--surface); }
 .download-strip h2 { margin: 0 0 .25rem; font-size: 1.5rem; }
 .download-strip p { margin: 0; color: var(--muted); }
+
+/* Footer links are easy to hit on a phone: a 44px row each. */
+.footer-cols a { display: inline-flex; align-items: center; min-height: 2rem; }
+@media (max-width: 52rem) { .footer-cols ul { gap: 0; } .footer-cols a { min-height: 2.75rem; } }
