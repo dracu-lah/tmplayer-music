@@ -18,6 +18,9 @@ CATALOGS = {
 }
 TMPLAYER = ROOT.parent / 'TMPlayer/core/src/commonMain/resources/i18n'
 
+# Site pages that stay English only (legal text, release notes, the 404): never listed for translation, as on tmplayer.org.
+SITE_ENGLISH_ONLY = ('privacy.', 'legal.', 'security.', 'changelog.', 'notfound.')
+
 def flat(o, p=''):
     out = {}
     for k, v in o.items():
@@ -51,6 +54,6 @@ if __name__ == '__main__':
                 reused += 1
         if reused:
             (d / f'{tag}.json').write_text(json.dumps(nest(have), ensure_ascii=False, indent=2) + '\n', 'utf8')
-    todo = {k: v for k, v in en.items() if k not in have}
+    todo = {k: v for k, v in en.items() if k not in have and not (kind == 'site' and k.startswith(SITE_ENGLISH_ONLY))}
     out.write_text(json.dumps(todo, ensure_ascii=False, indent=1) + '\n', 'utf8')
     print(f'{tag} {kind}: {len(en)} keys, {len(en) - len(todo)} done ({reused} reused from TMPlayer), {len(todo)} to translate -> {out}')
