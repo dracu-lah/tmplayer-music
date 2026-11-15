@@ -1,0 +1,93 @@
+---
+// /changelog/<tag>/: one release (route param is the tag, such as v0.1.0), built from
+// src/data/releases.json. The title, summary and highlights are English data; the words around them
+// are in the catalog. Base cannot take article:published_time, so the date is in the Article JSON-LD.
+import type { GetStaticPaths } from 'astro';
+import Page from '../../layouts/Page.astro';
+import T from '../../components/T.astro';
+import ApkCard from '../../components/download/ApkCard.astro';
+import { t } from '../../i18n/t';
+import { ORIGIN } from '../../../site.config.mjs';
+import { latest, longDate, nextOf, pathOf, previousOf, releases, githubUrlOf, urlOf, type Release } from '../../lib/releases';
+
+export const getStaticPaths = (() =>
+  releases.map((release) => ({ params: { version: release.tag }, props: { release } }))) satisfies GetStaticPaths;
+
+const { release: r } = Astro.props as { release: Release };
+const older = previousOf(r);
+const newer = nextOf(r);
+const when = longDate(r.date);
+
+const article = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: r.title,
+  description: r.summary,
+  inLanguage: 'en',
+  datePublished: r.published ?? r.date,
+  dateModified: r.published ?? r.date,
+  url: urlOf(r),
+  mainEntityOfPage: urlOf(r),
+  image: `${ORIGIN}/icon-512.png`,
+  author: { '@type': 'Person', name: 'dracu-lah', url: 'https://github.com/dracu-lah' },
+  publisher: { '@type': 'Person', name: 'dracu-lah', url: 'https://github.com/dracu-lah' },
+  ...(r.apk ? { associatedMedia: { '@type': 'MediaObject', contentUrl: r.apk.url, encodingFormat: 'application/vnd.android.package-archive' } } : {}),
+};
+---
+<Page
+  path={pathOf(r)}
+  title={t('changelog.release_title', { version: r.version })}
+  description={t('changelog.release_description', { version: r.version, date: when })}
+  h1={r.title}
+  eyebrow={t('changelog.release_eyebrow', { date: when })}
+  lede={r.summary}
+  crumbs={[{ name: t('nav.changelog'), path: '/changelog/' }, { name: r.version, path: pathOf(r) }]}
+  ld={[article]}
+  ogType="article"
+>
+  {(r.tag === latest.tag || r.prerelease) && (
+    <p class="status">
+      {r.tag === latest.tag && <span class="pill pill-ok">{t('changelog.latest')}</span>}
+      {r.prerelease && <span class="pill pill-warn">{t('changelog.prerelease')}</span>}
+    </p>
+  )}
+  {r.prerelease && <div class="callout callout-warn"><p>{t('changelog.prerelease_note')}</p></div>}
+
+  {r.highlights.length > 0 && (
+    <>
+      <h2>{t('changelog.highlights_h')}</h2>
+      <ul>
+        {r.highlights.map((h) => <li>{h}</li>)}
+      </ul>
+    </>
+  )}
+
+  <h2>{t('changelog.download_h')}</h2>
+  {r.apk ? (
+    <>
+      <p><T k="changelog.download_text"><a slot="a1" href="/install/">{t('changelog.download_text__a1')}</a></T></p>
+      <ApkCard apk={r.apk} version={r.version} date={r.date} minAndroid={latest.minAndroid} />
+    </>
+  ) : (
+    <p>{t('changelog.no_apk')}</p>
+  )}
+  <p><a href={githubUrlOf(r)} rel="noopener">{t('changelog.github_notes')}</a></p>
+
+  <nav class="pager" aria-label={t('changelog.nav_aria')}>
+    {older ? <a class="pager-prev" href={pathOf(older)} rel="prev">{t('changelog.previous', { version: older.version })}</a> : <span></span>}
+    <a class="pager-all" href="/changelog/">{t('changelog.back')}</a>
+    {newer ? <a class="pager-next" href={pathOf(newer)} rel="next">{t('changelog.next', { version: newer.version })}</a> : <span></span>}
+  </nav>
+</Page>
+
+<style>
+  .status { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; color: var(--muted); }
+  .pager { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem; margin: 2.5rem 0 0; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+  .pager a { display: inline-flex; align-items: center; min-height: 2.75rem; }
+  .pager-next { justify-self: end; }
+  @media (max-width: 30rem) {
+    .pager { grid-template-columns: 1fr; justify-items: start; gap: .25rem; }
+    .pager-next { justify-self: start; }
+    .pager span { display: none; }
+  }
+</style>

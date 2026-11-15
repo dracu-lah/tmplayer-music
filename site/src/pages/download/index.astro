@@ -1,0 +1,104 @@
+---
+// /download/: the one place to get the APK. The data (version, date, size, SHA-256, URL) is
+// src/data/release.json, which scripts/refresh-release.mjs rewrites from the latest GitHub release.
+// Obtainium's link form obtainium://add/<url> is the one its wiki documents (Deep Links); the plain
+// instructions stay beside the badge for a computer or a phone without it.
+import Page from '../../layouts/Page.astro';
+import T from '../../components/T.astro';
+import ApkCard from '../../components/download/ApkCard.astro';
+import { t } from '../../i18n/t';
+import { SOFTWARE_APP } from '../../lib/app-ld';
+import { REPO_URL, RELEASES_URL } from '../../lib/support';
+import { earlier, latest, longDate, megabytes, pathOf } from '../../lib/releases';
+
+const OBTAINIUM_REPO = 'https://github.com/ImranR98/Obtainium';
+const OBTAINIUM_ADD = `obtainium://add/${REPO_URL}`;
+const apk = latest.apk;
+
+const ld = {
+  ...SOFTWARE_APP,
+  name: t('download.ld_name', { version: latest.version }),
+  softwareVersion: latest.version,
+  datePublished: latest.date,
+  downloadUrl: apk.url,
+  fileSize: `${megabytes(apk.size)} MB`,
+  fileFormat: 'application/vnd.android.package-archive',
+  operatingSystem: `Android ${latest.minAndroid} or later`,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', availability: 'https://schema.org/InStock' },
+  license: 'https://www.gnu.org/licenses/gpl-3.0.html',
+};
+---
+<Page
+  path="/download/"
+  title={t('download.title')}
+  description={t('download.description')}
+  h1={t('download.h1')}
+  eyebrow={t('download.eyebrow')}
+  lede={t('download.lede')}
+  crumbs={[{ name: t('nav.download'), path: '/download/' }]}
+  ld={[ld]}
+>
+  <link slot="head" rel="preconnect" href="https://github.com">
+
+  <ApkCard apk={apk} version={latest.version} date={latest.date} minAndroid={latest.minAndroid} />
+  <p><a href={`/changelog/${latest.tag}/`}>{t('download.notes_link', { version: latest.version })}</a></p>
+
+  <h2>{t('download.sha_h')}</h2>
+  <p>{t('download.sha_text')}</p>
+  <p class="cmd-label">{t('download.sha_label_linux')}</p>
+  <pre><code>sha256sum {apk.name}</code></pre>
+  <p class="cmd-label">{t('download.sha_label_macos')}</p>
+  <pre><code>shasum -a 256 {apk.name}</code></pre>
+  <p class="cmd-label">{t('download.sha_label_windows')}</p>
+  <pre><code>Get-FileHash -Algorithm SHA256 {apk.name}</code></pre>
+
+  <h2>{t('download.obtainium_h')}</h2>
+  <p><T k="download.obtainium_text"><a slot="a1" href={OBTAINIUM_REPO} rel="noopener">{t('download.obtainium_text__a1')}</a></T></p>
+  <p>
+    <a class="badge" href={OBTAINIUM_ADD}><img src="/badges/obtainium.png" width="188" height="56" alt={t('download.obtainium_badge_alt')} loading="lazy" decoding="async"></a>
+  </p>
+  <p><T k="download.obtainium_how"><code slot="a1">{REPO_URL}</code></T></p>
+
+  <h2>{t('download.short_h')}</h2>
+  <p><T k="download.short_text"><code slot="a1">music.tmplayer.org/apk</code></T></p>
+
+  <h2>{t('download.updates_h')}</h2>
+  <p>{t('download.updates_text1')}</p>
+  <p>{t('download.updates_text2')}</p>
+  <p><T k="download.updates_more"><a slot="a1" href="/install/">{t('download.updates_more__a1')}</a></T></p>
+
+  <h2>{t('download.releases_h')}</h2>
+  <p>{t('download.releases_text')}</p>
+  <div class="btn-row">
+    <a class="btn-quiet" href={RELEASES_URL} rel="noopener">{t('download.github_all')}</a>
+    <a class="btn-quiet" href="/changelog/">{t('nav.changelog')}</a>
+  </div>
+
+  <h3>{t('download.previous_h')}</h3>
+  {earlier.length === 0 ? (
+    <p><T k="download.previous_none"><a slot="a1" href="/changelog/">{t('download.previous_none__a1')}</a></T></p>
+  ) : (
+    <ul class="prev">
+      {earlier.map((r) => (
+        <li>
+          <a href={pathOf(r)}>{r.version}</a>
+          <time datetime={r.date}>{longDate(r.date)}</time>
+          {r.prerelease && <span class="pill">{t('download.previous_prerelease')}</span>}
+          {r.apk && <a class="prev-apk" href={r.apk.url} rel="noopener" aria-label={t('download.previous_apk_aria', { version: r.version })}>{t('download.previous_apk')}</a>}
+        </li>
+      ))}
+    </ul>
+  )}
+</Page>
+
+<style>
+  .btn-row .btn-quiet { color: var(--fg); }
+  .cmd-label { margin: 1rem 0 .375rem; color: var(--muted); font-size: .875rem; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .badge { display: inline-block; line-height: 0; border-radius: .75rem; }
+  .badge img { height: 3.5rem; width: auto; }
+  .prev { padding: 0; list-style: none; display: grid; gap: .5rem; }
+  .prev li { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .875rem; min-height: 2.75rem; padding: .5rem 1rem; border-radius: 1rem; background: var(--surface); }
+  .prev time { color: var(--muted); font-size: .9375rem; }
+  .prev-apk { margin-left: auto; }
+</style>

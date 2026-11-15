@@ -1,0 +1,104 @@
+---
+// /install/: how to install the APK on Android 6.0 or newer, from INSTALL.md in the repository, and
+// what the app asks for, from app/src/main/AndroidManifest.xml (every <uses-permission> there is a
+// row of the table, and nothing else). The HowTo JSON-LD is built from the same five steps.
+import Page from '../../layouts/Page.astro';
+import T from '../../components/T.astro';
+import { t } from '../../i18n/t';
+import { REPO_URL } from '../../lib/support';
+
+const steps = [
+  { name: t('install.step1_title'), text: t('install.step1_text') },
+  { name: t('install.step2_title'), text: t('install.step2_text') },
+  { name: t('install.step3_title'), text: t('install.step3_text') },
+  { name: t('install.step4_title'), text: t('install.step4_text') },
+  { name: t('install.step5_title'), text: t('install.step5_text') },
+];
+
+const permissions = [
+  { name: t('install.perm_internet'), why: t('install.perm_internet_why') },
+  { name: t('install.perm_notifications'), why: t('install.perm_notifications_why') },
+  { name: t('install.perm_service'), why: t('install.perm_service_why') },
+  { name: t('install.perm_awake'), why: t('install.perm_awake_why') },
+  { name: t('install.perm_vibrate'), why: t('install.perm_vibrate_why') },
+  { name: t('install.perm_boot'), why: t('install.perm_boot_why') },
+  { name: t('install.perm_install'), why: t('install.perm_install_why') },
+];
+
+const problems = [
+  { q: t('install.blocked_source_q'), a: t('install.blocked_source_a') },
+  { q: t('install.blocked_protect_q'), a: t('install.blocked_protect_a') },
+  { q: t('install.blocked_parse_q'), a: t('install.blocked_parse_a') },
+  { q: t('install.blocked_notinstalled_q'), a: t('install.blocked_notinstalled_a') },
+  { q: t('install.blocked_code_q'), a: t('install.blocked_code_a') },
+];
+
+const howTo = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  name: t('install.howto_name'),
+  description: t('install.howto_description'),
+  step: steps.map((s, i) => ({ '@type': 'HowToStep', position: i + 1, name: s.name, text: s.text })),
+};
+---
+<Page
+  path="/install/"
+  title={t('install.title')}
+  description={t('install.description')}
+  h1={t('install.h1')}
+  eyebrow={t('install.eyebrow')}
+  lede={t('install.lede')}
+  crumbs={[{ name: t('nav.install'), path: '/install/' }]}
+  ld={[howTo]}
+>
+  <div class="btn-row">
+    <a class="btn" href="/download/">{t('install.cta')}</a>
+  </div>
+  <p><T k="install.cta_short"><code slot="a1">music.tmplayer.org/apk</code></T></p>
+
+  <h2>{t('install.steps_h')}</h2>
+  <ol class="steps">
+    {steps.map((s) => (
+      <li>
+        <h3>{s.name}</h3>
+        <p>{s.text}</p>
+      </li>
+    ))}
+  </ol>
+
+  <h2>{t('install.permissions_h')}</h2>
+  <p>{t('install.permissions_text')}</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">{t('install.perm_col_name')}</th><th scope="col">{t('install.perm_col_why')}</th></tr></thead>
+      <tbody>
+        {permissions.map((p) => <tr><th scope="row">{p.name}</th><td>{p.why}</td></tr>)}
+      </tbody>
+    </table>
+  </div>
+  <p>{t('install.perm_none')}</p>
+
+  <h2>{t('install.update_h')}</h2>
+  <p>{t('install.update_text1')}</p>
+  <p>{t('install.update_text2')}</p>
+
+  <h2>{t('install.uninstall_h')}</h2>
+  <p>{t('install.uninstall_text')}</p>
+
+  <h2>{t('install.blocked_h')}</h2>
+  <div class="faq">
+    {problems.map((p) => (
+      <details>
+        <summary>{p.q}</summary>
+        <div><p>{p.a}</p></div>
+      </details>
+    ))}
+  </div>
+  <p><T k="install.blocked_still"><a slot="a1" href={`${REPO_URL}/issues/new?template=bug_report.yml`} rel="noopener">{t('install.blocked_still__a1')}</a></T></p>
+</Page>
+
+<style>
+  .btn-row .btn { color: var(--bg); }
+  .steps { padding-left: 0; }
+  .table-wrap th[scope='row'] { color: var(--fg); font-size: .9375rem; font-weight: 600; letter-spacing: 0; text-transform: none; width: 34%; }
+</style>
