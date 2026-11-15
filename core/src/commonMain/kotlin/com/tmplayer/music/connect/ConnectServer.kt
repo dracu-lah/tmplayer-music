@@ -53,6 +53,9 @@ class ConnectServer(
 
     private val peers = CopyOnWriteArrayList<Peer>()
     private val pending = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Connections still in the handshake (for tests: a phone that leaves early frees its slot only once the server notices). */
+    internal val pendingHandshakes: Int get() = pending.get()
     private val pendingByIp = HashMap<String, Int>()
     private val _clients = MutableStateFlow(0)
     private val clientsLock = Any()

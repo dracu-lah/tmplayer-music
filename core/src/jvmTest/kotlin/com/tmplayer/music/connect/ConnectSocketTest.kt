@@ -205,11 +205,14 @@ class ConnectSocketTest {
         val link = PairLink("127.0.0.1", port, tvId, offer.token, offer.fingerprint, "Living room")
         val wrong = ConnectClient.pair(link.copy(token = "00".repeat(16)), me) as PairResult.Refused
         assertEquals(ConnectErrors.BAD_CODE, wrong.code)
+        await("the refused handshake is over") { server.pendingHandshakes == 0 }
         // Another TV than the one the QR code named is not paired with.
         assertEquals(ConnectErrors.WRONG_TV, (ConnectClient.pair(link.copy(tvId = ConnectHandshake.newId()), me) as PairResult.Refused).code)
+        await("the handshake of the other TV is over") { server.pendingHandshakes == 0 }
         // A device at that address that answers with another key than the QR code named is not the TV, whatever it knows.
         val other = EphemeralKey.generate()
         assertEquals(ConnectErrors.WRONG_TV, (ConnectClient.pair(link.copy(fingerprint = ConnectHandshake.fingerprint(other.publicHex)), me) as PairResult.Refused).code)
+        await("the handshake of the other key is over") { server.pendingHandshakes == 0 }
         assertTrue(phones.list.value.isEmpty())
         val paired = (ConnectClient.pair(link, me) as PairResult.Success).paired
         assertEquals(tvId, paired.id)
