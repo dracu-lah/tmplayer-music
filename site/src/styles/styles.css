@@ -336,7 +336,7 @@ pre code { padding: 0; background: none; }
 .doc-body p, .doc-body li { color: #D9D9DF; }
 .doc-body ul, .doc-body ol { padding-left: 1.25rem; }
 .doc-body li { margin: .25rem 0; }
-.doc-body a { color: var(--accent); text-underline-offset: .2em; text-decoration-thickness: 1px; }
+.doc-body a:not(.btn):not(.btn-quiet):not(.btn-bmc):not(.btn-upi):not(.card) { color: var(--accent); text-underline-offset: .2em; text-decoration-thickness: 1px; }
 .updated { margin: 2rem 0 0; color: var(--muted); font-size: .875rem; }
 
 .callout { margin: 1.5rem 0; padding: 1rem 1.25rem; border-radius: 1rem; background: var(--surface); border-left: 3px solid var(--accent); }

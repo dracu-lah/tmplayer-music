@@ -1,0 +1,62 @@
+---
+// /changelog/: every release, newest first, from src/data/releases.json. The words around the notes
+// are in the catalog; the notes themselves (title, summary, highlights) are English data.
+import Page from '../../layouts/Page.astro';
+import T from '../../components/T.astro';
+import { t } from '../../i18n/t';
+import { ORIGIN } from '../../../site.config.mjs';
+import { RELEASES_URL } from '../../lib/support';
+import { latest, longDate, pathOf, releases, urlOf } from '../../lib/releases';
+
+const list = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: t('changelog.ld_name'),
+  url: `${ORIGIN}/changelog/`,
+  itemListElement: releases.map((r, i) => ({ '@type': 'ListItem', position: i + 1, url: urlOf(r), name: r.title })),
+};
+---
+<Page
+  path="/changelog/"
+  title={t('changelog.title')}
+  description={t('changelog.description')}
+  h1={t('changelog.h1')}
+  lede={t('changelog.lede')}
+  crumbs={[{ name: t('nav.changelog'), path: '/changelog/' }]}
+  ld={[list]}
+>
+  <p><T k="changelog.rss_text"><a slot="a1" href="/changelog/feed.xml">{t('changelog.rss_text__a1')}</a><a slot="a2" href={RELEASES_URL} rel="noopener">{t('changelog.rss_text__a2')}</a></T></p>
+
+  <ol class="releases">
+    {releases.map((r) => (
+      <li>
+        <article class="card">
+          <h2><a href={pathOf(r)}>{r.title}</a></h2>
+          <p class="meta">
+            <time datetime={r.date}>{t('changelog.released', { date: longDate(r.date) })}</time>
+            {r.tag === latest.tag && <span class="pill pill-ok">{t('changelog.latest')}</span>}
+            {r.prerelease && <span class="pill pill-warn">{t('changelog.prerelease')}</span>}
+          </p>
+          <p>{r.summary}</p>
+          <p class="actions">
+            <a href={pathOf(r)}>{t('changelog.read', { version: r.version })}</a>
+            {r.apk && <a href={r.apk.url} rel="noopener">{t('changelog.apk_link')}</a>}
+          </p>
+        </article>
+      </li>
+    ))}
+  </ol>
+</Page>
+
+<style>
+  .releases { display: grid; gap: 1rem; margin: 1.5rem 0; padding: 0; list-style: none; }
+  .releases li { margin: 0; }
+  .releases .card { padding: 1.5rem; }
+  .releases h2 { margin: 0; font-size: 1.25rem; }
+  .releases h2 a { color: var(--fg); text-decoration: none; }
+  .releases h2 a:hover { text-decoration: underline; }
+  .releases .card p { color: #D9D9DF; font-size: 1rem; }
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; color: var(--muted) !important; font-size: .9375rem !important; }
+  .actions { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; margin-top: .5rem !important; }
+  .actions a { display: inline-flex; align-items: center; min-height: 2.75rem; }
+</style>
