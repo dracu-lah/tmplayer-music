@@ -2,7 +2,8 @@
 
 The site of TMPlayer Music: a player for the audio files already in your own Telegram chats. Unofficial,
 not affiliated with Telegram. It is open to search engines (`INDEXABLE` is `true`, see "Going live").
-English only for now; the catalog is built for more languages (see "Strings and languages").
+English is the source language; 21 more are wired in and go live one by one as their catalogs are filled
+(see "Strings and languages").
 
 It is an [Astro](https://astro.build) project built the same way as tmplayer.org's site
 (`../TMPlayer/site/`): pnpm, the same Astro version, `dist/` as output, directories with a trailing
@@ -17,7 +18,8 @@ pnpm -C site build        # writes site/dist/ (and dist/_headers)
 pnpm -C site check        # astro check, the type check
 pnpm -C site pages:dev    # serves dist/ the way Cloudflare does, with _headers, on :8788
 pnpm -C site pages:deploy # builds, then uploads dist/ as the production deploy
-node site/scripts/i18n-check.mjs   # the catalog against the source (below)
+node site/scripts/i18n-check.mjs   # the catalog against the source, and each language's coverage (below)
+node site/scripts/i18n-dist-check.mjs   # after a build: no string or link of one language in another's pages
 ```
 
 (The script is `pages:deploy`, not `deploy`: that name is a pnpm command of its own.)
@@ -40,7 +42,8 @@ Cloudflare account wrangler is logged in to (`npx wrangler whoami`; `npx wrangle
 | `astro.config.mjs` | the build, and `tmHeaders`, which writes `dist/_headers` (security headers, caching, X-Robots-Tag) |
 | `src/layouts/Base.astro` | `<html>` and the whole `<head>`: canonical, robots, Open Graph, Twitter, icons, manifest; the `notFound` and `noCard` options |
 | `src/layouts/Page.astro` | a content page: breadcrumb, eyebrow, one h1, lede, the slot, the "updated" date and the sponsor offer; adds the BreadcrumbList JSON-LD |
-| `src/pages/` | one folder per page, each an `index.astro`: home, download, install, features, faq, changelog, troubleshooting, privacy, legal, security, support; plus `404.astro` |
+| `src/pages/` | the localized pages live once under `[...lang]/` (home, download, install, features, faq, troubleshooting and its guides, support); the English-only ones (changelog, privacy, legal, security, `404.astro`) sit beside it |
+| `src/middleware.ts`, `src/i18n/` | the language of a page: the middleware reads it from the URL, `t.ts` looks strings up and says which languages are published, `links.ts` builds localized paths (`l()`), `paths.ts` is the `getStaticPaths` of a localized page |
 | `src/pages/robots.txt.ts`, `sitemap.xml.ts`, `llms.txt.ts` | robots.txt (AI crawlers named, with the `Sitemap:` line), the sitemap (the home page's screenshots as `<image:image>`) and `/llms.txt`, a plain Markdown summary for language models |
 | `src/data/lastmod.json` | each page's sitemap entry and the page list of `llms.txt`; move `lastmod` when the page's content changes, add a line for a new page (and a one-line description in `llms.txt.ts`) |
 | `src/data/release.json` | the latest release: version, tag, date, Android floor, APK name, size, SHA-256 and URL (below) |
@@ -77,14 +80,60 @@ page, so a language is a file and not a rewrite.
   `// i18n-keys: a.b, a.c`.
 - Not in the catalog on purpose: `robots.txt`, `sitemap.xml`, `llms.txt` and `security.txt` (machine
   files, English), code samples and commands, and the JSON-LD names.
+- `node scripts/i18n-check.mjs` also reads every `i18n/<tag>.json`: a key that is not in `en.json`, a
+  string whose `{placeholders}` differ from English, or a dash is an error, and each language's coverage
+  and whether it is published is printed.
 
-### Adding a language later
+### Languages and routing
 
-1. Copy `i18n/en.json` to `i18n/<tag>.json` and translate the values; keep the keys and every
-   `{placeholder}` (a string that loses one falls back to English, so a link is never dropped).
-2. Add the language to `LANGS` in `src/i18n/langs.ts`.
-3. Build the routing for it (a `/<tag>/` copy of the pages, `hreflang` alternates in `Base.astro`, a
-   picker in the header, the sitemap entries). None of that exists yet: only English is published.
+- English is at the root (`/features/`), every other language under its prefix (`/fr/features/`,
+  `/zh-tw/`). The list, the prefixes, `hreflang` and `og:locale` values, native names and text
+  direction are in `LANGS` in `src/i18n/langs.ts` (21 languages, the sibling site's set and order).
+- **One source file per page.** A localized page is a single `src/pages/[...lang]/<page>/index.astro`
+  whose `getStaticPaths` is `langPaths()`: English plus every published language.
+- **The page knows its language without passing it around.** `src/middleware.ts` takes the language
+  from the URL path, sets `Astro.locals.lang` and runs the whole render inside an `AsyncLocalStorage`
+  (`langStore` in `t.ts`), so `t()`, `raw()`, `<T>` and `l()` read it. Outside a page render
+  (robots, sitemap, llms.txt) it is English. The body is read inside the store, because Astro streams
+  lazily. `node scripts/i18n-dist-check.mjs` proves, on the built `dist/`, that pages of different
+  languages rendered in one build do not mix strings.
+- **Links.** Use `l('/features/')` (`src/i18n/links.ts`) for every internal link: it adds the prefix
+  for a localized page and leaves English-only pages, assets and the feed alone. JSON-LD URLs go
+  through `abs()` (`components/content/meta.ts`), which does the same. Pages pass their *English* path
+  to `Page` and `Base`; the layouts localize it (canonical, breadcrumbs, picker).
+- **Head.** `Base.astro` sets `<html lang dir>`, the canonical of the page's own URL, and, on a localized page
+  once a second language is published, `hreflang` alternates for every published language plus
+  `x-default` (English), `og:locale` and `og:locale:alternate`. The sitemap does the same: one `<url>`
+  per language version with `xhtml:link` alternates, driven by the English paths in
+  `src/data/lastmod.json` (no entry per language by hand).
+- **Picker.** `LangPicker.astro` is a native `<details>` in the header's nav (so it is inside the phone
+  menu), without JavaScript needed; `site.ts` adds Esc and click-outside. It lists the published
+  languages by their own names, each a link to the same page; on an English-only page each goes to
+  that language's home. It is hidden while only English is published.
+- **English-only pages** (never prefixed, never in the picker's alternates, linked as English from
+  localized pages): privacy, legal, security, the changelog (with its feed and release pages), the
+  404, `llms.txt`, `robots.txt` and the sitemap. Their strings (`privacy.`, `legal.`, `security.`,
+  `changelog.`, `notfound.`, `ENGLISH_ONLY_NAMESPACES` in `langs.ts`) do not count toward coverage.
+- **Right to left** (`ar`, `fa`): `dir` follows the language. The stylesheet uses logical properties
+  (`margin-inline`, `inset-inline`, `border-inline-start`, `text-align: start`); keep to them in new CSS.
+  Pictures (the hero phones) stay `direction: ltr`, and the gallery's Previous and Next buttons mirror.
+
+### Adding a language
+
+The `LANGS` entry already exists, so a language is a file:
+
+1. Copy `i18n/en.json` to `i18n/<tag>.json` (the tag is the `tag` field of `LANGS`: `es-419`, `pt-BR`,
+   `zh-CN`, ...) and translate the values. Keep the keys and every `{placeholder}`; a string that loses
+   one falls back to English, so a link is never dropped. A partial file is fine while it is being worked on.
+2. `node scripts/i18n-check.mjs` lists each language's coverage and fails on a key that is not in
+   `en.json`, on different placeholders and on a dash.
+3. **Publishing is automatic.** A language is generated (its pages, the picker entry, the hreflang
+   alternates, the sitemap entries) only when its catalog covers 95% of the localizable keys
+   (`PUBLISH_THRESHOLD` in `langs.ts`; `coverage()` in `t.ts`; a string counts when it is present, not
+   empty and has English's placeholders). Below that nothing is built under `/<prefix>/`, so a
+   half-translated language never shows English pages under its address. The remaining strings fall
+   back to English per string.
+4. After a build, `node scripts/i18n-dist-check.mjs`, and a look at an RTL page for `ar` and `fa`.
 
 Translations are the maintainer's job; do not run a translation sync tool from here.
 
