@@ -27,10 +27,14 @@ interface Props {
   /** a column wide enough for a table or a grid */
   wide?: boolean;
   ogType?: 'website' | 'article';
+  /** article:published_time, for a release or a guide (YYYY-MM-DD) */
+  published?: string;
+  /** no floating support card (the support page) */
+  noCard?: boolean;
 }
-const { path, title, description, h1, eyebrow, lede, crumbs, ld = [], updated, offer = true, wide = false, ogType } = Astro.props;
+const { path, title, description, h1, eyebrow, lede, crumbs, ld = [], updated, offer = true, wide = false, ogType, published, noCard = false } = Astro.props;
 ---
-<Base path={path} title={title} description={description} ogType={ogType}>
+<Base path={path} title={title} description={description} ogType={ogType} published={published} noCard={noCard}>
   <Fragment slot="head">
     <JsonLd data={breadcrumbLd(crumbs)} />
     {ld.map((d) => <JsonLd data={d} />)}

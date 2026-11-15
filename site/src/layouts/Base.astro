@@ -28,8 +28,10 @@ interface Props {
   noCard?: boolean;
   /** the open graph type: website for most pages, article for a release */
   ogType?: 'website' | 'article';
+  /** article:published_time (YYYY-MM-DD), with ogType article */
+  published?: string;
 }
-const { path, title, socialTitle = title, description, imageAlt = t('common.og_alt'), notFound = false, noCard = false, ogType = 'website' } = Astro.props;
+const { path, title, socialTitle = title, description, imageAlt = t('common.og_alt'), notFound = false, noCard = false, ogType = 'website', published } = Astro.props;
 const url = ORIGIN + path;
 // Bump ?v= whenever og.png changes, so the social sites fetch the new one.
 const OG_IMAGE = `${ORIGIN}/og.png?v=2`;
@@ -63,6 +65,7 @@ const robots = INDEXABLE ? 'index, follow, max-image-preview:large, max-snippet:
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content={imageAlt}>
 <meta property="og:locale" content="en_US">
+{published && <meta property="article:published_time" content={published}>}
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content={socialTitle}>
