@@ -32,6 +32,9 @@ class MusicApp : Application() {
         // The bounded log file and the crash record for Send logs; first, so later lines are kept.
         Diagnostics.install(this)
         stopContentCapture()
+        // The UI language: the Settings choice, else the device's, else English. Before the demo
+        // return below, so a demo speaks the device's language too.
+        com.tmplayer.music.data.AppLocales.start(this)
         com.tmplayer.music.platform.HapticSetting.start(Prefs(this))
         com.tmplayer.music.player.AudioEffectsSetting.start(Prefs(this))
         // A debug build's demo library starts in place of the app (app/src/debug); never in a release.

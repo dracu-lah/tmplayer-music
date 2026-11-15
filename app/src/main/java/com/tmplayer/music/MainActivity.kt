@@ -15,6 +15,11 @@ import com.tmplayer.music.ui.library.SupportAskHost
 import com.tmplayer.music.ui.theme.MusicTheme
 
 class MainActivity : ComponentActivity() {
+    // Android 12 and older have no per-app language: the chosen one is put on this activity's own configuration.
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.tmplayer.music.data.AppLocales.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Always black: transparent system bars with light icons, in either device mode.
         enableBlackEdgeToEdge()
@@ -63,6 +68,8 @@ class MainActivity : ComponentActivity() {
     // The tag reader's background reading (documents, trickle) runs only while the app is on screen.
     override fun onStart() {
         super.onStart()
+        // A device language changed while away, or a language picked on Android's own page for this app.
+        com.tmplayer.music.data.AppLocales.refresh(this)
         Library.setForeground(true)
         if (BuildConfig.CONNECT) com.tmplayer.music.connect.TvConnect.setForeground(true)
     }
