@@ -10,7 +10,7 @@
 import Base from '../layouts/Base.astro';
 import JsonLd from '../components/JsonLd.astro';
 import { INDEXABLE } from '../../site.config.mjs';
-import { SOFTWARE_APP, WEBSITE } from '../lib/app-ld';
+import { ORGANIZATION, SOFTWARE_APP, WEBSITE } from '../lib/app-ld';
 import SponsorOffer from '../components/SponsorOffer.astro';
 import release from '../data/release.json';
 import PhoneFrame from '../components/PhoneFrame.astro';
@@ -44,6 +44,7 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
 >
   <Fragment slot="head">
     <JsonLd data={WEBSITE} />
+    <JsonLd data={ORGANIZATION} />
     {INDEXABLE && <JsonLd data={SOFTWARE_APP} />}
   </Fragment>
 
