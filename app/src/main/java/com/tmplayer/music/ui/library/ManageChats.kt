@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -101,18 +102,26 @@ fun ManageChats(onAddChats: () -> Unit, onChat: (ChatRow) -> Unit) {
                 else -> L.manageScanning(chat.trackCount)
             }
             Row(
-                Modifier.fillMaxWidth().rememberedFocus(chat.chatId).clickable { onChat(chat) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                ChatAvatar(chatId = chat.chatId, name = chat.title, size = 44.dp)
-                Column(Modifier.weight(1f)) {
-                    Text(chat.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        state,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (failed != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                // The text area is the focusable item, not the whole row: a clickable parent held the D-pad focus and
+                // the Remove button beside it could not be reached with a TV remote.
+                Row(
+                    Modifier.weight(1f).rememberedFocus(chat.chatId).tvFocusRing(RoundedCornerShape(12.dp)).clickable { onChat(chat) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    ChatAvatar(chatId = chat.chatId, name = chat.title, size = 44.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(chat.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            state,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (failed != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 if (failed != null) {
                     TextButton(modifier = Modifier.tvFocusRing(), onClick = { Library.scanner.scan(listOf(chat.chatId)) }) { Text(L.commonRetry) }

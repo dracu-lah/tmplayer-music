@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -152,19 +153,26 @@ fun ChatsTab(actions: SongActions, onChat: (ChatRow) -> Unit, onAdd: () -> Unit)
                 else -> L.manageScanning(chat.trackCount)
             }
             Row(
-                Modifier.fillMaxWidth().rememberedFocus(chat.chatId).clickable { onChat(chat) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                ChatAvatar(chatId = chat.chatId, name = chat.title, size = 48.dp)
-                Column(Modifier.weight(1f)) {
-                    Text(chat.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        line,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (failed != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                    )
+                // The text area is the focusable item, so the play button beside it is reachable with a TV remote.
+                Row(
+                    Modifier.weight(1f).rememberedFocus(chat.chatId).tvFocusRing(RoundedCornerShape(12.dp)).clickable { onChat(chat) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    ChatAvatar(chatId = chat.chatId, name = chat.title, size = 48.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(chat.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            line,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (failed != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                        )
+                    }
                 }
                 if (starting == chat.chatId) {
                     CircularProgressIndicator(Modifier.size(40.dp).padding(8.dp))
