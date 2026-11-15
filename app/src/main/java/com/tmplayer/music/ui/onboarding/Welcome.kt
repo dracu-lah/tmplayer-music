@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -33,25 +35,29 @@ import com.tmplayer.music.i18n.L
 @Composable
 fun Welcome(onContinue: () -> Unit) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-        ) {
-            AppIcon(96.dp)
-            Text(L.appName, style = MaterialTheme.typography.headlineMedium)
-            Text(
-                L.welcomeBody,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.widthIn(max = 420.dp),
-            )
-            Text(
-                L.appUnofficial,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(onClick = onContinue, modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()) { Text(L.commonContinue) }
+        // Centred when it fits, scrolls when it does not: a phone on its side is about 390 dp tall and
+        // squeezed Continue to a 5 dp sliver when the column only centred.
+        Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                AppIcon(96.dp)
+                Text(L.appName, style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    L.welcomeBody,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = 420.dp),
+                )
+                Text(
+                    L.appUnofficial,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(onClick = onContinue, modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()) { Text(L.commonContinue) }
+            }
         }
     }
 }
