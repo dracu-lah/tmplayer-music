@@ -5,6 +5,7 @@ import { BMC_URL, REPO_URL, SPONSORS_URL, ISSUES_URL } from '../lib/support';
 import { FOOTER } from '../lib/nav';
 import Icon from './Icon.astro';
 import { t } from '../i18n/t';
+import { l } from '../i18n/links';
 ---
 <footer class="footer">
   <div class="footer-in">
@@ -17,7 +18,7 @@ import { t } from '../i18n/t';
       {FOOTER.map((c) => (
         <div>
           <h2>{t(c.title)}</h2>
-          <ul>{c.items.map((i) => <li><a href={i.href}>{t(i.label)}</a></li>)}</ul>
+          <ul>{c.items.map((i) => <li><a href={l(i.href)}>{t(i.label)}</a></li>)}</ul>
         </div>
       ))}
       <div>

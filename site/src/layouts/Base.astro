@@ -3,11 +3,17 @@
 // canonical, robots, author, Open Graph with the image's type and size, og:locale, the four
 // twitter: tags, the icons and the manifest. Page-specific JSON-LD goes in the "head" slot.
 //
+// The language comes from the URL (src/middleware.ts): <html lang dir>, the canonical of this language's
+// URL, and on a localized page the hreflang alternates (every published language and x-default, which is
+// English) and og:locale:alternate. English-only pages have one URL and none of those.
+//
 // Robots follow INDEXABLE in site.config.mjs. While it is false (the placeholder) every page is
 // noindex, nofollow, whatever it asks for; the X-Robots-Tag header (astro.config.mjs) says the same.
 import cssUrl from '../styles/styles.css?url';
 import { INDEXABLE, ORIGIN } from '../../site.config.mjs';
-import { t } from '../i18n/t';
+import { t, published as languages } from '../i18n/t';
+import { ENGLISH } from '../i18n/langs';
+import { isLocalized, l, pathIn } from '../i18n/links';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import CoffeeCard from '../components/CoffeeCard.astro';
@@ -15,7 +21,7 @@ import CoffeeDialog from '../components/CoffeeDialog.astro';
 import UpiDialog from '../components/UpiDialog.astro';
 
 interface Props {
-  /** the page's path, such as / */
+  /** the page's English path, such as /; the language's prefix is added here */
   path: string;
   title: string;
   description: string;
@@ -32,13 +38,15 @@ interface Props {
   published?: string;
 }
 const { path, title, socialTitle = title, description, imageAlt = t('common.og_alt'), notFound = false, noCard = false, ogType = 'website', published } = Astro.props;
-const url = ORIGIN + path;
+const lang = Astro.locals.lang ?? ENGLISH;
+const url = ORIGIN + l(path);
+const localized = !notFound && isLocalized(path) && languages.length > 1;
 // Bump ?v= whenever og.png changes, so the social sites fetch the new one.
 const OG_IMAGE = `${ORIGIN}/og.png?v=2`;
 const robots = INDEXABLE ? 'index, follow, max-image-preview:large, max-snippet:-1' : 'noindex, nofollow';
 ---
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang={lang.tag} dir={lang.dir}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -46,6 +54,10 @@ const robots = INDEXABLE ? 'index, follow, max-image-preview:large, max-snippet:
 <meta name="description" content={description}>
 {notFound ? <meta name="robots" content="noindex"> : <Fragment>
 <link rel="canonical" href={url}>
+{localized && <Fragment>
+{languages.map((o) => <link rel="alternate" hreflang={o.hreflang} href={ORIGIN + pathIn(o, path)}>)}
+<link rel="alternate" hreflang="x-default" href={ORIGIN + path}>
+</Fragment>}
 {/* Placeholder: noindex until launch. See INDEXABLE in site.config.mjs and "Going live" in README.md. */}
 <meta name="robots" content={robots}>
 <meta name="author" content="dracu-lah">
@@ -64,7 +76,8 @@ const robots = INDEXABLE ? 'index, follow, max-image-preview:large, max-snippet:
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content={imageAlt}>
-<meta property="og:locale" content="en_US">
+<meta property="og:locale" content={lang.og}>
+{localized && languages.filter((o) => o !== lang).map((o) => <meta property="og:locale:alternate" content={o.og}>)}
 {published && <meta property="article:published_time" content={published}>}
 
 <meta name="twitter:card" content="summary_large_image">

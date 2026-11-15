@@ -2,10 +2,12 @@
 // /install/: how to install the APK on Android 6.0 or newer, from INSTALL.md in the repository, and
 // what the app asks for, from app/src/main/AndroidManifest.xml (every <uses-permission> there is a
 // row of the table, and nothing else). The HowTo JSON-LD is built from the same five steps.
-import Page from '../../layouts/Page.astro';
-import T from '../../components/T.astro';
-import { t } from '../../i18n/t';
-import { REPO_URL } from '../../lib/support';
+import { langPaths } from '../../../i18n/paths';
+import { l } from '../../../i18n/links';
+import Page from '../../../layouts/Page.astro';
+import T from '../../../components/T.astro';
+import { t } from '../../../i18n/t';
+import { REPO_URL } from '../../../lib/support';
 
 const steps = [
   { name: t('install.step1_title'), text: t('install.step1_text') },
@@ -40,6 +42,8 @@ const howTo = {
   description: t('install.howto_description'),
   step: steps.map((s, i) => ({ '@type': 'HowToStep', position: i + 1, name: s.name, text: s.text })),
 };
+
+export const getStaticPaths = langPaths;
 ---
 <Page
   path="/install/"
@@ -52,7 +56,7 @@ const howTo = {
   ld={[howTo]}
 >
   <div class="btn-row">
-    <a class="btn" href="/download/">{t('install.cta')}</a>
+    <a class="btn" href={l('/download/')}>{t('install.cta')}</a>
   </div>
   <p><T k="install.cta_short"><code slot="a1">music.tmplayer.org/apk</code></T></p>
 

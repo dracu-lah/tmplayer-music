@@ -2,13 +2,15 @@
 // Features: the app's features by area, each group a grid of cards with a phone screenshot beside it,
 // then what the app does not do on purpose. Every claim here was checked against the app's own strings
 // and README.md. The JSON-LD is an ItemList of the groups.
-import Page from '../../layouts/Page.astro';
-import Icon from '../../components/Icon.astro';
-import FeatureGroup from '../../components/content/FeatureGroup.astro';
-import { GROUPS, NOT_DO } from '../../components/content/features';
-import { abs, updatedOf } from '../../components/content/meta';
-import { LATEST_URL } from '../../lib/support';
-import { t } from '../../i18n/t';
+import { langPaths } from '../../../i18n/paths';
+import { l } from '../../../i18n/links';
+import Page from '../../../layouts/Page.astro';
+import Icon from '../../../components/Icon.astro';
+import FeatureGroup from '../../../components/content/FeatureGroup.astro';
+import { GROUPS, NOT_DO } from '../../../components/content/features';
+import { abs, updatedOf } from '../../../components/content/meta';
+import { LATEST_URL } from '../../../lib/support';
+import { t } from '../../../i18n/t';
 
 // i18n-keys: features.library_h, features.library_intro, features.lib_chats_h, features.lib_chats_p, features.lib_lists_h, features.lib_lists_p, features.lib_search_h, features.lib_search_p, features.lib_versions_h, features.lib_versions_p, features.lib_albums_h, features.lib_albums_p, features.playback_h, features.playback_intro, features.play_stream_h, features.play_stream_p, features.play_background_h, features.play_background_p, features.play_queue_h, features.play_queue_p, features.play_nothing_h, features.play_nothing_p, features.play_sound_h, features.play_sound_p, features.lyrics_h, features.lyrics_intro, features.lyr_synced_h, features.lyr_synced_p, features.lyr_timing_h, features.lyr_timing_p, features.lyr_lookup_h, features.lyr_lookup_p, features.data_h, features.data_intro, features.data_cache_h, features.data_cache_p, features.data_free_h, features.data_free_p, features.data_offline_h, features.data_offline_p, features.data_backup_h, features.data_backup_p, features.data_remove_h, features.data_remove_p, features.playlists_h, features.playlists_intro, features.pl_fav_h, features.pl_fav_p, features.pl_lists_h, features.pl_lists_p, features.pl_home_h, features.pl_home_p, features.sleep_h, features.sleep_intro, features.sleep_minutes_h, features.sleep_minutes_p, features.sleep_end_h, features.sleep_end_p, features.shot_songs_alt, features.shot_nowplaying_alt, features.shot_lyrics_alt, features.shot_account_alt, features.shot_playlists_alt, features.not1, features.not2, features.not3, features.not4, features.not5, features.not6
 
@@ -25,6 +27,8 @@ const itemList = {
     url: `${abs(PATH)}#${g.id}`,
   })),
 };
+
+export const getStaticPaths = langPaths;
 ---
 <Page
   path={PATH}
@@ -62,7 +66,7 @@ const itemList = {
     <p>{t('features.cta_p')}</p>
     <div class="btn-row">
       <a class="btn" href={LATEST_URL}><Icon name="download" />{t('features.cta_download')}</a>
-      <a class="btn-quiet" href="/faq/"><Icon name="help" size={16} />{t('features.cta_faq')}</a>
+      <a class="btn-quiet" href={l('/faq/')}><Icon name="help" size={16} />{t('features.cta_faq')}</a>
     </div>
   </section>
 </Page>

@@ -1,15 +1,17 @@
 ---
 // One troubleshooting guide, built from src/data/troubleshooting.ts: what you see, the likely causes, the
 // steps, when to send logs and a link to open an issue on GitHub. HowTo JSON-LD of the steps.
-import Page from '../../layouts/Page.astro';
-import Icon from '../../components/Icon.astro';
-import GuideCard from '../../components/content/GuideCard.astro';
-import { abs, updatedOf, BUG_REPORT_URL } from '../../components/content/meta';
-import { GUIDES, causeKeys, stepKeys, type Guide } from '../../data/troubleshooting';
-import { t } from '../../i18n/t';
+import Page from '../../../layouts/Page.astro';
+import Icon from '../../../components/Icon.astro';
+import GuideCard from '../../../components/content/GuideCard.astro';
+import { abs, updatedOf, BUG_REPORT_URL } from '../../../components/content/meta';
+import { GUIDES, causeKeys, stepKeys, type Guide } from '../../../data/troubleshooting';
+import { t } from '../../../i18n/t';
+import { l } from '../../../i18n/links';
+import { langPaths } from '../../../i18n/paths';
 
 export function getStaticPaths() {
-  return GUIDES.map((guide) => ({ params: { slug: guide.slug }, props: { guide } }));
+  return langPaths().flatMap((lp) => GUIDES.map((guide) => ({ params: { ...lp.params, slug: guide.slug }, props: { guide } })));
 }
 
 interface Props { guide: Guide }
@@ -72,7 +74,7 @@ const howTo = {
   <p>{t('trouble.issue_p')}</p>
   <div class="btn-row">
     <a class="btn" href={BUG_REPORT_URL} rel="noopener"><Icon name="github" size={18} />{t('trouble.issue_btn')}</a>
-    <a class="btn-quiet" href="/troubleshooting/">{t('trouble.all_guides')}</a>
+    <a class="btn-quiet" href={l('/troubleshooting/')}>{t('trouble.all_guides')}</a>
   </div>
 
   <h2>{t('trouble.more_h')}</h2>
