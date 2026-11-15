@@ -1,0 +1,57 @@
+---
+// Troubleshooting: the five guides as cards, a pointer to the install page and to the issue tracker.
+// The JSON-LD is an ItemList of the guides.
+import Page from '../../layouts/Page.astro';
+import Icon from '../../components/Icon.astro';
+import T from '../../components/T.astro';
+import GuideCard from '../../components/content/GuideCard.astro';
+import { abs, updatedOf, BUG_REPORT_URL } from '../../components/content/meta';
+import { GUIDES } from '../../data/troubleshooting';
+import { t } from '../../i18n/t';
+
+const PATH = '/troubleshooting/';
+const itemList = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: t('trouble.index_h1'),
+  itemListElement: GUIDES.map((g, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: t(`${g.prefix}_h1`),
+    url: abs(`${PATH}${g.slug}/`),
+  })),
+};
+---
+<Page
+  path={PATH}
+  title={t('trouble.index_title')}
+  description={t('trouble.index_desc')}
+  eyebrow={t('trouble.index_eyebrow')}
+  h1={t('trouble.index_h1')}
+  lede={t('trouble.index_lede')}
+  crumbs={[{ name: t('nav.troubleshooting'), path: PATH }]}
+  ld={[itemList]}
+  updated={updatedOf(PATH)}
+>
+  <h2>{t('trouble.index_guides_h')}</h2>
+  <ul class="cards">
+    {GUIDES.map((g) => <GuideCard guide={g} />)}
+  </ul>
+
+  <p>
+    <T k="trouble.index_install">
+      <a slot="a1" href="/install/">{t('trouble.index_install__a1')}</a>
+    </T>
+  </p>
+
+  <h2>{t('trouble.index_report_h')}</h2>
+  <p>{t('trouble.index_report_p')}</p>
+  <div class="btn-row">
+    <a class="btn-quiet" href={BUG_REPORT_URL} rel="noopener"><Icon name="github" size={16} />{t('trouble.issue_btn')}</a>
+  </div>
+</Page>
+
+<style>
+  /* .doc-body ul/ol adds list padding that would indent the shared grids */
+  .cards, .steps { padding: 0; }
+</style>

@@ -1,0 +1,87 @@
+---
+// One troubleshooting guide, built from src/data/troubleshooting.ts: what you see, the likely causes, the
+// steps, when to send logs and a link to open an issue on GitHub. HowTo JSON-LD of the steps.
+import Page from '../../layouts/Page.astro';
+import Icon from '../../components/Icon.astro';
+import GuideCard from '../../components/content/GuideCard.astro';
+import { abs, updatedOf, BUG_REPORT_URL } from '../../components/content/meta';
+import { GUIDES, causeKeys, stepKeys, type Guide } from '../../data/troubleshooting';
+import { t } from '../../i18n/t';
+
+export function getStaticPaths() {
+  return GUIDES.map((guide) => ({ params: { slug: guide.slug }, props: { guide } }));
+}
+
+interface Props { guide: Guide }
+const { guide } = Astro.props;
+const p = guide.prefix;
+const path = `/troubleshooting/${guide.slug}/`;
+const steps = stepKeys(guide);
+const others = GUIDES.filter((g) => g.slug !== guide.slug);
+
+const howTo = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  name: t(`${p}_h1`),
+  description: t(`${p}_desc`),
+  url: abs(path),
+  step: steps.map((s, i) => ({
+    '@type': 'HowToStep',
+    position: i + 1,
+    name: t(s.h),
+    text: t(s.p),
+  })),
+};
+---
+<Page
+  path={path}
+  title={t(`${p}_title`)}
+  description={t(`${p}_desc`)}
+  eyebrow={t('nav.troubleshooting')}
+  h1={t(`${p}_h1`)}
+  crumbs={[{ name: t('nav.troubleshooting'), path: '/troubleshooting/' }, { name: t(`${p}_h1`), path }]}
+  ld={[howTo]}
+  updated={updatedOf(path)}
+>
+  <h2>{t('trouble.sym_h')}</h2>
+  <p>{t(`${p}_sym`)}</p>
+
+  <h2>{t('trouble.causes_h')}</h2>
+  <ul>
+    {causeKeys(guide).map((k) => <li>{t(k)}</li>)}
+  </ul>
+
+  <h2>{t('trouble.steps_h')}</h2>
+  <p>{t('trouble.howto_intro')}</p>
+  <ol class="steps">
+    {steps.map((s) => (
+      <li>
+        <h3>{t(s.h)}</h3>
+        <p>{t(s.p)}</p>
+      </li>
+    ))}
+  </ol>
+
+  <h2>{t('trouble.logs_h')}</h2>
+  <div class="callout">
+    <p>{t(`${p}_logs`)}</p>
+    <p>{t('trouble.logs_how')}</p>
+  </div>
+
+  <h2>{t('trouble.issue_h')}</h2>
+  <p>{t('trouble.issue_p')}</p>
+  <div class="btn-row">
+    <a class="btn" href={BUG_REPORT_URL} rel="noopener"><Icon name="github" size={18} />{t('trouble.issue_btn')}</a>
+    <a class="btn-quiet" href="/troubleshooting/">{t('trouble.all_guides')}</a>
+  </div>
+
+  <h2>{t('trouble.more_h')}</h2>
+  <ul class="cards">
+    {others.map((g) => <GuideCard guide={g} />)}
+  </ul>
+</Page>
+
+<style>
+  /* .doc-body ul/ol adds list padding that would indent the shared grids */
+  .cards, .steps { padding: 0; }
+</style>

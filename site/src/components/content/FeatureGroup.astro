@@ -1,0 +1,47 @@
+---
+// One group on the Features page: a heading, an intro, a grid of cards (.cards/.card from the shared
+// stylesheet) and, for most groups, a phone screenshot beside the cards. On a narrow screen the phone
+// comes after the cards, small and centred; from 56rem up it sits to the right and stays in view while the
+// cards scroll past.
+import Icon from '../Icon.astro';
+import PhoneFrame from '../PhoneFrame.astro';
+import { t } from '../../i18n/t';
+import type { FeatureGroup } from './features';
+
+interface Props { group: FeatureGroup }
+const { group } = Astro.props;
+const shot = group.shot;
+---
+<section class="fg" id={group.id} aria-labelledby={`${group.id}-h`}>
+  <h2 id={`${group.id}-h`}>{t(group.h)}</h2>
+  <p class="fg-intro">{t(group.intro)}</p>
+  <div class:list={['fg-body', { 'fg-has-shot': !!shot }]}>
+    <ul class="cards">
+      {group.cards.map((c) => (
+        <li class="card">
+          <Icon name={c.icon} size={24} />
+          <h3>{t(c.h)}</h3>
+          <p>{t(c.p)}</p>
+        </li>
+      ))}
+    </ul>
+    {shot && (
+      <div class="fg-shot">
+        <PhoneFrame screen={shot.screen} alt={t(shot.alt)} sizes="(max-width: 480px) 50vw, 220px" />
+      </div>
+    )}
+  </div>
+</section>
+
+<style>
+  .fg { margin: 0 0 3.5rem; scroll-margin-top: 5rem; }
+  .fg > h2 { margin-top: 0; }
+  .fg-intro { margin: 0; color: var(--muted); max-width: var(--prose); }
+  .fg-body { display: grid; gap: 1.5rem; }
+  .fg-body .cards { margin: 1.25rem 0 0; padding: 0; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
+  .fg-shot { display: flex; justify-content: center; --pf-w: min(13rem, 52vw); }
+  @media (min-width: 56rem) {
+    .fg-has-shot { grid-template-columns: minmax(0, 1fr) 14rem; align-items: start; gap: 2.5rem; }
+    .fg-shot { position: sticky; top: 5.5rem; --pf-w: 14rem; margin-top: 1.25rem; }
+  }
+</style>

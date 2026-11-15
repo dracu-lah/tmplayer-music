@@ -1,0 +1,28 @@
+---
+// The FAQ's groups: a heading and a .faq list of <details> each. An answer's links are the {a1}, {a2}
+// placeholders of its string (see answerHtml in src/lib/faq.ts), so a translator moves them with the
+// words. Every question has an id (q-<id>) so it can be linked to.
+import { t } from '../../i18n/t';
+import { FAQ_GROUPS, answerHtml } from '../../lib/faq';
+---
+{FAQ_GROUPS.map((g) => (
+  <section class="faq-group" id={g.id} aria-labelledby={`${g.id}-h`}>
+    <h2 id={`${g.id}-h`}>{t(g.h)}</h2>
+    <div class="faq">
+      {g.items.map((item) => (
+        <details id={`q-${item.id}`}>
+          <summary>{t(`faq.${item.id}_q`)}</summary>
+          <div>
+            <p set:html={answerHtml(item)} />
+          </div>
+        </details>
+      ))}
+    </div>
+  </section>
+))}
+
+<style>
+  .faq-group { scroll-margin-top: 5rem; }
+  .faq summary { min-height: 2.75rem; align-items: center; }
+  .faq details { scroll-margin-top: 5rem; }
+</style>
