@@ -14,7 +14,7 @@ spec = importlib.util.spec_from_file_location('todo', Path(__file__).with_name('
 todo = importlib.util.module_from_spec(spec); spec.loader.exec_module(todo)
 
 ARG = re.compile(r'\{\s*(\w+)\s*[,}]')
-DASH = re.compile('[‒-―]')
+DASH = re.compile('[\u2012-\u2015]')
 
 def args(s):
     return sorted(set(ARG.findall(s)))
