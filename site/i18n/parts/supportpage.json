@@ -1,0 +1,31 @@
+{
+  "supportpage": {
+    "already_1": "Thank you. You do not need to do anything here, and a star or a share counts as much as a coffee.",
+    "already_2": "The app asks now and then, at most once every two weeks, only in the library and never while music plays, and \"Don't show again\" in that window ends it for good. The reminder notification is off unless you turn on \"Sponsor reminders\" in Settings.",
+    "already_h": "Already supporting?",
+    "chip_1": "If TMPlayer Music saves you some bother, a coffee or a monthly sponsorship pays for the time that goes into it. Any amount is welcome, and one coffee is plenty.",
+    "chip_2": "Pay by UPI is for India: on a phone it opens your UPI app, on a computer it shows a QR code. Buy Me a Coffee opens in a window on this page. GitHub Sponsors lives on GitHub.",
+    "chip_h": "Chip in",
+    "crumb": "Support",
+    "description": "Ways to support TMPlayer Music: buy a coffee, pay by UPI, sponsor it on GitHub, star it or tell a friend. All voluntary, and nothing is locked behind it.",
+    "eyebrow": "Support the project",
+    "h1": "Support TMPlayer Music",
+    "lede": "TMPlayer Music is free and open source, with no ads of its own, no paid tier and no account of ours. Everything here is voluntary.",
+    "nolock_1": "Every feature is free for everyone, whether or not you ever do any of this. No limit in the app is lifted by a payment, and nothing on this page pops up by itself: the coffee window opens only when you tap its button.",
+    "nolock_h": "Nothing is locked",
+    "share_1": "Know someone who keeps audio files in their Telegram chats? Send them the address.",
+    "share_copy": "Copy link",
+    "share_copied": "Copied",
+    "share_h": "Tell a friend",
+    "share_mail": "Share by email",
+    "share_mail_body": "A free, open source player for the audio files already in your own Telegram chats. Unofficial, not affiliated with Telegram. {url}",
+    "share_mail_subject": "A player for the audio in your own Telegram chats",
+    "share_native": "Share",
+    "share_native_text": "A free, open source player for the audio files already in your own Telegram chats.",
+    "share_native_title": "TMPlayer Music",
+    "star_1": "A star costs nothing and takes one click. It is how the next person, reading a GitHub page cold, learns that somebody else already trusted this app.",
+    "star_btn": "Star on GitHub",
+    "star_h": "Star it",
+    "title": "Support TMPlayer Music: chip in, star or share"
+  }
+}
