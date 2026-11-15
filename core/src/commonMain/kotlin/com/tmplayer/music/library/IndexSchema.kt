@@ -12,7 +12,7 @@ import androidx.sqlite.execSQL
 internal object IndexSchema {
 
     /** Raised whenever a table or an index changes; [MIGRATIONS] carries an older file forward. */
-    const val VERSION = 5
+    const val VERSION = 6
 
     /**
      * The newest schema whose changes (every migration up to it) only add tables, indexes and
@@ -20,7 +20,7 @@ internal object IndexSchema {
      * opened as it is, its version left alone, because the tables this build reads are unchanged.
      * Raise it with each migration that is purely additive; a migration that is not leaves it behind.
      */
-    const val ADDITIVE_UP_TO = 5
+    const val ADDITIVE_UP_TO = 6
 
     /** How a file at schema [found] is opened by a build that knows [VERSION]. */
     enum class Open { Migrate, AsItIs, SetAside }
@@ -50,6 +50,7 @@ internal object IndexSchema {
         2 to ::clipsV3,
         3 to ::resumeV4,
         4 to ::replayGainV5,
+        5 to ::trackHideV6,
     )
 
     /** Tracks the version 2 step reads per transaction, so 100,000 tracks are 50 short commits. */
@@ -448,6 +449,70 @@ internal object IndexSchema {
             if (!hasColumn(db, "tracks", "replay_gain")) db.execSQL("ALTER TABLE tracks ADD COLUMN replay_gain TEXT NOT NULL DEFAULT ''")
             setVersion(db, 5)
         }
+    }
+
+    /**
+     * Version 6: `tracks.hide`, a file's [ClipRules] bits (the same bits `songs.hide` keeps for a song),
+     * and the covering index `tracks_chat_hide(chat_id, hide)`, so the count of a chat's hidden files is
+     * answered from the index alone, reading only the rows that have a bit set. Adding a column with a
+     * default touches no row; the bits of the files already stored are filled in batches of
+     * [ARTIST_BATCH] in key order (only files of known duration can have any), each batch its own
+     * transaction, and the last one sets the version. Safe to run twice: a column or index already
+     * there is left alone, and the bits are worked out again to the same values.
+     */
+    private fun trackHideV6(db: SQLiteConnection) {
+        inTransaction(db) {
+            if (!hasColumn(db, "tracks", "hide")) db.execSQL("ALTER TABLE tracks ADD COLUMN hide INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("CREATE INDEX IF NOT EXISTS tracks_chat_hide ON tracks(chat_id, hide)")
+        }
+        val read = db.prepare(
+            "SELECT chat_id, message_id, duration_ms, file_name, format, bitrate_kbps, channels FROM tracks " +
+                "WHERE duration_ms > 0 AND (chat_id > ? OR (chat_id = ? AND message_id > ?)) " +
+                "ORDER BY chat_id, message_id LIMIT $ARTIST_BATCH",
+        )
+        val write = db.prepare("UPDATE tracks SET hide = ? WHERE chat_id = ? AND message_id = ?")
+        try {
+            var afterChat = Long.MIN_VALUE
+            var afterMessage = Long.MIN_VALUE
+            while (true) {
+                var count = 0
+                inTransaction(db) {
+                    read.reset()
+                    read.bindLong(1, afterChat)
+                    read.bindLong(2, afterChat)
+                    read.bindLong(3, afterMessage)
+                    val bits = ArrayList<Triple<Long, Long, Int>>()
+                    while (read.step()) {
+                        count++
+                        val chatId = read.getLong(0)
+                        val messageId = read.getLong(1)
+                        afterChat = chatId
+                        afterMessage = messageId
+                        val name = if (read.isNull(3)) "" else read.getText(3)
+                        val format = if (read.isNull(4)) "" else read.getText(4)
+                        val audio = AudioFormat.entries.firstOrNull { it.name == format } ?: AudioFormat.OTHER
+                        val duration = read.getLong(2)
+                        val value = (if (ClipRules.isShort(duration)) ClipRules.SHORT else 0) or
+                            (if (ClipRules.isVoiceStyle(name, audio, duration, read.getLong(5).toInt(), read.getLong(6).toInt())) ClipRules.VOICE else 0)
+                        if (value != 0) bits += Triple(chatId, messageId, value)
+                    }
+                    read.reset()
+                    for ((chatId, messageId, value) in bits) {
+                        write.reset()
+                        write.bindLong(1, value.toLong())
+                        write.bindLong(2, chatId)
+                        write.bindLong(3, messageId)
+                        write.step()
+                    }
+                    write.reset()
+                }
+                if (count < ARTIST_BATCH) break
+            }
+        } finally {
+            runCatching { read.close() }
+            runCatching { write.close() }
+        }
+        inTransaction(db) { setVersion(db, 6) }
     }
 
     private fun hasColumn(db: SQLiteConnection, table: String, column: String): Boolean =
