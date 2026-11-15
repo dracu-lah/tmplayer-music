@@ -1,0 +1,27 @@
+[
+  {
+    "version": "0.1.0",
+    "tag": "v0.1.0",
+    "date": "2026-10-30",
+    "published": "2026-10-30T15:16:17Z",
+    "prerelease": false,
+    "title": "TMPlayer Music 0.1.0",
+    "summary": "The first stable release: a player for the audio files already in your own Telegram chats, for Android 6.0 and newer.",
+    "highlights": [
+      "Home with a Speed dial grid of the tracks you come back to, and the position you stopped at.",
+      "A bottom bar with Home, Chats and Library, and a rail in landscape.",
+      "Sign in with a phone number and code, or with a QR code that renews, expires and shows a tick when scanned.",
+      "Tracks, albums and playlists with no picture get a generated cover.",
+      "A lyrics page, with a switch in Settings for the online lookup.",
+      "Haptic feedback on play, pause, skip, shuffle, repeat, the seek bar and the queue.",
+      "Update now in Settings for the APK from GitHub: it checks the download is signed with the same key, then Android asks you to confirm.",
+      "One pure black look. Licence GPL-3.0-or-later with an OpenSSL exception."
+    ],
+    "apk": {
+      "name": "TMPlayerMusic-0.1.0.apk",
+      "size": 29028246,
+      "sha256": "4606a482beaba4465ddac44f91a4a34b3c2befac5baf06ff3c522a3199958d2c",
+      "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.1.0/TMPlayerMusic-0.1.0.apk"
+    }
+  }
+]
