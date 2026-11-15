@@ -1,0 +1,75 @@
+---
+// /legal/: lawful use for a player of audio in the reader's own chats, rights holders, the licence and
+// third-party notices, names. Structure follows tmplayer.org's /legal/; the words are for audio and
+// for this app (AGENTS.md "Telegram's terms and the stores"). Move UPDATED when the page changes.
+import Page from '../../layouts/Page.astro';
+import T from '../../components/T.astro';
+import { REPO_URL } from '../../lib/support';
+import { t } from '../../i18n/t';
+
+const UPDATED = '2026-11-16';
+---
+<Page
+  path="/legal/"
+  title={t('legal.title')}
+  description={t('legal.description')}
+  eyebrow={t('legal.eyebrow')}
+  h1={t('legal.h1')}
+  lede={t('legal.lede')}
+  crumbs={[{ name: t('legal.crumb'), path: '/legal/' }]}
+  updated={UPDATED}
+>
+  <h2>{t('legal.own_h')}</h2>
+  <p>{t('legal.own_1')}</p>
+  <p>{t('legal.own_2')}</p>
+
+  <div class="two">
+    <div class="card">
+      <h3>{t('legal.is_h')}</h3>
+      <ul>
+        <li>{t('legal.is_1')}</li>
+        <li>{t('legal.is_2')}</li>
+        <li>{t('legal.is_3')}</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>{t('legal.isnt_h')}</h3>
+      <ul class="isnt">
+        <li>{t('legal.isnt_1')}</li>
+        <li>{t('legal.isnt_2')}</li>
+        <li>{t('legal.isnt_3')}</li>
+        <li>{t('legal.isnt_4')}</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>{t('legal.rights_h')}</h2>
+  <p><T k="legal.rights_1"><a slot="a1" href="mailto:hello@tmplayer.org?subject=TMPlayer%20Music%20rights%20request"><T k="legal.rights_1__a1" /></a></T></p>
+
+  <h2>{t('legal.lyrics_h')}</h2>
+  <p>{t('legal.lyrics_1')}</p>
+
+  <h2>{t('legal.licence_h')}</h2>
+  <p>
+    <T k="legal.licence_1">
+      <a slot="a1" href={`${REPO_URL}/blob/main/LICENSE`} rel="noopener"><T k="legal.licence_1__a1" /></a>
+      <a slot="a2" href={`${REPO_URL}/blob/main/LICENSE-OPENSSL-EXCEPTION.md`} rel="noopener"><T k="legal.licence_1__a2" /></a>
+    </T>
+  </p>
+  <p><T k="legal.licence_2"><a slot="a1" href={`${REPO_URL}/blob/main/THIRD_PARTY_NOTICES.md`} rel="noopener"><T k="legal.licence_2__a1" /></a></T></p>
+
+  <h2>{t('legal.terms_h')}</h2>
+  <p>{t('legal.terms_1')}</p>
+  <p>
+    <T k="legal.terms_2">
+      <a slot="a1" href="https://telegram.org/tos" rel="noopener"><T k="legal.terms_2__a1" /></a>
+      <a slot="a2" href="https://core.telegram.org/api/terms" rel="noopener"><T k="legal.terms_2__a2" /></a>
+    </T>
+  </p>
+
+  <h2>{t('legal.names_h')}</h2>
+  <p>{t('legal.names_1')}</p>
+
+  <h2>{t('legal.credits_h')}</h2>
+  <p>{t('legal.credits_1')}</p>
+</Page>

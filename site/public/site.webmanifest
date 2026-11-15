@@ -7,7 +7,7 @@
   "id": "/",
   "lang": "en",
   "dir": "ltr",
-  "display": "standalone",
+  "display": "browser",
   "categories": ["music", "utilities"],
   "background_color": "#000000",
   "theme_color": "#000000",

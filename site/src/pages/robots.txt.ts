@@ -22,7 +22,7 @@ Disallow: /
 `;
 
 const LIVE = [
-  '# Every crawler may read every page.',
+  '# Every crawler may read every page. A plain-text summary for language models is at /llms.txt.',
   '',
   ...BOTS.flatMap((b) => [`User-agent: ${b}`, 'Allow: /', '']),
   'User-agent: *',

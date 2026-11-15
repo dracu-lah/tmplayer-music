@@ -1,49 +1,95 @@
 ---
-// /support/: English only, as tmplayer.org's /support/. Every way to help, all of it voluntary;
-// nothing in the app is locked behind any of it. Robots follow INDEXABLE through Base (noindex
-// while it is false), and src/data/lastmod.json lists it for the sitemap, which stays empty until then.
-import Base from '../../layouts/Base.astro';
+// /support/: every way to help, all of it voluntary, nothing locked behind it. This page is the offer,
+// so the foot offer and the floating card are both left out (`offer={false}`, `noCard`; Page passes
+// noCard on to Base once it exposes it). The copy button uses the site's data-copy pattern (site.ts);
+// the Share button is the Web Share API, shown only where the browser has it. No third-party widget.
+import Page from '../../layouts/Page.astro';
+import Icon from '../../components/Icon.astro';
 import CoffeeButton from '../../components/CoffeeButton.astro';
-import Footer from '../../components/Footer.astro';
+import UpiButton from '../../components/UpiButton.astro';
+import { ORIGIN } from '../../../site.config.mjs';
 import { REPO_URL, SPONSORS_URL } from '../../lib/support';
+import { t } from '../../i18n/t';
+
+const SHARE_URL = `${ORIGIN}/`;
+const mailto = `mailto:?subject=${encodeURIComponent(t('supportpage.share_mail_subject'))}&body=${encodeURIComponent(t('supportpage.share_mail_body', { url: SHARE_URL }))}`;
+const shareData = JSON.stringify({ title: t('supportpage.share_native_title'), text: t('supportpage.share_native_text'), url: SHARE_URL });
 ---
-<Base
+<Page
   path="/support/"
-  title="Support TMPlayer Music: sponsor, star or share it"
-  description="Ways to support TMPlayer Music: sponsor it, buy a coffee, star it on GitHub or tell a friend. All voluntary, and nothing is locked behind it."
+  title={t('supportpage.title')}
+  description={t('supportpage.description')}
+  eyebrow={t('supportpage.eyebrow')}
+  h1={t('supportpage.h1')}
+  lede={t('supportpage.lede')}
+  crumbs={[{ name: t('supportpage.crumb'), path: '/support/' }]}
+  offer={false}
+  noCard
 >
-  <main id="main" class="soon page">
-    <a class="back" href="/">TMPlayer Music</a>
-    <p class="eyebrow">Support the project</p>
-    <h1>Support TMPlayer Music</h1>
-    <p class="lede">TMPlayer Music is free and open source, with no ads of its own, no paid tier and no account of ours. Everything here is voluntary and unlocks nothing: every feature is free for everyone, whether or not you ever do any of it.</p>
+  <section id="chip-in" aria-labelledby="chip-in-h">
+    <h2 id="chip-in-h">{t('supportpage.chip_h')}</h2>
+    <p>{t('supportpage.chip_1')}</p>
+    <div class="support-coffee">
+      <CoffeeButton large />
+      <UpiButton large />
+      <a class="support-alt" href={SPONSORS_URL} rel="noopener"><Icon name="heart" size={16} />{t('sponsor.github')}</a>
+    </div>
+    <p class="chip-note">{t('supportpage.chip_2')}</p>
+  </section>
 
-    <section id="chip-in">
-      <h2>Chip in</h2>
-      <p>If TMPlayer Music saves you some bother, a coffee or a monthly sponsorship pays for the time that goes into it. Any amount is welcome, and one coffee is plenty.</p>
-      <div class="support-coffee support-coffee-start">
-        <CoffeeButton large />
-        <a class="support-alt" href={SPONSORS_URL} rel="noopener">Sponsor on GitHub</a>
-      </div>
-    </section>
+  <section id="star" aria-labelledby="star-h">
+    <h2 id="star-h">{t('supportpage.star_h')}</h2>
+    <p>{t('supportpage.star_1')}</p>
+    <div class="btn-row">
+      <a class="btn" href={REPO_URL} rel="noopener"><Icon name="github" size={18} />{t('supportpage.star_btn')}</a>
+    </div>
+  </section>
 
-    <section id="star">
-      <h2>Star it on GitHub</h2>
-      <p>A star costs nothing and takes one click. It is how the next person, reading a GitHub page cold, learns that somebody else already trusted this app.</p>
-      <nav class="links links-inline" aria-label="Star">
-        <a href={REPO_URL} rel="noopener">Star on GitHub</a>
-      </nav>
-    </section>
+  <section id="share" aria-labelledby="share-h">
+    <h2 id="share-h">{t('supportpage.share_h')}</h2>
+    <p>{t('supportpage.share_1')}</p>
+    <p class="share-url"><code>{SHARE_URL}</code></p>
+    <div class="btn-row">
+      <button type="button" class="btn-quiet js-only" data-copy={SHARE_URL} data-copied={t('supportpage.share_copied')} hidden><Icon name="copy" size={16} /> <span data-copy-label>{t('supportpage.share_copy')}</span></button>
+      <a class="btn-quiet" href={mailto}>{t('supportpage.share_mail')}</a>
+      <button type="button" class="btn-quiet js-only" data-share={shareData} hidden><Icon name="arrow" size={16} /> {t('supportpage.share_native')}</button>
+    </div>
+  </section>
 
-    <section id="share">
-      <h2>Tell a friend</h2>
-      <p>Know someone who keeps audio files in their Telegram chats? Send them <a href="/">music.tmplayer.org</a>.</p>
-    </section>
+  <section id="thanks" aria-labelledby="thanks-h">
+    <h2 id="thanks-h">{t('supportpage.already_h')}</h2>
+    <p>{t('supportpage.already_1')}</p>
+    <p>{t('supportpage.already_2')}</p>
+  </section>
 
-    <section>
-      <h2>Already supporting?</h2>
-      <p>Thank you. You do not need to do anything here. The app asks now and then, at most once every two weeks and never while music plays, and "Don't show again" in that window ends it for good. The reminder notification is off unless you turn it on in Settings.</p>
-    </section>
-  </main>
-  <Footer />
-</Base>
+  <section class="callout" id="nothing-locked" aria-labelledby="nolock-h">
+    <h2 id="nolock-h" class="nolock-h">{t('supportpage.nolock_h')}</h2>
+    <p>{t('supportpage.nolock_1')}</p>
+  </section>
+</Page>
+
+<script>
+  // The Share button: only where the browser has the Web Share API. A cancelled share is not an error.
+  const btn = document.querySelector<HTMLButtonElement>('[data-share]');
+  if (btn && typeof navigator.share === 'function') {
+    btn.hidden = false;
+    btn.addEventListener('click', async () => {
+      try { await navigator.share(JSON.parse(btn.dataset.share ?? '{}')); } catch { /* cancelled, or refused */ }
+    });
+  }
+</script>
+
+<style>
+  /* `.doc-body a` colours every link in the page white-ish and underlines it; the buttons keep their own
+     ink and no underline. More specific than that rule, and only for this page. */
+  :global(.doc-body a.btn-bmc), :global(.doc-body a.btn-upi), :global(.doc-body a.btn), :global(.doc-body a.btn-quiet), :global(.doc-body a.support-alt) { text-decoration: none; }
+  :global(.doc-body a.btn-bmc) { color: var(--bmc-ink); }
+  :global(.doc-body a.btn-upi) { color: #3C4043; }
+  :global(.doc-body a.btn) { color: var(--bg); }
+  :global(.doc-body a.btn-quiet) { color: var(--fg); }
+  :global(.doc-body a.support-alt) { color: var(--muted); }
+  :global(.doc-body a.support-alt:hover) { color: var(--fg); }
+  .chip-note { margin-top: 1rem; color: var(--muted); font-size: .9375rem; }
+  .share-url { margin-bottom: .5rem; }
+  .nolock-h { margin: 0 0 .5rem; font-size: 1.0625rem; }
+</style>

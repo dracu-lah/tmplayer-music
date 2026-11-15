@@ -1,15 +1,41 @@
 ---
 // The page every unknown path answers with. Cloudflare Pages serves dist/404.html with status 404
-// for any path that has no file. noindex, no canonical and no social tags (Base's notFound).
+// for any path that has no file. noindex, no canonical and no social tags (Base's notFound), and no
+// search: just the pages people usually want, as cards.
 import Base from '../layouts/Base.astro';
+import { t } from '../i18n/t';
+
+const LINKS = [
+  { href: '/', key: 'home' },
+  { href: '/download/', key: 'download' },
+  { href: '/features/', key: 'features' },
+  { href: '/faq/', key: 'faq' },
+  { href: '/support/', key: 'support' },
+];
+// i18n-keys: notfound.home_h, notfound.home_p, notfound.download_h, notfound.download_p, notfound.features_h, notfound.features_p, notfound.faq_h, notfound.faq_p, notfound.support_h, notfound.support_p
 ---
-<Base path="/404/" title="Page not found: TMPlayer Music" description="This page does not exist on music.tmplayer.org." notFound>
-  <main id="main" class="soon">
-    <p class="eyebrow">404</p>
-    <h1>Page not found</h1>
-    <p class="lede">This address does not lead anywhere on music.tmplayer.org.</p>
-    <nav class="links" aria-label="Links">
-      <a href="/">Go to the home page</a>
-    </nav>
+<Base path="/404/" title={t('notfound.title')} description={t('notfound.description')} notFound>
+  <main id="main" class="doc">
+    <header class="doc-head">
+      <p class="eyebrow">{t('notfound.eyebrow')}</p>
+      <h1>{t('notfound.h1')}</h1>
+      <p class="lede">{t('notfound.lede')}</p>
+    </header>
+    <div class="doc-body">
+      <ul class="cards" aria-label={t('notfound.list_aria')}>
+        {LINKS.map((l) => (
+          <li><a class="card" href={l.href}>
+            <h2>{t(`notfound.${l.key}_h`)}</h2>
+            <p>{t(`notfound.${l.key}_p`)}</p>
+          </a></li>
+        ))}
+      </ul>
+    </div>
   </main>
 </Base>
+
+<style>
+  /* `.doc-body ul` indents lists; the cards line up with the heading instead. */
+  .cards { padding-left: 0; }
+  li > .card { height: 100%; }
+</style>

@@ -1,0 +1,54 @@
+---
+// /security/: how to report a problem, aligned with SECURITY.md in the repository (change both
+// together), and how to check an APK. The hash comes from src/data/release.json, so it moves with a
+// release. Also see public/.well-known/security.txt.
+import Page from '../../layouts/Page.astro';
+import T from '../../components/T.astro';
+import release from '../../data/release.json';
+import { ISSUES_URL, SECURITY_URL } from '../../lib/support';
+import { t } from '../../i18n/t';
+
+const UPDATED = '2026-11-16';
+---
+<Page
+  path="/security/"
+  title={t('security.title')}
+  description={t('security.description')}
+  eyebrow={t('security.eyebrow')}
+  h1={t('security.h1')}
+  lede={t('security.lede')}
+  crumbs={[{ name: t('security.crumb'), path: '/security/' }]}
+  updated={UPDATED}
+>
+  <h2>{t('security.report_h')}</h2>
+  <p>{t('security.report_1')}</p>
+  <ul>
+    <li><T k="security.report_2"><a slot="a1" href={SECURITY_URL} rel="noopener"><T k="security.report_2__a1" /></a></T></li>
+    <li><T k="security.report_3"><a slot="a1" href="mailto:hello@tmplayer.org?subject=TMPlayer%20Music%20security%20report"><T k="security.report_3__a1" /></a></T></li>
+  </ul>
+  <p>{t('security.report_4')}</p>
+
+  <h2>{t('security.scope_h')}</h2>
+  <p>{t('security.scope_1')}</p>
+  <p><T k="security.scope_2"><a slot="a1" href={ISSUES_URL} rel="noopener"><T k="security.scope_2__a1" /></a></T></p>
+
+  <h2>{t('security.versions_h')}</h2>
+  <p>{t('security.versions_1')}</p>
+
+  <h2>{t('security.signed_h')}</h2>
+  <p>{t('security.signed_1')}</p>
+  <p>
+    <T k="security.signed_2" vars={{ version: release.version }}>
+      <code slot="a1">sha256sum file.apk</code>
+      <code slot="a2">certutil -hashfile file.apk SHA256</code>
+    </T>
+  </p>
+  <pre class="hash" tabindex="0"><code>{release.apk.sha256}  {release.apk.name}</code></pre>
+  <p><T k="security.signed_3"><a slot="a1" href="/download/"><T k="security.signed_3__a1" /></a></T></p>
+</Page>
+
+<style>
+  .hash { margin: 1rem 0; padding: 1rem 1.25rem; overflow-x: auto; border-radius: 1rem; background: var(--surface); font-size: .875rem; }
+  .hash code { overflow-wrap: anywhere; white-space: pre-wrap; }
+  :global(.doc-body) code { overflow-wrap: anywhere; }
+</style>

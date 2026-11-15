@@ -1,8 +1,8 @@
 # music.tmplayer.org
 
-The product page of TMPlayer Music. For now it is a **placeholder**: one line about what the app is,
-the unofficial notice, three links, framed screenshots (demo data) and a gallery, kept out of search
-engines until launch.
+The site of TMPlayer Music: a player for the audio files already in your own Telegram chats. Unofficial,
+not affiliated with Telegram. It is open to search engines (`INDEXABLE` is `true`, see "Going live").
+English only for now; the catalog is built for more languages (see "Strings and languages").
 
 It is an [Astro](https://astro.build) project built the same way as tmplayer.org's site
 (`../TMPlayer/site/`): pnpm, the same Astro version, `dist/` as output, directories with a trailing
@@ -17,9 +17,10 @@ pnpm -C site build        # writes site/dist/ (and dist/_headers)
 pnpm -C site check        # astro check, the type check
 pnpm -C site pages:dev    # serves dist/ the way Cloudflare does, with _headers, on :8788
 pnpm -C site pages:deploy # builds, then uploads dist/ as the production deploy
+node site/scripts/i18n-check.mjs   # the catalog against the source (below)
 ```
 
-(The script is `pages:deploy`, not `deploy`: `pnpm deploy` is a pnpm command of its own.)
+(The script is `pages:deploy`, not `deploy`: that name is a pnpm command of its own.)
 
 The project was created on 2026-10-30 with
 `npx wrangler pages project create tmplayer-music-site --production-branch main --force`.
@@ -37,22 +38,75 @@ Cloudflare account wrangler is logged in to (`npx wrangler whoami`; `npx wrangle
 |---|---|
 | `site.config.mjs` | `INDEXABLE`, the one switch for search engines, and `ORIGIN` |
 | `astro.config.mjs` | the build, and `tmHeaders`, which writes `dist/_headers` (security headers, caching, X-Robots-Tag) |
-| `src/layouts/Base.astro` | `<html>` and the whole `<head>`: canonical, robots, Open Graph, Twitter, icons, manifest |
-| `src/pages/index.astro`, `src/pages/support/index.astro`, `src/pages/404.astro` | the pages: home (with a small Chip in block), Support (English only, as tmplayer.org's) and 404 |
-| `src/components/PhoneFrame.astro` | a phone drawn in CSS (graphite body, punch hole, side buttons, shadow) around one screenshot (srcset 540 and 1080); `--pf-w` sets its width |
-| `public/screenshots/` | `<screen>.webp` (1080 x 2400) and `<screen>-540.webp`, written by `../scripts/prepare-screenshots.py` (below) |
-| `src/components/Footer.astro`, `src/components/CoffeeButton.astro`, `src/lib/support.ts` | the footer and the support links: Buy Me a Coffee first in its own yellow (`public/brand/`, their official cup), GitHub Sponsors beside it |
-| `src/pages/sitemap.xml.ts`, `src/pages/robots.txt.ts` | the sitemap and robots.txt, both following `INDEXABLE` |
-| `src/lib/app-ld.ts` | the JSON-LD: `WebSite` always, `SoftwareApplication` only when indexable |
-| `src/components/JsonLd.astro` | writes a JSON-LD block |
-| `src/data/lastmod.json` | each page's sitemap entry; move `lastmod` when the page's content changes |
+| `src/layouts/Base.astro` | `<html>` and the whole `<head>`: canonical, robots, Open Graph, Twitter, icons, manifest; the `notFound` and `noCard` options |
+| `src/layouts/Page.astro` | a content page: breadcrumb, eyebrow, one h1, lede, the slot, the "updated" date and the sponsor offer; adds the BreadcrumbList JSON-LD |
+| `src/pages/` | one folder per page, each an `index.astro`: home, download, install, features, faq, changelog, troubleshooting, privacy, legal, security, support; plus `404.astro` |
+| `src/pages/robots.txt.ts`, `sitemap.xml.ts`, `llms.txt.ts` | robots.txt (AI crawlers named, with the `Sitemap:` line), the sitemap (the home page's screenshots as `<image:image>`) and `/llms.txt`, a plain Markdown summary for language models |
+| `src/data/lastmod.json` | each page's sitemap entry and the page list of `llms.txt`; move `lastmod` when the page's content changes, add a line for a new page (and a one-line description in `llms.txt.ts`) |
+| `src/data/release.json` | the latest release: version, tag, date, Android floor, APK name, size, SHA-256 and URL (below) |
+| `src/lib/app-ld.ts` | the JSON-LD: `WebSite`, `Organization` (the publisher) and `SoftwareApplication` (rendered only while indexable), built from `release.json` |
+| `src/lib/support.ts`, `nav.ts`, `breadcrumb.ts` | the support and repository links, the header and footer link lists, the BreadcrumbList |
+| `src/components/` | the header, footer, sponsor offer, card and dialogs (Buy Me a Coffee, UPI), `T.astro` for catalog strings with links, `PhoneFrame.astro` and the rest |
+| `src/scripts/site.ts` | the site's one script: menu, copy buttons, the support card, the two dialogs. Every part is an enhancement |
 | `src/styles/styles.css` | the stylesheet: one look, pure black with white text, as the app |
-| `public/` | served as is: icons (from the launcher icon), `og.png`, `site.webmanifest`, fonts, the IndexNow key file |
-| `../scripts/indexnow-site.py`, `../.github/workflows/indexnow.yml` | IndexNow, ready but idle until launch (below) |
+| `i18n/` | the string catalog (below) |
+| `public/` | served as is: icons (from the launcher icon), `og.png`, `site.webmanifest`, `.well-known/security.txt`, `_redirects`, fonts, screenshots, brand art, the IndexNow key file |
+| `../scripts/indexnow-site.py`, `../.github/workflows/indexnow.yml` | IndexNow, started by hand after a deploy (below) |
 
 `public/favicon.svg` is the launcher icon (`app/src/main/res/drawable/ic_launcher_foreground.xml`) on
 its tile; `icon-512.png`, `favicon.ico` and `og.png` were rendered from it with headless Chromium.
 Change `og.png` and bump `?v=` in `Base.astro`.
+
+## Strings and languages
+
+Every user-visible string, label, alt text, title and description comes from the catalog, never from the
+page, so a language is a file and not a rewrite.
+
+- `i18n/en.json` is the source: nested keys, `{placeholders}`, one key per paragraph or list item.
+  `src/i18n/t.ts` looks a key up (`t('ns.key')`) and `<T k="ns.key">` fills `{a1}` style slots with
+  inline links, so a translator moves the link with the words (the link text is its own key,
+  `ns.key__a1`).
+- While a page is being built its strings may sit in `i18n/parts/<namespace>.json` instead (English,
+  nested, keys sorted). Both are read. When the page is done, `node scripts/i18n-merge.mjs` folds the
+  parts into `en.json` (sorted) and removes them; a key that exists in both with different text stops
+  it.
+- `node scripts/i18n-check.mjs [--strict] [--parts-ok]` checks the catalog against the source: every
+  key a page asks for exists, no key is unused (a warning, an error with `--strict`), `en.json` is
+  sorted, and no string has an em or en dash. Without `--parts-ok` it fails while `i18n/parts/` still
+  holds files. Keys built at run time are declared in a comment in the file that builds them:
+  `// i18n-keys: a.b, a.c`.
+- Not in the catalog on purpose: `robots.txt`, `sitemap.xml`, `llms.txt` and `security.txt` (machine
+  files, English), code samples and commands, and the JSON-LD names.
+
+### Adding a language later
+
+1. Copy `i18n/en.json` to `i18n/<tag>.json` and translate the values; keep the keys and every
+   `{placeholder}` (a string that loses one falls back to English, so a link is never dropped).
+2. Add the language to `LANGS` in `src/i18n/langs.ts`.
+3. Build the routing for it (a `/<tag>/` copy of the pages, `hreflang` alternates in `Base.astro`, a
+   picker in the header, the sitemap entries). None of that exists yet: only English is published.
+
+Translations are the maintainer's job; do not run a translation sync tool from here.
+
+## Release data
+
+`src/data/release.json` feeds the home page's eyebrow, the download and install pages, `llms.txt`,
+the security page's hash and the `SoftwareApplication` JSON-LD. After each release, edit it by hand
+from the GitHub release: `version`, `tag`, `date`, `prerelease`, and the `apk` block (`name`, `size` in
+bytes, `sha256` as GitHub shows it beside the file, `url`). Then add the release's page under
+`src/pages/changelog/`, add it to `src/data/lastmod.json` with the moved `lastmod` dates, and check
+`minAndroid`. Nothing else needs a change.
+
+## Redirects and headers
+
+- `public/_redirects` (Cloudflare Pages): `/apk` goes to the latest release, a short address to type on a
+  phone or say aloud. Add a line here when a page moves.
+- `dist/_headers` is written by `tmHeaders` in `astro.config.mjs` on every build, never by hand: nosniff,
+  referrer policy, `X-Frame-Options: SAMEORIGIN`, a permissions policy (payment allowed for the Buy Me a
+  Coffee frame), one year immutable caching for `/_astro/` and `/fonts/`, and `X-Robots-Tag: noindex` on
+  the `*.pages.dev` addresses (and on every response while `INDEXABLE` is false).
+- `public/.well-known/security.txt` (RFC 9116) points at the private advisory form and `/security/`. Its
+  `Expires` is one year after it was written (2027-11-16): renew it before then.
 
 ## Screenshots
 
@@ -91,51 +145,40 @@ answers with a 522.
 
 ## Going live: the switch
 
-Everything that keeps the page out of search engines follows one constant, `INDEXABLE` in
-`site/site.config.mjs`. While it is `false`:
+Everything that keeps the site out of search engines follows one constant, `INDEXABLE` in
+`site/site.config.mjs`. **It is `true` now** (0.1.0 is out). While it is `false` (a placeholder):
 
 - every page has `<meta name="robots" content="noindex, nofollow">`;
 - every response has `X-Robots-Tag: noindex, nofollow` (`dist/_headers`);
 - `robots.txt` is `Disallow: /` with no `Sitemap:` line, and `sitemap.xml` is an empty urlset;
+- `llms.txt` says the site is not open yet;
 - the `SoftwareApplication` JSON-LD is not rendered;
 - `scripts/indexnow-site.py` sends nothing.
 
-Setting it to `true` and rebuilding flips all of these at once. The `*.pages.dev` addresses keep
+Setting it back and rebuilding flips all of these at once. The `*.pages.dev` addresses keep
 `X-Robots-Tag: noindex` either way, so only music.tmplayer.org is ever indexed.
 
-### Launch checklist
+### Status
 
-Before flipping:
-
-- [ ] There is a release to point at, and the page's copy is rewritten for it (download button,
-      screenshots as WebP, features that are in the release and nothing more). Public copy rules in
-      `AGENTS.md`: "audio" and "tracks", the unofficial notice, a link to tmplayer.org/legal, no real
-      artist, album or song names.
+- [x] A release to point at (0.1.0), the download button, WebP screenshots, copy limited to what the
+      release does.
+- [x] `INDEXABLE = true`; `robots.txt` has `Allow: /` and the `Sitemap:` line.
+- [x] JSON-LD built from `release.json`.
+- [x] Every page has its entry in `src/data/lastmod.json`.
 - [ ] The GitHub repository is public (the "Source on GitHub" link is a 404 for visitors until then).
-- [ ] music.tmplayer.org is attached and answers 200 (above).
-- [ ] Canonical: every page's `path` in `<Base>` gives `https://music.tmplayer.org/...`; check
-      `curl -s https://music.tmplayer.org/ | grep canonical`.
-- [ ] OG image: `public/og.png` (1200 x 630) still matches the page; bump `?v=` in `Base.astro` if
-      it changed. Check with a share preview (e.g. the Facebook or LinkedIn post inspector).
-- [ ] JSON-LD: in `src/lib/app-ld.ts` fill `softwareVersion`, `downloadUrl` and `screenshot`, and
-      check `operatingSystem` against the release. Validate with the Rich Results Test.
-- [ ] Sitemap: every page has its entry in `src/data/lastmod.json` with today's `lastmod`.
+- [ ] music.tmplayer.org is attached and answers 200 (above), and
+      `curl -s https://music.tmplayer.org/ | grep canonical` gives the production address.
+- [ ] Search Console and Bing Webmaster Tools have the domain and `https://music.tmplayer.org/sitemap.xml`.
+- [ ] IndexNow has been run once after the deploy (below).
+- [ ] `og.png` (1200 x 630) still matches the site; check a share preview after a change.
 
-Flip:
+After every deploy:
 
-- [ ] `export const INDEXABLE = true;` in `site/site.config.mjs`, then `pnpm -C site pages:deploy`.
-- [ ] Check: `curl -sI https://music.tmplayer.org/` has no `x-robots-tag`;
-      `curl -s https://music.tmplayer.org/robots.txt` has `Allow: /` and the `Sitemap:` line;
-      `curl -s https://music.tmplayer.org/sitemap.xml` lists the pages; the page source says
-      `index, follow`; `curl -sI https://tmplayer-music-site.pages.dev/` still says `noindex`.
-
-After:
-
-- [ ] Add music.tmplayer.org to Google Search Console and Bing Webmaster Tools and submit
-      `https://music.tmplayer.org/sitemap.xml`.
-- [ ] IndexNow: run the workflow "IndexNow (site)" by hand (Actions tab), or locally
-      `python3 scripts/indexnow-site.py --after HEAD --dry-run`, then without `--dry-run`. The key
-      file is `public/bcb44850bb54b1caf19b3c49dc082b9e.txt`; keep exactly one such file.
+- `curl -sI https://music.tmplayer.org/` has no `x-robots-tag`;
+  `curl -sI https://tmplayer-music-site.pages.dev/` still says `noindex`;
+- `curl -s https://music.tmplayer.org/robots.txt` has `Allow: /` and the `Sitemap:` line;
+  `/sitemap.xml`, `/llms.txt` and `/.well-known/security.txt` answer 200;
+- validate the home page's JSON-LD with the Rich Results Test after a change to `app-ld.ts`.
 
 ## IndexNow
 

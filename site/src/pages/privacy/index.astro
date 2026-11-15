@@ -1,0 +1,98 @@
+---
+// /privacy/: what the app keeps, what leaves the phone and when, and what this site does. Every claim
+// is checked against the app (README "Privacy", en.json "lyrics" and "logs") and the lookup service's
+// code in gateway/lyrics/. Change this page when any of them changes, and move its date.
+import Page from '../../layouts/Page.astro';
+import T from '../../components/T.astro';
+import { ISSUES_URL } from '../../lib/support';
+import { t } from '../../i18n/t';
+
+const UPDATED = '2026-11-16';
+const ROWS = ['tg', 'lookup', 'github', 'logs'];
+// i18n-keys: privacy.row_tg_who, privacy.row_tg_what, privacy.row_tg_when, privacy.row_lookup_who, privacy.row_lookup_what, privacy.row_lookup_when, privacy.row_github_who, privacy.row_github_what, privacy.row_github_when, privacy.row_logs_who, privacy.row_logs_what, privacy.row_logs_when
+---
+<Page
+  path="/privacy/"
+  title={t('privacy.title')}
+  description={t('privacy.description')}
+  eyebrow={t('privacy.eyebrow')}
+  h1={t('privacy.h1')}
+  lede={t('privacy.lede')}
+  crumbs={[{ name: t('privacy.crumb'), path: '/privacy/' }]}
+  updated={UPDATED}
+  wide
+>
+  <div class="callout">
+    <h2 class="callout-h">{t('privacy.short_h')}</h2>
+    <ul>
+      <li>{t('privacy.short_1')}</li>
+      <li>{t('privacy.short_2')}</li>
+      <li>{t('privacy.short_3')}</li>
+      <li>{t('privacy.short_4')}</li>
+    </ul>
+  </div>
+
+  <h2>{t('privacy.table_h')}</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th scope="col">{t('privacy.col_who')}</th><th scope="col">{t('privacy.col_what')}</th><th scope="col">{t('privacy.col_when')}</th></tr>
+      </thead>
+      <tbody>
+        {ROWS.map((r) => (
+          <tr><th scope="row">{t(`privacy.row_${r}_who`)}</th><td>{t(`privacy.row_${r}_what`)}</td><td>{t(`privacy.row_${r}_when`)}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>{t('privacy.device_h')}</h2>
+  <p>{t('privacy.device_lead')}</p>
+  <ul>
+    <li>{t('privacy.device_1')}</li>
+    <li>{t('privacy.device_2')}</li>
+    <li>{t('privacy.device_3')}</li>
+    <li>{t('privacy.device_4')}</li>
+  </ul>
+  <p>{t('privacy.device_end')}</p>
+
+  <h2>{t('privacy.telegram_h')}</h2>
+  <p>{t('privacy.telegram_1')}</p>
+  <p>{t('privacy.telegram_2')}</p>
+  <p><T k="privacy.telegram_3"><a slot="a1" href="https://telegram.org/privacy" rel="noopener"><T k="privacy.telegram_3__a1" /></a></T></p>
+
+  <h2>{t('privacy.lookup_h')}</h2>
+  <p>{t('privacy.lookup_1')}</p>
+  <p>{t('privacy.lookup_2')}</p>
+  <p>{t('privacy.lookup_3')}</p>
+
+  <h2>{t('privacy.logs_h')}</h2>
+  <p>{t('privacy.logs_1')}</p>
+
+  <h2>{t('privacy.updates_h')}</h2>
+  <p>{t('privacy.updates_1')}</p>
+
+  <h2>{t('privacy.site_h')}</h2>
+  <p>{t('privacy.site_1')}</p>
+  <p>{t('privacy.site_2')}</p>
+
+  <h2>{t('privacy.choices_h')}</h2>
+  <ul>
+    <li>{t('privacy.choices_1')}</li>
+    <li>{t('privacy.choices_2')}</li>
+    <li>{t('privacy.choices_3')}</li>
+    <li>{t('privacy.choices_4')}</li>
+  </ul>
+
+  <h2>{t('privacy.contact_h')}</h2>
+  <p><T k="privacy.contact_1"><a slot="a1" href={ISSUES_URL} rel="noopener"><T k="privacy.contact_1__a1" /></a></T></p>
+</Page>
+
+<style>
+  /* Three columns need room: on a phone the table scrolls sideways inside its wrapper, not the page. */
+  table { min-width: 36rem; }
+  .callout-h { margin: 0 0 .5rem; font-size: 1.0625rem; }
+  /* The table sits in a wide column, but its lines stay readable: the first column is a heading. */
+  tbody th { color: var(--fg); font-size: .9375rem; text-transform: none; letter-spacing: 0; white-space: nowrap; }
+  @media (max-width: 40rem) { tbody th { white-space: normal; } }
+</style>
