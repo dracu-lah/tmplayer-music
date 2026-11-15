@@ -16,7 +16,15 @@ CATALOGS = {
     'app': ROOT / 'core/src/commonMain/resources/i18n',
     'site': ROOT / 'site/i18n',
 }
-TMPLAYER = ROOT.parent / 'TMPlayer/core/src/commonMain/resources/i18n'
+def _sibling():
+    """TMPlayer sits beside this repo; a git worktree under .claude/worktrees is deeper, so look upward."""
+    for base in [ROOT, *ROOT.parents]:
+        cand = base.parent / 'TMPlayer/core/src/commonMain/resources/i18n'
+        if cand.is_dir():
+            return cand
+    return ROOT.parent / 'TMPlayer/core/src/commonMain/resources/i18n'
+
+TMPLAYER = _sibling()
 
 # Site pages that stay English only (legal text, release notes, the 404): never listed for translation, as on tmplayer.org.
 SITE_ENGLISH_ONLY = ('privacy.', 'legal.', 'security.', 'changelog.', 'notfound.')

@@ -13,7 +13,9 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location('todo', Path(__file__).with_name('i18n-todo.py'))
 todo = importlib.util.module_from_spec(spec); spec.loader.exec_module(todo)
 
-ARG = re.compile(r'\{\s*(\w+)\s*[,}]')
+# An argument is {name} or the head of an ICU {name, plural|select|selectordinal, ...}; a word that merely follows a brace is text.
+ARG = re.compile(r'\{\s*(\w+)\s*(?:\}|,\s*(?:plural|select|selectordinal)\s*,)')
+ICU = re.compile(r'\{\s*\w+\s*,\s*(?:plural|select|selectordinal)\s*,')
 DASH = re.compile('[\u2012-\u2015]')
 
 def args(s):
@@ -26,7 +28,7 @@ def problems(en, tr):
         return 'dash'
     if args(en) != args(tr):
         return f'placeholders {args(en)} vs {args(tr)}'
-    if 'plural' in en or 'select' in en:
+    if ICU.search(en):
         if tr.count('{') != tr.count('}'):
             return 'unbalanced braces'
         if 'other' not in tr:

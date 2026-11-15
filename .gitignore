@@ -1,24 +1,22 @@
-# Gradle
-.gradle/
+
+# Agent worktrees
 build/
-local.properties
-
-# Signing
-*.keystore
-*.jks
-keystore.properties
-
+/.claude/worktrees/
+.DS_Store
+.gradle/
+# Gradle
 # IDE
 .idea/
 *.iml
+*.jks
+*.keystore
+keystore.properties
 .kotlin/
-.DS_Store
-
+local.properties
 # Never commit another project's source
-/reference-src/
-
-# Agent worktrees
-/.claude/worktrees/
-
-# Working notes kept off GitHub (plan, research, handoff)
 private/
+*.pyc
+__pycache__/
+/reference-src/
+# Signing
+# Working notes kept off GitHub (plan, research, handoff)
