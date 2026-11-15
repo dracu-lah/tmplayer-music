@@ -75,6 +75,8 @@ fun SettingsScreen(onManageChats: () -> Unit = {}) {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+        LanguageSettingsRow()
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
         LibrarySection(onManageChats)
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         BackupSection()

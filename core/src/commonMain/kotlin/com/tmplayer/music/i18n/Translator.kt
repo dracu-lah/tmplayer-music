@@ -34,6 +34,38 @@ object Translator {
     /** The current language's text. */
     val messages: Messages get() = state.value
 
+    /**
+     * Picks the language for the Settings choice [saved] ("" for the system) and the device's
+     * [system] languages, loads it, and returns the tag chosen. A language without a catalog is
+     * never chosen. Cheap when nothing changes.
+     */
+    fun select(saved: String?, system: List<String>): String {
+        this.system = system
+        val tag = Languages.resolve(saved, system, ::hasCatalog)
+        use(tag)
+        return tag
+    }
+
+    /**
+     * The device's own languages as last handed to [select], or empty before the first call. Kept
+     * because on Android 13 and later a per-app language rewrites `Locale.getDefault()`, so the
+     * process locale cannot answer what "System default" stands for.
+     */
+    @Volatile
+    var system: List<String> = emptyList()
+        private set
+
+    /** The tag "System default" stands for: [system] resolved with nothing saved. */
+    fun systemDefault(): String = Languages.resolve("", system, ::hasCatalog)
+
+    private val catalogs = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /** True for English and for a language whose catalog is on the classpath and holds text. */
+    fun hasCatalog(tag: String): Boolean =
+        tag == ENGLISH || catalogs.getOrPut(tag) {
+            resource(tag)?.let { json -> runCatching { parse(json).isNotEmpty() }.getOrDefault(false) } ?: false
+        }
+
     /** Switches to [tag]. A language with no catalog reads all in English. */
     fun use(tag: String) {
         if (state.value.tag == tag) return

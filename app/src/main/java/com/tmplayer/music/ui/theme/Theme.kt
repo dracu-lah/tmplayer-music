@@ -21,6 +21,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.LifecycleResumeEffect
 
 /**
@@ -72,7 +74,13 @@ fun MusicTheme(content: @Composable () -> Unit) {
         } else {
             emptyArray()
         }
+        // The layout follows the app's language, not the device's: Arabic and Persian mirror it, and
+        // English chosen on an Arabic device does not. The screen is recreated when the language changes.
+        val direction = remember(context) {
+            if (com.tmplayer.music.i18n.Languages.isRtl(com.tmplayer.music.i18n.Translator.messages.tag)) LayoutDirection.Rtl else LayoutDirection.Ltr
+        }
         CompositionLocalProvider(
+            *(if (preview) emptyArray() else arrayOf(LocalLayoutDirection provides direction)),
             LocalReducedMotion provides reduced,
             LocalMusicMotion provides if (reduced) SnapMotion else ExpressiveMotion,
             com.tmplayer.music.ui.tv.LocalTv provides tv,
