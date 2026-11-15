@@ -1,0 +1,25 @@
+---
+// A catalog string. Inline markup inside the sentence comes in as named slots matching the string's
+// {placeholders}, so a translator moves the link with the words:
+//
+//   <T k={key}><a slot="a1" href="/install/">{label}</a></T>
+//
+// Plain {name} placeholders are filled from `vars`. The text is escaped; only the slots are markup.
+import { escapeHtml, raw } from '../i18n/t';
+
+interface Props { k: string; vars?: Record<string, string | number> }
+const { k, vars = {} } = Astro.props;
+const tmpl = raw(k);
+let html = '';
+let pos = 0;
+for (const m of tmpl.matchAll(/\{(\w+)\}/g)) {
+  html += escapeHtml(tmpl.slice(pos, m.index));
+  const name = m[1];
+  if (Astro.slots.has(name)) html += await Astro.slots.render(name);
+  else if (name in vars) html += escapeHtml(String(vars[name]));
+  else html += m[0];
+  pos = m.index! + m[0].length;
+}
+html += escapeHtml(tmpl.slice(pos));
+---
+<Fragment set:html={html} />

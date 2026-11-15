@@ -1,0 +1,22 @@
+---
+// A small card at the bottom left, shown by the script shortly after the page has loaded. The x hides
+// it for this page view only: nothing is stored, and the next page shows it again. Never on /support/
+// or the 404, and never without scripting. It is an offer: nothing opens by itself.
+import Icon from './Icon.astro';
+import CoffeeButton from './CoffeeButton.astro';
+import UpiButton from './UpiButton.astro';
+import { t } from '../i18n/t';
+---
+<aside class="bmc-float" id="bmc-float" aria-label={t('sponsor.card_aria')} hidden>
+  <div class="bmc-float-head">
+    <div>
+      <p class="bmc-float-title">{t('sponsor.card_title')}</p>
+      <p class="bmc-float-line">{t('sponsor.card_line')}</p>
+    </div>
+    <button type="button" class="dialog-close" data-bmc-hide aria-label={t('sponsor.card_hide')} title={t('sponsor.card_hide')}><Icon name="close" /></button>
+  </div>
+  <div class="bmc-float-actions">
+    <UpiButton />
+    <CoffeeButton />
+  </div>
+</aside>

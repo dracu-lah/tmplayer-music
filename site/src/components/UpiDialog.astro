@@ -1,0 +1,25 @@
+---
+// Pay by UPI over the page: the QR, the UPI ID with a copy button and, on a touch device, a button
+// that opens the UPI app chooser. Without scripting the QR and the ID are still there.
+import Icon from './Icon.astro';
+import { UPI_ID, UPI_LINK, UPI_QR } from '../lib/support';
+import { versioned } from '../lib/asset-version';
+import { t } from '../i18n/t';
+---
+<dialog class="upi-dialog" id="upi-dialog" aria-labelledby="upi-dialog-h">
+  <div class="upi-box">
+    <button type="button" class="dialog-close" data-upi-close aria-label={t('common.close')} title={t('common.close')}><Icon name="close" /></button>
+    <div class="upi-head">
+      <img src={versioned('/brand/gpay-mark.png')} alt="" width="40" height="40" loading="lazy" decoding="async">
+      <h2 id="upi-dialog-h">{t('sponsor.upi')}</h2>
+    </div>
+    <p class="upi-note">{t('sponsor.upi_note')}</p>
+    <a class="btn-upi upi-open" href={UPI_LINK} data-upi-open hidden>{t('sponsor.upi_open')}</a>
+    <img class="upi-qr" src={versioned(UPI_QR)} alt={t('sponsor.upi_qr_alt')} width="220" height="220" loading="lazy" decoding="async">
+    <p class="upi-scan">{t('sponsor.upi_scan')}</p>
+    <div class="upi-id">
+      <code aria-label={t('sponsor.upi_id')}>{UPI_ID}</code>
+      <button type="button" class="btn-quiet js-only" data-copy={UPI_ID} data-copied={t('sponsor.copied')} hidden><Icon name="copy" size={16} /> <span data-copy-label>{t('sponsor.copy_id')}</span></button>
+    </div>
+  </div>
+</dialog>

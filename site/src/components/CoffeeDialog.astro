@@ -1,0 +1,17 @@
+---
+// Buy Me a Coffee's own widget page in a native <dialog>, opened by a link marked data-bmc. The
+// iframe gets its src only when somebody asks (or is about to), so a page loads nothing from
+// buymeacoffee.com on its own. Esc, the backdrop and the x close it.
+import Icon from './Icon.astro';
+import { BMC_URL } from '../lib/support';
+import { t } from '../i18n/t';
+
+const src = `${BMC_URL.replace('buymeacoffee.com/', 'buymeacoffee.com/widget/page/')}?description=${encodeURIComponent(t('sponsor.offer_h'))}&color=${encodeURIComponent('#FFDD00')}`;
+---
+<dialog class="bmc-dialog" id="bmc-dialog" aria-label={t('sponsor.coffee')}>
+  <div class="bmc-dialog-box">
+    <button type="button" class="dialog-close" data-bmc-close aria-label={t('common.close')} title={t('common.close')}><Icon name="close" /></button>
+    <div class="bmc-dialog-wait" aria-hidden="true"><img src="/brand/bmc-cup-on-yellow.svg" alt="" width="28" height="40" loading="lazy" decoding="async"></div>
+    <iframe class="bmc-dialog-frame" data-src={src} title={t('sponsor.coffee')} allow="payment"></iframe>
+  </div>
+</dialog>

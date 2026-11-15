@@ -1,14 +1,19 @@
 [
-  {
-    "path": "/",
-    "lastmod": "2026-10-31",
-    "changefreq": "weekly",
-    "priority": "1.0"
-  },
-  {
-    "path": "/support/",
-    "lastmod": "2026-10-30",
-    "changefreq": "monthly",
-    "priority": "0.5"
-  }
+  { "path": "/", "lastmod": "2026-11-16", "changefreq": "weekly", "priority": "1.0" },
+  { "path": "/download/", "lastmod": "2026-11-16", "changefreq": "weekly", "priority": "0.9" },
+  { "path": "/install/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.8" },
+  { "path": "/features/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.8" },
+  { "path": "/faq/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.8" },
+  { "path": "/changelog/", "lastmod": "2026-11-16", "changefreq": "weekly", "priority": "0.6" },
+  { "path": "/changelog/v0.1.0/", "lastmod": "2026-10-30", "changefreq": "yearly", "priority": "0.4" },
+  { "path": "/troubleshooting/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.6" },
+  { "path": "/troubleshooting/telegram-blocked/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.5" },
+  { "path": "/troubleshooting/no-tracks-found/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.5" },
+  { "path": "/troubleshooting/track-will-not-play/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.5" },
+  { "path": "/troubleshooting/storage-full/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.5" },
+  { "path": "/troubleshooting/lyrics-missing/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.5" },
+  { "path": "/privacy/", "lastmod": "2026-11-16", "changefreq": "yearly", "priority": "0.4" },
+  { "path": "/legal/", "lastmod": "2026-11-16", "changefreq": "yearly", "priority": "0.4" },
+  { "path": "/security/", "lastmod": "2026-11-16", "changefreq": "yearly", "priority": "0.4" },
+  { "path": "/support/", "lastmod": "2026-11-16", "changefreq": "monthly", "priority": "0.5" }
 ]

@@ -1,0 +1,15 @@
+---
+// Pay by UPI, in Google Pay's own look: the GPay mark on white. A real `upi://` link, so a phone
+// opens its UPI app; the script also opens UpiDialog (QR and ID to copy) because the wrong app may
+// open or none. On a computer the link is held back, since nothing there answers it.
+import { versioned } from '../lib/asset-version';
+import { UPI_LINK } from '../lib/support';
+import { t } from '../i18n/t';
+
+interface Props { label?: string; large?: boolean }
+const { label = t('sponsor.upi'), large = false } = Astro.props;
+---
+<a data-upi class:list={['btn-upi', { 'btn-upi-lg': large }]} href={UPI_LINK}>
+  <img class="upi-mark" src={versioned('/brand/gpay-mark.png')} alt="" width="24" height="24" loading="lazy" decoding="async">
+  <span>{label}</span>
+</a>

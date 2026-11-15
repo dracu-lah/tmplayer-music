@@ -15,7 +15,7 @@ const tmHeaders = {
         '  X-Content-Type-Options: nosniff',
         '  Referrer-Policy: strict-origin-when-cross-origin',
         '  X-Frame-Options: SAMEORIGIN',
-        '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+        '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(self "https://buymeacoffee.com"), usb=()',
       ];
       // Placeholder only: keeps every response, HTML or not, out of search results.
       // INDEXABLE = true in site.config.mjs drops this line at launch.

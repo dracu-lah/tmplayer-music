@@ -1,0 +1,25 @@
+---
+// The offer at the foot of every content page: Buy Me a Coffee first, then UPI, with GitHub Sponsors as
+// the quiet link. The line about ads sits behind an info button, a native <details>, so the words stay
+// in the HTML and it works without scripting. It is a card in the page, never a popup.
+import Icon from './Icon.astro';
+import CoffeeButton from './CoffeeButton.astro';
+import UpiButton from './UpiButton.astro';
+import { SPONSORS_URL } from '../lib/support';
+import { t } from '../i18n/t';
+---
+<aside class="offer" id="sponsor" aria-labelledby="offer-h">
+  <div class="offer-head">
+    <h2 id="offer-h">{t('sponsor.offer_h')}</h2>
+    <details class="offer-why">
+      <summary aria-label={t('sponsor.offer_why')} title={t('sponsor.offer_why')}><Icon name="info" /></summary>
+      <p>{t('sponsor.offer_why_text')}</p>
+    </details>
+  </div>
+  <p class="offer-line">{t('sponsor.offer_line')}</p>
+  <div class="support-coffee">
+    <CoffeeButton large />
+    <UpiButton large />
+    <a class="support-alt" href={SPONSORS_URL} rel="noopener"><Icon name="heart" size={16} />{t('sponsor.github')}</a>
+  </div>
+</aside>

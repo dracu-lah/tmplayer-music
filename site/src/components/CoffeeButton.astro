@@ -1,14 +1,16 @@
 ---
 // The Buy Me a Coffee button, as tmplayer.org draws it: Buy Me a Coffee's own yellow (#FFDD00)
 // with their near-black words and their cup, the official artwork in public/brand/, never redrawn.
-// It is the first way to chip in wherever the site asks, with GitHub Sponsors the quieter link
-// beside it.
+// It stays a real link; the script opens CoffeeDialog on a plain click (data-bmc), and a middle
+// click or a browser without scripting follows the link.
 import { BMC_URL } from '../lib/support';
+import { t } from '../i18n/t';
+import { t } from '../i18n/t';
 
-interface Props { large?: boolean }
-const { large = false } = Astro.props;
+interface Props { large?: boolean; label?: string }
+const { large = false, label = t('sponsor.coffee') } = Astro.props;
 ---
-<a class:list={['btn-bmc', { 'btn-bmc-lg': large }]} href={BMC_URL} rel="noopener">
+<a data-bmc class:list={['btn-bmc', { 'btn-bmc-lg': large }]} href={BMC_URL} rel="noopener">
   <img class="bmc-cup" src="/brand/bmc-cup-on-yellow.svg" alt="" width="14" height="20" loading="lazy" decoding="async">
-  <span>Buy me a coffee</span>
+  <span>{label}</span>
 </a>

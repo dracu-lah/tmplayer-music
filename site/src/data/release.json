@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0",
+  "tag": "v0.1.0",
+  "date": "2026-10-30",
+  "prerelease": false,
+  "minAndroid": "6.0",
+  "apk": {
+    "name": "TMPlayerMusic-0.1.0.apk",
+    "size": 29028246,
+    "sha256": "4606a482beaba4465ddac44f91a4a34b3c2befac5baf06ff3c522a3199958d2c",
+    "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.1.0/TMPlayerMusic-0.1.0.apk"
+  }
+}

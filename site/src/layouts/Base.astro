@@ -7,6 +7,12 @@
 // noindex, nofollow, whatever it asks for; the X-Robots-Tag header (astro.config.mjs) says the same.
 import cssUrl from '../styles/styles.css?url';
 import { INDEXABLE, ORIGIN } from '../../site.config.mjs';
+import { t } from '../i18n/t';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import CoffeeCard from '../components/CoffeeCard.astro';
+import CoffeeDialog from '../components/CoffeeDialog.astro';
+import UpiDialog from '../components/UpiDialog.astro';
 
 interface Props {
   /** the page's path, such as / */
@@ -18,8 +24,12 @@ interface Props {
   imageAlt?: string;
   /** the 404 page: noindex, no canonical and no social tags */
   notFound?: boolean;
+  /** no floating support card (the support page, where the offer is the subject) */
+  noCard?: boolean;
+  /** the open graph type: website for most pages, article for a release */
+  ogType?: 'website' | 'article';
 }
-const { path, title, socialTitle = title, description, imageAlt = 'The TMPlayer Music icon', notFound = false } = Astro.props;
+const { path, title, socialTitle = title, description, imageAlt = t('common.og_alt'), notFound = false, noCard = false, ogType = 'website' } = Astro.props;
 const url = ORIGIN + path;
 // Bump ?v= whenever og.png changes, so the social sites fetch the new one.
 const OG_IMAGE = `${ORIGIN}/og.png?v=2`;
@@ -41,12 +51,13 @@ const robots = INDEXABLE ? 'index, follow, max-image-preview:large, max-snippet:
 <meta name="theme-color" content="#000000">
 <meta name="color-scheme" content="dark">
 {!notFound && <Fragment>
-<meta property="og:type" content="website">
+<meta property="og:type" content={ogType}>
 <meta property="og:site_name" content="TMPlayer Music">
 <meta property="og:title" content={socialTitle}>
 <meta property="og:description" content={description}>
 <meta property="og:url" content={url}>
 <meta property="og:image" content={OG_IMAGE}>
+<meta property="og:image:secure_url" content={OG_IMAGE}>
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -66,13 +77,22 @@ const robots = INDEXABLE ? 'index, follow, max-image-preview:large, max-snippet:
 <link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512">
 <link rel="apple-touch-icon" href="/icon-512.png">
 <link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="application/rss+xml" title="TMPlayer Music releases" href="/changelog/feed.xml">
 </Fragment>}
 <link rel="preload" href="/fonts/poppins-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/poppins-600.woff2" as="font" type="font/woff2" crossorigin>
+<script is:inline>document.documentElement.classList.add("js")</script>
 <link rel="stylesheet" href={cssUrl}>
 <slot name="head" />
 </head>
 <body>
+<a class="skip" href="#main">{t('common.skip')}</a>
+<Header path={path} />
 <slot />
+<Footer />
+<CoffeeDialog />
+<UpiDialog />
+{!notFound && !noCard && <CoffeeCard />}
+<script>import '../scripts/site';</script>
 </body>
 </html>

@@ -1,0 +1,2 @@
+# Cloudflare Pages redirects. /apk is the short address to type on a phone or say aloud.
+/apk  https://github.com/dracu-lah/tmplayer-music/releases/latest  302

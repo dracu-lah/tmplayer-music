@@ -11,30 +11,36 @@ import Base from '../layouts/Base.astro';
 import JsonLd from '../components/JsonLd.astro';
 import { INDEXABLE } from '../../site.config.mjs';
 import { SOFTWARE_APP, WEBSITE } from '../lib/app-ld';
-import CoffeeButton from '../components/CoffeeButton.astro';
-import Footer from '../components/Footer.astro';
+import SponsorOffer from '../components/SponsorOffer.astro';
+import release from '../data/release.json';
 import PhoneFrame from '../components/PhoneFrame.astro';
 import Icon from '../components/Icon.astro';
 import Sibling from '../components/Sibling.astro';
-import { REPO_URL as REPO, SPONSORS_URL } from '../lib/support';
+import { REPO_URL as REPO } from '../lib/support';
+import { t } from '../i18n/t';
+import T from '../components/T.astro';
 
-const SHOTS = [
-  { screen: 'home', title: 'Home with Speed dial', text: 'Speed dial keeps the tracks you come back to one tap away, with what you played recently below.', alt: 'The Home screen: a Speed dial grid of track covers, a Shuffle all button and Recently played.' },
-  { screen: 'chats', title: 'Chats', text: 'Each chat you picked opens as a playlist of its tracks.', alt: 'The Chats screen: chats with their track counts and a play button each.' },
-  { screen: 'songs', title: 'Songs', text: 'Every track from your chats in one list, with an A to Z index.', alt: 'The Library on its Songs tab: tracks with covers, artists and lengths, and an A to Z index on the side.' },
-  { screen: 'albums', title: 'Albums', text: 'Tracks grouped by album artist, album and year, read from the tags in the files.', alt: 'The Albums tab: a grid of album covers with their artists.' },
-  { screen: 'nowplaying', title: 'Now Playing', text: 'The cover, a seek bar, shuffle and repeat.', alt: 'Now Playing: a large cover, the track title and artist, a seek bar and the playback buttons.' },
-  { screen: 'lyrics', title: 'Lyrics', text: 'Synced lyrics follow the track, the current line lit.', alt: 'The lyrics page of Now Playing: lines of lyrics with the current one in bold white.' },
-  { screen: 'queue', title: 'Queue', text: 'See what plays next, reorder it or take tracks out.', alt: 'The queue sheet over Now Playing: seven tracks with drag handles and remove buttons.' },
-  { screen: 'account', title: 'Account menu', text: 'Settings, the chats that are read, Send logs and Log out, one tap from Home.', alt: 'The account menu open over Home: the signed in account, Settings, Manage chats, Send logs, About and Log out.' },
+const SCREENS = ['home', 'chats', 'songs', 'albums', 'nowplaying', 'lyrics', 'queue', 'account'];
+// i18n-keys: home.shot_home_h, home.shot_home, home.shot_home_alt, home.shot_chats_h, home.shot_chats, home.shot_chats_alt, home.shot_songs_h, home.shot_songs, home.shot_songs_alt, home.shot_albums_h, home.shot_albums, home.shot_albums_alt, home.shot_nowplaying_h, home.shot_nowplaying, home.shot_nowplaying_alt, home.shot_lyrics_h, home.shot_lyrics, home.shot_lyrics_alt, home.shot_queue_h, home.shot_queue, home.shot_queue_alt, home.shot_account_h, home.shot_account, home.shot_account_alt
+const SHOTS = SCREENS.map((screen) => ({ screen, title: t(`home.shot_${screen}_h`), text: t(`home.shot_${screen}`), alt: t(`home.shot_${screen}_alt`) }));
+const FEATURES = [
+  { icon: 'music' as const, key: 'library' },
+  { icon: 'layers' as const, key: 'versions' },
+  { icon: 'play' as const, key: 'stream' },
+  { icon: 'lyrics' as const, key: 'lyrics' },
+  { icon: 'list' as const, key: 'queue' },
+  { icon: 'disk' as const, key: 'cache' },
 ];
+// i18n-keys: home.f_library_h, home.f_library, home.f_versions_h, home.f_versions, home.f_stream_h, home.f_stream, home.f_lyrics_h, home.f_lyrics, home.f_queue_h, home.f_queue, home.f_cache_h, home.f_cache
+const QUICK = [1, 2, 3].map((n) => ({ q: t(`home.q${n}`), a: t(`home.a${n}`) }));
+// i18n-keys: home.q1, home.a1, home.q2, home.a2, home.q3, home.a3
 const GALLERY_SIZES = '(max-width: 480px) 62vw, 250px';
 const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
 ---
 <Base
   path="/"
-  title="TMPlayer Music: audio files from your Telegram chats"
-  description="TMPlayer Music is a player for the audio files already in your own Telegram chats. Free and open source for Android 6.0 and up. Unofficial, not affiliated with Telegram."
+  title={t('home.title')}
+  description={t('home.description')}
 >
   <Fragment slot="head">
     <JsonLd data={WEBSITE} />
@@ -45,36 +51,35 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
     <section class="hero" aria-labelledby="title">
       <div class="hero-text">
         <img class="mark" src="/favicon.svg" width="96" height="96" alt="">
-        <p class="eyebrow">Version 0.1.0 for Android</p>
-        <h1 id="title">TMPlayer Music</h1>
-        <p class="lede">A player for the audio files already in your own Telegram chats. Free and open source, for Android 6.0 and newer. Below is how it looks.</p>
-        <p class="notice">Unofficial, not affiliated with Telegram.</p>
-        <nav class="links" aria-label="Links">
-          <a class="link-primary" href={`${REPO}/releases/latest`}><Icon name="download" />Download the APK</a>
-          <a href={REPO}><Icon name="github" />Source on GitHub</a>
-          <a href="https://tmplayer.org/legal/"><Icon name="legal" />Legal</a>
-          <a href="https://tmplayer.org/"><Icon name="play" />TMPlayer, for the videos in your chats</a>
+        <p class="eyebrow">{t('home.eyebrow', { version: release.version })}</p>
+        <h1 id="title">{t('common.app_name')}</h1>
+        <p class="lede">{t('home.lede')}</p>
+        <p class="notice">{t('common.unofficial')}</p>
+        <nav class="links" aria-label={t('home.links')}>
+          <a class="link-primary" href="/download/"><Icon name="download" />{t('home.cta_download')}</a>
+          <a href="/features/"><Icon name="music" />{t('home.cta_features')}</a>
+          <a href={REPO}><Icon name="github" />{t('home.cta_source')}</a>
         </nav>
       </div>
       <div class="hero-phones">
-        <PhoneFrame class="hp hp-side hp-left" screen="albums" alt="The Albums tab: a grid of album covers." sizes={HERO_SIZES} eager />
-        <PhoneFrame class="hp hp-front" screen="home" alt="The Home screen with its Speed dial of track covers." sizes={HERO_SIZES} eager priority />
-        <PhoneFrame class="hp hp-side hp-right" screen="nowplaying" alt="Now Playing: a large cover, a seek bar and the playback buttons." sizes={HERO_SIZES} eager />
+        <PhoneFrame class="hp hp-side hp-left" screen="albums" alt={t('home.hero_albums_alt')} sizes={HERO_SIZES} eager />
+        <PhoneFrame class="hp hp-front" screen="home" alt={t('home.hero_home_alt')} sizes={HERO_SIZES} eager priority />
+        <PhoneFrame class="hp hp-side hp-right" screen="nowplaying" alt={t('home.hero_now_alt')} sizes={HERO_SIZES} eager />
       </div>
     </section>
 
     <section class="gallery" aria-labelledby="shots">
       <div class="gallery-head">
-        <h2 id="shots">Screenshots</h2>
+        <h2 id="shots">{t('home.shots_h')}</h2>
         <div class="gallery-tools">
           <div class="gallery-nav" data-gallery-nav hidden>
-            <button type="button" data-step="-1" aria-label="Previous screenshots"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-            <button type="button" data-step="1" aria-label="Next screenshots"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button type="button" data-step="-1" aria-label={t('home.prev')}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button type="button" data-step="1" aria-label={t('home.next')}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
         </div>
       </div>
-      <p class="gallery-note">The screenshots use demo data: every track, album, artist and chat name in them is invented.</p>
-      <ul class="shots" tabindex="0" aria-label="Screenshots, scroll sideways" data-gallery>
+      <p class="gallery-note">{t('home.shots_note')}</p>
+      <ul class="shots" tabindex="0" aria-label={t('home.shots_aria')} data-gallery>
         {SHOTS.map((s) => (
           <li>
             <figure>
@@ -86,32 +91,80 @@ const HERO_SIZES = '(max-width: 640px) 44vw, 270px';
       </ul>
     </section>
 
-    <section class="features" aria-labelledby="features">
-      <h2 id="features">What it does</h2>
-      <ul>
-        <li>Plays the audio files in the Telegram chats you pick, and nothing else is read.</li>
-        <li>One library across chats: Songs, Albums and Artists, an A to Z index and search.</li>
-        <li>The same track in several files is one row, with a Versions sheet behind it.</li>
-        <li>Tracks start while the file is still downloading, and seeking works before it ends.</li>
-        <li>Background playback with lock screen controls, and a queue that survives a restart.</li>
-        <li>Synced lyrics from the tags or a matching .lrc file, playlists, favourites and a sleep timer.</li>
-        <li>A cache limit and Free up space, which never touches anything in Telegram.</li>
+    <section class="band" aria-labelledby="what">
+      <h2 id="what">{t('home.what_h')}</h2>
+      <p class="band-lede">{t('home.what_lede')}</p>
+      <ul class="cards">
+        {FEATURES.map((f) => (
+          <li class="card">
+            <Icon name={f.icon} />
+            <h3>{t(`home.f_${f.key}_h`)}</h3>
+            <p>{t(`home.f_${f.key}`)}</p>
+          </li>
+        ))}
       </ul>
+      <p><a class="btn-quiet" href="/features/">{t('home.all_features')}</a></p>
     </section>
 
-    <section class="chip-in" aria-labelledby="chip-in">
-      <h2 id="chip-in">Chip in, if you like</h2>
-      <p>TMPlayer Music is free and open source, with no ads of its own and no paid tier. A coffee or a sponsorship pays for the time that goes into it. It is voluntary and unlocks nothing.</p>
-      <div class="support-coffee">
-        <CoffeeButton />
-        <a class="support-alt" href={SPONSORS_URL} rel="noopener"><Icon name="heart" size={16} />Sponsor on GitHub</a>
-        <a class="support-alt" href="/support/"><Icon name="help" size={16} />Other ways to help</a>
+    <section class="band" aria-labelledby="start">
+      <h2 id="start">{t('home.start_h')}</h2>
+      <ol class="steps">
+        <li><h3>{t('home.step1_h')}</h3><p><T k="home.step1"><a slot="a1" href="/install/"><T k="home.step1__a1" /></a></T></p></li>
+        <li><h3>{t('home.step2_h')}</h3><p>{t('home.step2')}</p></li>
+        <li><h3>{t('home.step3_h')}</h3><p>{t('home.step3')}</p></li>
+        <li><h3>{t('home.step4_h')}</h3><p>{t('home.step4')}</p></li>
+      </ol>
+    </section>
+
+    <section class="band" aria-labelledby="is">
+      <h2 id="is">{t('home.is_h')}</h2>
+      <div class="two">
+        <div class="card">
+          <h3>{t('home.is_yes')}</h3>
+          <ul>
+            <li>{t('home.is1')}</li>
+            <li>{t('home.is2')}</li>
+            <li>{t('home.is3')}</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>{t('home.is_no')}</h3>
+          <ul class="isnt">
+            <li>{t('home.not1')}</li>
+            <li>{t('home.not2')}</li>
+            <li>{t('home.not3')}</li>
+          </ul>
+        </div>
       </div>
     </section>
 
+    <section class="band" aria-labelledby="faq">
+      <h2 id="faq">{t('home.faq_h')}</h2>
+      <div class="faq">
+        {QUICK.map((q) => (
+          <details><summary>{q.q}</summary><div><p>{q.a}</p></div></details>
+        ))}
+      </div>
+      <p><a class="btn-quiet" href="/faq/">{t('home.faq_more')}</a></p>
+    </section>
+
+    <section class="band" aria-labelledby="get">
+      <div class="download-strip">
+        <div>
+          <h2 id="get">{t('home.get_h', { version: release.version })}</h2>
+          <p>{t('home.get_p', { android: release.minAndroid, size: (release.apk.size / 1048576).toFixed(0) })}</p>
+        </div>
+        <div class="btn-row">
+          <a class="btn" href="/download/"><Icon name="download" />{t('home.get_download')}</a>
+          <a class="btn-quiet" href="/install/">{t('home.get_install')}</a>
+        </div>
+      </div>
+    </section>
+
+    <SponsorOffer />
+
     <Sibling />
   </main>
-  <Footer wide />
 </Base>
 
 <script>

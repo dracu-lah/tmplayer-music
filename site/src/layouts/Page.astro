@@ -1,0 +1,55 @@
+---
+// A content page under the home page: breadcrumb, eyebrow, one h1, a lede, the page's own content in
+// the slot, then the sponsor offer. It adds the BreadcrumbList JSON-LD, and any more the page hands in
+// through `ld`. Pages that need their own head tags use the "head" slot as they would with Base.
+import Base from './Base.astro';
+import JsonLd from '../components/JsonLd.astro';
+import SponsorOffer from '../components/SponsorOffer.astro';
+import { breadcrumbLd, type Crumb } from '../lib/breadcrumb';
+import { t } from '../i18n/t';
+import T from '../components/T.astro';
+
+interface Props {
+  path: string;
+  title: string;
+  description: string;
+  h1: string;
+  eyebrow?: string;
+  lede?: string;
+  /** the pages between Home and this one, this page last */
+  crumbs: Crumb[];
+  /** extra JSON-LD objects for this page */
+  ld?: object[];
+  /** the date the content last changed, shown under the page (YYYY-MM-DD) */
+  updated?: string;
+  /** false on a page where the offer is the subject */
+  offer?: boolean;
+  /** a column wide enough for a table or a grid */
+  wide?: boolean;
+  ogType?: 'website' | 'article';
+}
+const { path, title, description, h1, eyebrow, lede, crumbs, ld = [], updated, offer = true, wide = false, ogType } = Astro.props;
+---
+<Base path={path} title={title} description={description} ogType={ogType}>
+  <Fragment slot="head">
+    <JsonLd data={breadcrumbLd(crumbs)} />
+    {ld.map((d) => <JsonLd data={d} />)}
+    <slot name="head" />
+  </Fragment>
+  <main id="main" class:list={['doc', { 'doc-wide': wide }]}>
+    <nav class="crumbs" aria-label={t('common.breadcrumb')}>
+      <ol>
+        <li><a href="/">{t('common.app_name')}</a></li>
+        {crumbs.map((c, i) => <li>{i === crumbs.length - 1 ? <span aria-current="page">{c.name}</span> : <a href={c.path}>{c.name}</a>}</li>)}
+      </ol>
+    </nav>
+    <header class="doc-head">
+      {eyebrow && <p class="eyebrow">{eyebrow}</p>}
+      <h1>{h1}</h1>
+      {lede && <p class="lede">{lede}</p>}
+    </header>
+    <div class="doc-body"><slot /></div>
+    {updated && <p class="updated"><T k="common.updated"><time slot="date" datetime={updated}>{updated}</time></T></p>}
+    {offer && <SponsorOffer />}
+  </main>
+</Base>
