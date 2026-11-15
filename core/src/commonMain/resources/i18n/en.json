@@ -795,7 +795,7 @@
   },
   "update": {
     "asking_github": "Asking GitHub…",
-    "blocked_phone": "This phone blocks installs from TMPlayer Music. Allow them in the setting this opens, then come back here.",
+    "blocked_phone": "This device blocks installs from TMPlayer Music. Allow them in the setting this opens, then come back here.",
     "channel": "App updates",
     "check_again": "Check again",
     "checking": "Checking…",

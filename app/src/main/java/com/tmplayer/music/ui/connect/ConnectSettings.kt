@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -210,6 +211,10 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(L.connectPairTitle) },
         text = {
+          // A TV's focus sits on Cancel, so text below the fold could not be reached with the remote: when the dialog
+          // has little height (a TV, a phone on its side) the picture and the number are smaller and all of it fits.
+          BoxWithConstraints {
+            val compact = maxHeight < 420.dp
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (newcomer != null) {
                     Text(L.connectPairDone(newcomer.name.ifBlank { newcomer.id.take(8) }), style = MaterialTheme.typography.bodyLarge)
@@ -217,19 +222,21 @@ private fun PairPhoneDialog(onDismiss: () -> Unit) {
                     // The picture is the primary way: it carries a one time 128 bit token and the address, so nothing is typed.
                     val link = pairLinkText(status, offer)
                     if (link != null) {
-                        Box(Modifier.size(200.dp).background(Color.White, RoundedCornerShape(12.dp)).align(Alignment.CenterHorizontally)) {
+                        Box(Modifier.size(if (compact) 132.dp else 200.dp).background(Color.White, RoundedCornerShape(12.dp)).align(Alignment.CenterHorizontally)) {
                             QrCode(remember(link) { qrMatrix(link) }, L.connectPairQrDescription)
                         }
                     }
                     Text(
                         offer?.code?.chunked(3)?.joinToString("  ") ?: "",
-                        style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace),
+                        style = (if (compact) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displayMedium)
+                            .copy(fontFamily = FontFamily.Monospace),
                     )
                     Text(L.connectPairSteps, style = MaterialTheme.typography.bodyMedium)
                     Text(L.connectPairCodeNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (locked) Text(L.connectPairLocked, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 }
             }
+          }
         },
         confirmButton = {
             TextButton(modifier = Modifier.tvAutoFocus().tvFocusRing(), onClick = onDismiss) { Text(if (newcomer != null) L.commonOk else L.commonCancel) }
