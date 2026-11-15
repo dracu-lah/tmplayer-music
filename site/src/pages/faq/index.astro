@@ -1,0 +1,39 @@
+---
+// Questions: the questions people ask first, grouped, each answer in a <details>. The FAQPage JSON-LD is
+// built from the same strings (src/lib/faq.ts), as plain text.
+import Page from '../../layouts/Page.astro';
+import Icon from '../../components/Icon.astro';
+import T from '../../components/T.astro';
+import FaqList from '../../components/content/FaqList.astro';
+import { updatedOf, BUG_REPORT_URL } from '../../components/content/meta';
+import { faqLd } from '../../lib/faq';
+import { t } from '../../i18n/t';
+
+const PATH = '/faq/';
+---
+<Page
+  path={PATH}
+  title={t('faq.title')}
+  description={t('faq.description')}
+  eyebrow={t('faq.eyebrow')}
+  h1={t('faq.h1')}
+  lede={t('faq.lede')}
+  crumbs={[{ name: t('nav.faq'), path: PATH }]}
+  ld={[faqLd()]}
+  updated={updatedOf(PATH)}
+>
+  <FaqList />
+
+  <section class="faq-more" aria-labelledby="more-h">
+    <h2 id="more-h">{t('faq.more_h')}</h2>
+    <p>
+      <T k="faq.more_p">
+        <a slot="a1" href="/troubleshooting/">{t('faq.more_p__a1')}</a>
+        <a slot="a2" href="/features/">{t('faq.more_p__a2')}</a>
+      </T>
+    </p>
+    <div class="btn-row">
+      <a class="btn-quiet" href={BUG_REPORT_URL} rel="noopener"><Icon name="github" size={16} />{t('faq.issue')}</a>
+    </div>
+  </section>
+</Page>
