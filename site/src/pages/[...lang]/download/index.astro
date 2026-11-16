@@ -8,7 +8,7 @@ import { l } from '../../../i18n/links';
 import Page from '../../../layouts/Page.astro';
 import T from '../../../components/T.astro';
 import ApkCard from '../../../components/download/ApkCard.astro';
-import { t } from '../../../i18n/t';
+import { currentLang, t } from '../../../i18n/t';
 import { SOFTWARE_APP } from '../../../lib/app-ld';
 import { REPO_URL, RELEASES_URL } from '../../../lib/support';
 import { earlier, latest, longDate, megabytes, pathOf } from '../../../lib/releases';
@@ -86,7 +86,7 @@ export const getStaticPaths = langPaths;
       {earlier.map((r) => (
         <li>
           <a href={pathOf(r)}>{r.version}</a>
-          <time datetime={r.date}>{longDate(r.date)}</time>
+          <time datetime={r.date}>{longDate(r.date, currentLang().tag)}</time>
           {r.prerelease && <span class="pill">{t('download.previous_prerelease')}</span>}
           {r.apk && <a class="prev-apk" href={r.apk.url} rel="noopener" aria-label={t('download.previous_apk_aria', { version: r.version })}>{t('download.previous_apk')}</a>}
         </li>

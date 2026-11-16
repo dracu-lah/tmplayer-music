@@ -6,6 +6,7 @@
 import Icon from '../Icon.astro';
 import { t } from '../../i18n/t';
 import { longDate, megabytes, type Apk } from '../../lib/releases';
+import { currentLang } from '../../i18n/t';
 
 interface Props {
   apk: Apk;
@@ -21,8 +22,8 @@ const { apk, version, date, minAndroid } = Astro.props;
   <dl class="apk-facts">
     <div><dt>{t('download.facts_version')}</dt><dd>{version}</dd></div>
     <div><dt>{t('download.facts_file')}</dt><dd><code>{apk.name}</code></dd></div>
-    <div><dt>{t('download.facts_size')}</dt><dd>{t('download.facts_size_value', { size: megabytes(apk.size) })}</dd></div>
-    <div><dt>{t('download.facts_date')}</dt><dd><time datetime={date}>{longDate(date)}</time></dd></div>
+    <div><dt>{t('download.facts_size')}</dt><dd><bdi dir="ltr">{t('download.facts_size_value', { size: megabytes(apk.size) })}</bdi></dd></div>
+    <div><dt>{t('download.facts_date')}</dt><dd><time datetime={date}>{longDate(date, currentLang().tag)}</time></dd></div>
     <div><dt>{t('download.facts_needs')}</dt><dd>{t('download.facts_needs_value', { version: minAndroid })}</dd></div>
     <div class="apk-sha">
       <dt>{t('download.facts_sha')}</dt>

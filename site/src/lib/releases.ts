@@ -53,6 +53,9 @@ export const earlier: Release[] = releases.filter((r) => r.tag !== latest.tag);
 
 /** 27.7 for 29028246 bytes (MB as 1,000,000 bytes, as GitHub shows it). */
 export const megabytes = (bytes: number) => (bytes / 1_000_000).toFixed(1);
-/** 30 October 2026, in English, whatever the build machine's time zone. */
-export const longDate = (iso: string) =>
-  new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${iso.slice(0, 10)}T12:00:00Z`));
+/**
+ * 30 October 2026 in the page's language (English by default), whatever the build machine's time zone.
+ * The Gregorian calendar is asked for by name: some languages (Persian) would use their own by default.
+ */
+export const longDate = (iso: string, locale = 'en-GB') =>
+  new Intl.DateTimeFormat(`${locale === 'en' ? 'en-GB' : locale}-u-ca-gregory`, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${iso.slice(0, 10)}T12:00:00Z`));
