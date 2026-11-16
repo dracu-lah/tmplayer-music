@@ -214,6 +214,8 @@
     "download": "Download",
     "github": "GitHub",
     "home": "TMPlayer Music, home",
+    "language": "Lingua",
+    "language_current": "Lingua: {name}",
     "main": "Principale",
     "menu": "Menu"
   },

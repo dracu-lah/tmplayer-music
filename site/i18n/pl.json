@@ -214,6 +214,8 @@
     "download": "Pobierz",
     "github": "GitHub",
     "home": "TMPlayer Music, strona główna",
+    "language": "Język",
+    "language_current": "Język: {name}",
     "main": "Główne",
     "menu": "Menu"
   },

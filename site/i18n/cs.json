@@ -245,6 +245,8 @@
     "download": "Stáhnout",
     "github": "GitHub",
     "home": "TMPlayer Music, domů",
+    "language": "Jazyk",
+    "language_current": "Jazyk: {name}",
     "main": "Hlavní",
     "menu": "Nabídka"
   },

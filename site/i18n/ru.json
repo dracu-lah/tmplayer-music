@@ -245,6 +245,8 @@
     "download": "Скачать",
     "github": "GitHub",
     "home": "TMPlayer Music, главная",
+    "language": "Язык",
+    "language_current": "Язык: {name}",
     "main": "Основное",
     "menu": "Меню"
   },
