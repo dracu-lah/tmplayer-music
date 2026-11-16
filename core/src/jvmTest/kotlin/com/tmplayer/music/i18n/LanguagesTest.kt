@@ -146,13 +146,18 @@ class LanguagesTest {
 
     @Test
     fun `the translator only picks a language whose catalog ships`() {
-        // Only English ships today, so every other language reads as English and nothing is claimed.
+        // A language is picked only when its catalog is on the classpath: English and the shipped languages
+        // are, a tag nobody wrote one for is not, and then the next system language (or English) is read.
         assertTrue(Translator.hasCatalog("en"))
+        assertTrue(Translator.hasCatalog("de"))
         assertFalse(Translator.hasCatalog("xx"))
-        assertEquals("en", Translator.select("de", listOf("fr-FR")))
-        assertEquals("en", Translator.messages.tag)
+        assertEquals("de", Translator.select("de", listOf("fr-FR")))
+        assertEquals("de", Translator.messages.tag)
         assertEquals(listOf("fr-FR"), Translator.system)
-        assertEquals("en", Translator.systemDefault())
+        assertEquals("fr", Translator.systemDefault())
+        assertEquals("fr", Translator.select("xx", listOf("fr-FR")))
+        assertEquals("en", Translator.select("xx", listOf("zz")))
+        assertEquals("en", Translator.messages.tag)
         Translator.select("", emptyList())
     }
 
