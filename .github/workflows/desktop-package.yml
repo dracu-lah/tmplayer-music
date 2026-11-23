@@ -44,15 +44,18 @@ jobs:
         run: ./gradlew :core:jvmTest :desktop:test --console=plain
       - name: App image
         run: ./gradlew :desktop:createDistributable --console=plain -PdesktopVersion="$VERSION"
-      - name: Tools
-        run: |
-          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool
-      - name: Packages
-        run: APPIMAGETOOL="$PWD/appimagetool" APPIMAGE_EXTRACT_AND_RUN=1 desktop/packaging/linux/package.sh "${VERSION%%-*}"
       - name: Shred credentials
         if: always()
         run: rm -f local.properties
+      # A fixed release with its SHA-256 (as TMPlayer's release does), fetched only after the
+      # credentials are shredded, so a downloaded tool never runs beside the Telegram secrets.
+      - name: Tools
+        run: |
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo 'ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool' | sha256sum -c -
+          chmod +x appimagetool
+      - name: Packages
+        run: APPIMAGETOOL="$PWD/appimagetool" APPIMAGE_EXTRACT_AND_RUN=1 desktop/packaging/linux/package.sh "${VERSION%%-*}"
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
