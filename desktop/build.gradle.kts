@@ -29,6 +29,11 @@ val desktopVersion: String = providers.gradleProperty("desktopVersion").getOrEls
 // An MSI, a deb and a macOS bundle all refuse anything else; 0.1.0 is the development build's.
 val packageVersionName: String = desktopVersion.removePrefix("v").substringBefore('-').substringBefore('+')
     .takeIf { Regex("""\d+\.\d+\.\d+""").matches(it) } ?: "0.1.0"
+// jpackage on macOS refuses a version whose first number is 0 ("The first number in an app-version
+// cannot be zero or negative"), so until the app is 1.x the bundle says 1.<minor>.<patch>: 0.2.1 is 1.2.1.
+val macPackageVersion: String = packageVersionName.split('.').let { (major, minor, patch) ->
+    if (major.toInt() == 0) "1.$minor.$patch" else packageVersionName
+}
 val packagingDir = layout.projectDirectory.dir("packaging")
 
 // The same local.properties the Android build reads, for the same Telegram API credentials.
@@ -187,6 +192,7 @@ compose.desktop {
             // The DMG is Apple Silicon only (the mpv runtime is). macOS 26 is the floor because the
             // TDLib in tdl-coroutines is built for it, so an older Mac says so instead of failing at sign in.
             macOS {
+                packageVersion = macPackageVersion
                 bundleID = "io.github.dracu-lah.tmplayermusic"
                 iconFile.set(packagingDir.file("icons/tmplayer-music.icns"))
                 appCategory = "public.app-category.music"
