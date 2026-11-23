@@ -1,5 +1,67 @@
 [
   {
+    "version": "0.2.2",
+    "tag": "v0.2.2",
+    "date": "2026-11-23",
+    "published": "2026-11-23T17:30:55Z",
+    "prerelease": false,
+    "title": "TMPlayer Music 0.2.2",
+    "summary": "TMPlayer Music is a player for the audio files already in your own Telegram chats. Unofficial, not affiliated with Telegram.",
+    "highlights": [],
+    "apk": {
+      "name": "TMPlayerMusic-0.2.2.apk",
+      "size": 43127721,
+      "sha256": "60f76697c5e22718f350b459e8da5ae145730186508947cc3b816033f99eaad1",
+      "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.2.2/TMPlayerMusic-0.2.2.apk"
+    },
+    "desktop": [
+      {
+        "platform": "windows",
+        "name": "TMPlayerMusic-0.2.2-windows-x64.msi",
+        "size": 216626168,
+        "sha256": "f1a0b4c5f365c3760acb9cee7cb5ab78c6bfdb89b1ebc07196ccb8584f6d82fb",
+        "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.2.2/TMPlayerMusic-0.2.2-windows-x64.msi"
+      },
+      {
+        "platform": "macos",
+        "name": "TMPlayerMusic-0.2.2-macos-arm64.dmg",
+        "size": 225702013,
+        "sha256": "8b5a820d03fe1f2a24f35d3675c8d0abb16e0bbb41496fc6452ca7d62b51324a",
+        "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.2.2/TMPlayerMusic-0.2.2-macos-arm64.dmg"
+      },
+      {
+        "platform": "linux-appimage",
+        "name": "TMPlayerMusic-0.2.2-x86_64.AppImage",
+        "size": 223115768,
+        "sha256": "58002378d21ac3f10f944d8d6e9ca3dc4e2b8aa4683dc1dd54eed560e3125b6d",
+        "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.2.2/TMPlayerMusic-0.2.2-x86_64.AppImage"
+      },
+      {
+        "platform": "linux-tar",
+        "name": "TMPlayerMusic-0.2.2-linux-x64.tar.xz",
+        "size": 196592212,
+        "sha256": "2bed56d6405bd02d7ca79b2f344868c74f3c050241716c6fe8e06bfecec93f53",
+        "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.2.2/TMPlayerMusic-0.2.2-linux-x64.tar.xz"
+      }
+    ]
+  },
+  {
+    "version": "0.2.0",
+    "tag": "v0.2.0",
+    "date": "2026-11-23",
+    "published": "2026-11-23T15:37:21Z",
+    "prerelease": false,
+    "title": "TMPlayer Music 0.2.0",
+    "summary": "TMPlayer Music is a player for the audio files already in your own Telegram chats. Unofficial, not affiliated with Telegram.",
+    "highlights": [],
+    "apk": {
+      "name": "TMPlayerMusic-0.2.0.apk",
+      "size": 43127722,
+      "sha256": "43918288f93bdcd4897fffb05bf9c6858dd7b24ce58e127f426d671e6a5cee29",
+      "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.2.0/TMPlayerMusic-0.2.0.apk"
+    }
+  },
+  {
     "version": "0.1.0",
     "tag": "v0.1.0",
     "date": "2026-10-30",
@@ -22,6 +84,22 @@
       "size": 29028246,
       "sha256": "4606a482beaba4465ddac44f91a4a34b3c2befac5baf06ff3c522a3199958d2c",
       "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.1.0/TMPlayerMusic-0.1.0.apk"
+    }
+  },
+  {
+    "version": "0.1.0-beta.3",
+    "tag": "v0.1.0-beta.3",
+    "date": "2026-10-30",
+    "published": "2026-10-30T15:06:19Z",
+    "prerelease": true,
+    "title": "TMPlayer Music 0.1.0-beta.3",
+    "summary": "TMPlayer Music is a player for the audio files already in your own Telegram chats. Unofficial, not affiliated with Telegram.",
+    "highlights": [],
+    "apk": {
+      "name": "TMPlayerMusic-0.1.0-beta.3.apk",
+      "size": 29028293,
+      "sha256": "73585dacb7d9842266c5dee51b922257811b40d364714dfdd884b8197f6cbf4e",
+      "url": "https://github.com/dracu-lah/tmplayer-music/releases/download/v0.1.0-beta.3/TMPlayerMusic-0.1.0-beta.3.apk"
     }
   }
 ]

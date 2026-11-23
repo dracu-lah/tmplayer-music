@@ -44,7 +44,7 @@ export const SOFTWARE_APP = {
     'TMPlayer Music is a player for the audio files already in your own Telegram chats. Unofficial, not affiliated with Telegram.',
   url: `${ORIGIN}/`,
   applicationCategory: 'MultimediaApplication',
-  operatingSystem: `Android ${release.minAndroid} or later`,
+  operatingSystem: `Android ${release.minAndroid} or later, Windows, macOS, Linux`,
   image: `${ORIGIN}/icon-512.png`,
   softwareVersion: release.version,
   datePublished: release.date,
