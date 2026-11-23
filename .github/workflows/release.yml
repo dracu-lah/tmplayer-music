@@ -9,7 +9,8 @@ name: Release
 # signing key, and keeping it off the push to main path means an ordinary commit, or a pull request
 # from a stranger, can never reach it. Adapted from TMPlayer's release workflow.
 #
-# One tag makes one GitHub release with one file in it: the signed APK. GitHub attaches the source
+# One tag makes one GitHub release with the signed APK and the unsigned desktop packages (Windows MSI,
+# macOS DMG, Linux tarball and AppImage). GitHub attaches the source
 # archives by itself and shows each file's SHA-256 beside it.
 #
 # A test version, tagged vX.Y.Z-beta.N before the release vX.Y.Z, goes through the same steps but is
@@ -198,27 +199,170 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
 
+  desktop-linux:
+    name: Desktop Linux (tarball, AppImage)
+    needs: version
+    runs-on: ubuntu-24.04
+    environment: release
+    env:
+      VERSION: ${{ needs.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Write Telegram credentials
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+        run: |
+          if [ -z "$TG_API_ID" ] || [ -z "$TG_API_HASH" ]; then
+            echo "::error::TG_API_ID or TG_API_HASH is not set, so the desktop app could not sign in"
+            exit 1
+          fi
+          printf 'TG_API_ID=%s\nTG_API_HASH=%s\n' "$TG_API_ID" "$TG_API_HASH" > local.properties
+      - name: Unit tests
+        run: ./gradlew :core:jvmTest :desktop:test --console=plain
+      - name: App image
+        run: ./gradlew :desktop:createDistributable --console=plain -PdesktopVersion="$VERSION"
+      - name: Tools
+        run: |
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+      - name: Packages
+        run: APPIMAGETOOL="$PWD/appimagetool" APPIMAGE_EXTRACT_AND_RUN=1 desktop/packaging/linux/package.sh "${VERSION%%-*}"
+      - name: Shred credentials
+        if: always()
+        run: rm -f local.properties
+      - name: Name the files
+        run: |
+          mkdir -p dist
+          for f in desktop/build/packages/*; do
+            b="$(basename "$f")"
+            # package.sh was given the plain x.y.z; a test version's files carry the full name.
+            mv "$f" "dist/${b/${VERSION%%-*}/$VERSION}"
+          done
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-linux
+          path: dist/*
+          retention-days: 3
+          if-no-files-found: error
+
+  desktop-windows:
+    name: Desktop Windows (MSI)
+    needs: version
+    runs-on: windows-2022
+    environment: release
+    env:
+      VERSION: ${{ needs.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Write Telegram credentials
+        shell: bash
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+        run: |
+          if [ -z "$TG_API_ID" ] || [ -z "$TG_API_HASH" ]; then
+            echo "::error::TG_API_ID or TG_API_HASH is not set, so the desktop app could not sign in"
+            exit 1
+          fi
+          printf 'TG_API_ID=%s\nTG_API_HASH=%s\n' "$TG_API_ID" "$TG_API_HASH" > local.properties
+      - name: MSI
+        shell: bash
+        run: ./gradlew :desktop:packageMsi --console=plain -PdesktopVersion="$VERSION"
+      - name: Shred credentials
+        if: always()
+        shell: bash
+        run: rm -f local.properties
+      - name: Name the file
+        shell: bash
+        run: |
+          mkdir -p dist
+          f="$(ls desktop/build/compose/binaries/main/msi/*.msi | head -n 1)"
+          mv "$f" "dist/TMPlayerMusic-$VERSION-windows-x64.msi"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-windows
+          path: dist/*
+          retention-days: 3
+          if-no-files-found: error
+
+  desktop-macos:
+    name: Desktop macOS (DMG, Apple Silicon)
+    needs: version
+    runs-on: macos-latest
+    environment: release
+    env:
+      VERSION: ${{ needs.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Write Telegram credentials
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+        run: |
+          if [ -z "$TG_API_ID" ] || [ -z "$TG_API_HASH" ]; then
+            echo "::error::TG_API_ID or TG_API_HASH is not set, so the desktop app could not sign in"
+            exit 1
+          fi
+          printf 'TG_API_ID=%s\nTG_API_HASH=%s\n' "$TG_API_ID" "$TG_API_HASH" > local.properties
+      - name: DMG
+        run: ./gradlew :desktop:packageDmg --console=plain -PdesktopVersion="$VERSION"
+      - name: Shred credentials
+        if: always()
+        run: rm -f local.properties
+      - name: Name the file
+        run: |
+          mkdir -p dist
+          f="$(ls desktop/build/compose/binaries/main/dmg/*.dmg | head -n 1)"
+          mv "$f" "dist/TMPlayerMusic-$VERSION-macos-arm64.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-macos
+          path: dist/*
+          retention-days: 3
+          if-no-files-found: error
+
   publish:
     name: Publish the release
-    needs: [version, android]
+    needs: [version, android, desktop-linux, desktop-windows, desktop-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Gather the APK
+      - name: Gather the files
         uses: actions/download-artifact@v4
         with:
-          name: release-android
+          pattern: release-*
           path: dist
+          merge-multiple: true
 
       - name: Check that nothing is missing
         run: |
-          f="dist/TMPlayerMusic-${{ needs.version.outputs.name }}.apk"
-          if [ ! -f "$f" ]; then
-            echo "::error::$f is missing"
-            exit 1
-          fi
+          v="${{ needs.version.outputs.name }}"
+          for f in "dist/TMPlayerMusic-$v.apk" "dist/TMPlayerMusic-$v-windows-x64.msi" "dist/TMPlayerMusic-$v-macos-arm64.dmg" \
+                   "dist/TMPlayerMusic-$v-linux-x64.tar.xz" "dist/TMPlayerMusic-$v-x86_64.AppImage"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f is missing"
+              exit 1
+            fi
+          done
 
       - name: Write the release notes
         run: |
@@ -229,7 +373,9 @@ jobs:
             fi
             echo "TMPlayer Music is a player for the audio files already in your own Telegram chats. Unofficial, not affiliated with Telegram."
             echo
-            echo "Install: download \`TMPlayerMusic-${{ needs.version.outputs.name }}.apk\` on an Android 6.0 or newer phone, open it and allow the install. See INSTALL.md."
+            echo "Install on Android (phone and Android TV): download \`TMPlayerMusic-${{ needs.version.outputs.name }}.apk\` on an Android 6.0 or newer device, open it and allow the install. See INSTALL.md."
+            echo
+            echo "Desktop: \`-windows-x64.msi\` (Windows), \`-macos-arm64.dmg\` (Apple Silicon Mac), \`-linux-x64.tar.xz\` and \`.AppImage\` (Linux). The desktop packages are not signed yet, so Windows SmartScreen and macOS Gatekeeper will ask before opening them."
             echo
             echo "Licence: GPL-3.0-or-later with an OpenSSL exception. Libraries and their sources: THIRD_PARTY_NOTICES.md. Lawful use: https://tmplayer.org/legal"
           } > notes.md
