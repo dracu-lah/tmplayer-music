@@ -10,6 +10,7 @@
 //
 // What it does for each published (not draft) release:
 //   - version is the tag without its leading "v", date is the publish day (UTC), published the full time.
+//   - the desktop packages (.msi, .dmg, .tar.xz, .AppImage) are listed the same way under `desktop`.
 //   - the APK is the first asset ending in .apk; its size is the asset's size and its SHA-256 is the
 //     asset's `digest` field ("sha256:<hex>"), so nothing is downloaded. A release whose APK has no
 //     digest is skipped with a warning rather than written without a checksum.
@@ -55,6 +56,29 @@ function apkOf(release) {
   return { name: asset.name, size: Number(asset.size), sha256, url: asset.browser_download_url };
 }
 
+// The desktop packages of a release (Windows MSI, macOS DMG, Linux tarball and AppImage), the same
+// shape as the APK plus a platform. A file without a sha256 digest is skipped with a warning.
+const DESKTOP = [
+  ['windows', /-windows-x64\.msi$/],
+  ['macos', /-macos-arm64\.dmg$/],
+  ['linux-appimage', /-x86_64\.AppImage$/],
+  ['linux-tar', /-linux-x64\.tar\.xz$/],
+];
+function desktopOf(release) {
+  const out = [];
+  for (const [platform, re] of DESKTOP) {
+    const asset = (release.assets ?? []).find((a) => typeof a?.name === 'string' && re.test(a.name) && a.state !== 'new');
+    if (!asset) continue;
+    const sha256 = typeof asset.digest === 'string' && asset.digest.startsWith('sha256:') ? asset.digest.slice(7) : '';
+    if (!/^[0-9a-f]{64}$/.test(sha256)) {
+      console.warn(`${release.tag_name}: ${asset.name} has no sha256 digest, skipped`);
+      continue;
+    }
+    out.push({ platform, name: asset.name, size: Number(asset.size), sha256, url: asset.browser_download_url });
+  }
+  return out;
+}
+
 const clean = (s) => String(s ?? '').replace(/\r/g, '').replace(/[\u2012-\u2015]/g, '-');
 
 function notesOf(release) {
@@ -83,6 +107,7 @@ for (const r of raw) {
   const kept = oldByTag.get(r.tag_name);
   const notes = notesOf(r);
   const apk = apkOf(r);
+  const desktop = desktopOf(r);
   releases.push({
     version: r.tag_name.replace(/^v/, ''),
     tag: r.tag_name,
@@ -93,6 +118,7 @@ for (const r of raw) {
     summary: kept?.summary ?? notes.summary,
     highlights: kept?.highlights ?? notes.highlights,
     ...(apk ? { apk } : {}),
+    ...(desktop.length ? { desktop } : {}),
   });
 }
 releases.sort((a, b) => (a.published < b.published ? 1 : -1));
@@ -106,6 +132,7 @@ const latest = newestStable && {
   prerelease: false,
   minAndroid: oldLatest.minAndroid ?? '6.0',
   apk: newestStable.apk,
+  ...(newestStable.desktop ? { desktop: newestStable.desktop } : {}),
 };
 
 const out = [['releases.json', releases]];

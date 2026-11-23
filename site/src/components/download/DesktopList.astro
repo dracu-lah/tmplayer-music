@@ -1,0 +1,36 @@
+---
+// The desktop packages of the latest release (Windows MSI, macOS DMG, Linux AppImage and tarball):
+// one row each with the platform, the file, its size, the Download link and the SHA-256. The data is
+// release.json's `desktop`, written by scripts/refresh-release.mjs; a release without desktop
+// packages shows nothing (the page checks before using this component).
+// i18n-keys: download.desktop_windows, download.desktop_macos, download.desktop_linux_appimage, download.desktop_linux_tar
+import { t } from '../../i18n/t';
+import { megabytes, type DesktopPackage } from '../../lib/releases';
+
+interface Props { packages: DesktopPackage[] }
+const { packages } = Astro.props;
+const label = (p: DesktopPackage) => t(`download.desktop_${p.platform.replace('-', '_')}`);
+---
+<ul class="desk-list">
+  {packages.map((p) => (
+    <li>
+      <div class="desk-head">
+        <strong>{label(p)}</strong>
+        <a class="btn-quiet" href={p.url} rel="noopener">{t('download.desktop_get')}</a>
+      </div>
+      <p class="desk-file"><code>{p.name}</code> <bdi dir="ltr">{t('download.facts_size_value', { size: megabytes(p.size) })}</bdi></p>
+      <p class="desk-sha">{t('download.desktop_sha')}: <code>{p.sha256}</code></p>
+    </li>
+  ))}
+</ul>
+
+<style>
+  .desk-list { list-style: none; margin: 1.25rem 0; padding: 0; display: grid; gap: .75rem; }
+  .desk-list li { padding: 1rem 1.25rem; border-radius: var(--radius); background: var(--surface); }
+  .desk-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
+  .desk-head .btn-quiet { min-height: 2.75rem; }
+  .desk-list p { margin: .5rem 0 0; }
+  .desk-list code { padding: 0; background: none; overflow-wrap: anywhere; }
+  .desk-sha { color: var(--muted); font-size: .8125rem; line-height: 1.5; }
+  .desk-sha code { word-break: break-all; }
+</style>

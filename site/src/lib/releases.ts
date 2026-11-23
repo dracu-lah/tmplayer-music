@@ -10,7 +10,9 @@ import { REPO_URL } from './support';
 import { ORIGIN } from '../../site.config.mjs';
 
 export interface Apk { name: string; size: number; sha256: string; url: string }
-export interface Latest { version: string; tag: string; date: string; prerelease: boolean; minAndroid: string; apk: Apk }
+export type DesktopPlatform = 'windows' | 'macos' | 'linux-appimage' | 'linux-tar';
+export interface DesktopPackage extends Apk { platform: DesktopPlatform }
+export interface Latest { version: string; tag: string; date: string; prerelease: boolean; minAndroid: string; apk: Apk; desktop?: DesktopPackage[] }
 export interface Release {
   version: string;
   tag: string;
@@ -23,6 +25,7 @@ export interface Release {
   summary: string;
   highlights: string[];
   apk?: Apk;
+  desktop?: DesktopPackage[];
 }
 
 export const latest = latestJson as Latest;

@@ -8,6 +8,7 @@ import { l } from '../../../i18n/links';
 import Page from '../../../layouts/Page.astro';
 import T from '../../../components/T.astro';
 import ApkCard from '../../../components/download/ApkCard.astro';
+import DesktopList from '../../../components/download/DesktopList.astro';
 import { currentLang, t } from '../../../i18n/t';
 import { SOFTWARE_APP } from '../../../lib/app-ld';
 import { REPO_URL, RELEASES_URL } from '../../../lib/support';
@@ -16,6 +17,7 @@ import { earlier, latest, longDate, megabytes, pathOf } from '../../../lib/relea
 const OBTAINIUM_REPO = 'https://github.com/ImranR98/Obtainium';
 const OBTAINIUM_ADD = `obtainium://add/${REPO_URL}`;
 const apk = latest.apk;
+const desktop = latest.desktop ?? [];
 
 const ld = {
   ...SOFTWARE_APP,
@@ -46,6 +48,16 @@ export const getStaticPaths = langPaths;
 
   <ApkCard apk={apk} version={latest.version} date={latest.date} minAndroid={latest.minAndroid} />
   <p><a href={`/changelog/${latest.tag}/`}>{t('download.notes_link', { version: latest.version })}</a></p>
+
+  <p>{t('download.desktop_tv_note')}</p>
+
+  {desktop.length > 0 && (
+    <>
+      <h2>{t('download.desktop_h')}</h2>
+      <p>{t('download.desktop_text')}</p>
+      <DesktopList packages={desktop} />
+    </>
+  )}
 
   <h2>{t('download.sha_h')}</h2>
   <p>{t('download.sha_text')}</p>
